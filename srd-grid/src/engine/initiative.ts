@@ -38,4 +38,13 @@ export class InitiativeTracker {
     this.order.push(c)
     if (i <= this.index) this.index = Math.max(0, this.index - 1)
   }
+
+  serialize() {
+    return { order: this.order.map(c => ({ ...c })), index: this.index }
+  }
+
+  deserialize(data: { order: Combatant[]; index: number }) {
+    this.order = [...data.order]
+    this.index = Math.min(Math.max(0, data.index|0), Math.max(0, this.order.length - 1))
+  }
 }

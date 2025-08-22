@@ -19,6 +19,19 @@ export function rollDie(rng: RNG, sides: number): number {
 export function d20(rng: RNG) { return rollDie(rng, 20); }
 export function d100(rng: RNG) { return rollDie(rng, 100); }
 
+// Non-SRD test helpers: advantage/disadvantage-like sampling
+export function d20WithAdvantage(rng: RNG): number {
+  const a = d20(rng)
+  const b = d20(rng)
+  return a > b ? a : b
+}
+
+export function d20WithDisadvantage(rng: RNG): number {
+  const a = d20(rng)
+  const b = d20(rng)
+  return a < b ? a : b
+}
+
 // Session-scoped RNG: seeded once for the lifetime of the page
 export const sessionRNG: RNG = (() => {
   let seed: number

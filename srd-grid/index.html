@@ -27,6 +27,27 @@
           <input id="ranged-toggle" type="checkbox" /> Ranged
         </label>
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input id="precise-toggle" type="checkbox" /> Precise Shot
+        </label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input id="defensive-cast-toggle" type="checkbox" /> Defensive Cast
+        </label>
+        <select id="spell-select">
+          <option value="magic-missile">Magic Missile</option>
+          <option value="fog-cloud">Fog Cloud</option>
+        </select>
+        <button id="cast-btn" style="cursor:pointer;">Cast Spell</button>
+        <button id="potion-btn" style="cursor:pointer;">Drink Potion</button>
+        <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+          <input id="tumble-toggle" type="checkbox" /> Tumble
+          <input id="tumble-bonus" type="number" value="5" style="width:52px" />
+        </label>
+        <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+          Concentration +
+          <input id="conc-bonus" type="number" value="5" style="width:52px" />
+        </label>
+        <button id="delay-btn" style="cursor:pointer;">Delay</button>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
           <input id="terrain-toggle" type="checkbox" /> Edit Terrain
         </label>
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
@@ -34,6 +55,9 @@
         </label>
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
           <input id="flat-toggle" type="checkbox" /> Flat-Footed
+        </label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input id="show-los-toggle" type="checkbox" /> Show LoS
         </label>
         <input id="seed-input" placeholder="Seed" style="width:80px;" />
         <button id="apply-seed" style="cursor:pointer;">Apply Seed</button>

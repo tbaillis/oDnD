@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mulberry32, d20, d100 } from '../engine/rng'
+import { mulberry32, d20, d100, d20WithAdvantage, d20WithDisadvantage } from '../engine/rng'
 
 describe('RNG & dice', () => {
   it('is deterministic for the same seed', () => {
@@ -26,5 +26,19 @@ describe('RNG & dice', () => {
       expect(v).toBeGreaterThanOrEqual(1)
       expect(v).toBeLessThanOrEqual(100)
     }
+  })
+
+  it('advantage tends to be >= single roll; disadvantage <= single roll (sanity)', () => {
+    const rngA = mulberry32(123)
+    const rngB = mulberry32(123)
+    const rngC = mulberry32(123)
+    let sumBase = 0, sumAdv = 0, sumDis = 0
+    for (let i=0;i<200;i++) {
+      sumBase += d20(rngA)
+      sumAdv += d20WithAdvantage(rngB)
+      sumDis += d20WithDisadvantage(rngC)
+    }
+    expect(sumAdv).toBeGreaterThan(sumBase)
+    expect(sumDis).toBeLessThan(sumBase)
   })
 })
