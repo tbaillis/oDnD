@@ -34,9 +34,10 @@ export const CellFlagSchema = z.object({
 })
 
 export const SaveDataSchema = z.object({
+  version: z.number().int().optional(),
   grid: z.array(z.array(CellFlagSchema)),
-  pawnA: z.object({ x: z.number().int(), y: z.number().int(), speed: z.number().int(), size: z.enum(['medium','large']), hp: z.number().int() }),
-  pawnB: z.object({ x: z.number().int(), y: z.number().int(), speed: z.number().int(), size: z.enum(['medium','large']), hp: z.number().int() }),
+  pawnA: z.object({ x: z.number().int(), y: z.number().int(), speed: z.number().int(), size: z.enum(['medium','large']), hp: z.number().int(), reach: z.boolean().optional() }),
+  pawnB: z.object({ x: z.number().int(), y: z.number().int(), speed: z.number().int(), size: z.enum(['medium','large']), hp: z.number().int(), reach: z.boolean().optional() }),
   round: z.number().int(),
   initiative: z.object({ order: z.array(z.object({ id: z.string(), initiative: z.number().int(), dexMod: z.number().int() })), index: z.number().int() }),
   aooUsed: z.record(z.string(), z.number().int()).default({}),
@@ -48,7 +49,10 @@ export const SaveDataSchema = z.object({
     preciseShot: z.boolean().optional(),
     showLoS: z.boolean().optional(),
     defensiveCast: z.boolean().optional(),
-    tumble: z.boolean().optional()
+    tumble: z.boolean().optional(),
+    reachA: z.boolean().optional(),
+    reachB: z.boolean().optional(),
+    cornerCover: z.boolean().optional()
   }),
   inputs: z.object({
     tumbleBonus: z.number().int().optional(),
@@ -56,6 +60,10 @@ export const SaveDataSchema = z.object({
     spell: z.string().optional()
   }).optional(),
   rngSeed: z.number().int().nullable().optional(),
+  effects: z.object({
+    baseBlockLoS: z.array(z.array(z.boolean())).optional(),
+    active: z.array(z.object({ kind: z.literal('fog-cloud'), x: z.number().int(), y: z.number().int(), radius: z.number().int(), expiresAtRound: z.number().int() }))
+  }).optional(),
 })
 
 export type SaveData = z.infer<typeof SaveDataSchema>

@@ -8,6 +8,8 @@ export function initUIPanels(root: HTMLElement) {
   log.style.padding = '6px 8px'
   log.style.background = 'rgba(0,0,0,0.4)'
   log.style.color = '#ddd'
+  log.style.maxHeight = '45%'
+  log.style.overflowY = 'auto'
   log.textContent = 'SRD Grid ready.'
   root.appendChild(log)
 
@@ -21,14 +23,32 @@ export function initUIPanels(root: HTMLElement) {
   hud.style.color = '#ddd'
   hud.textContent = 'Actions: —'
   root.appendChild(hud)
+
+  // Optional: small hint area for extra toggles
+  const hint = document.createElement('div')
+  hint.id = 'hint-hud'
+  hint.style.position = 'absolute'
+  hint.style.top = '40px'
+  hint.style.right = '8px'
+  hint.style.padding = '4px 6px'
+  hint.style.background = 'rgba(0,0,0,0.3)'
+  hint.style.color = '#bbb'
+  hint.style.fontSize = '12px'
+  hint.textContent = ''
+  root.appendChild(hint)
 }
 
 export function appendLogLine(text: string) {
   const el = document.getElementById('combat-log')
   if (!el) return
   const line = document.createElement('div')
-  line.textContent = text
+  const now = new Date()
+  const hh = String(now.getHours()).padStart(2, '0')
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  const ss = String(now.getSeconds()).padStart(2, '0')
+  line.textContent = `[${hh}:${mm}:${ss}] ${text}`
   el.appendChild(line)
+  el.scrollTop = el.scrollHeight
 }
 
 export function updateActionHUD(text: string) {

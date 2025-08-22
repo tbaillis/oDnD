@@ -1,7 +1,8 @@
 import { Application, Container, Graphics } from 'pixi.js'
 import { createWorld, updateTime } from './engine/world'
 import { initUIPanels, appendLogLine, updateActionHUD } from './ui/panels'
-import { Grid, coverBetweenSquares, concealmentAtTarget, lineOfSight } from './engine/grid'
+import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
+import { EffectManager } from './engine/effects'
 import { planPath, planPathAvoidingThreat } from './engine/path'
 import { threatenedSquares } from './engine/threat'
 import { analyzePathMovement } from './engine/movement'
@@ -11,6 +12,8 @@ import { consume } from './engine/actions'
 import { attackRoll, type AttackProfile, type DefenderProfile } from './game/combat'
 import { seededRNG, sessionRNG, type RNG } from './engine/rng'
 import { SaveDataSchema, type SaveData } from './data/schemas'
+import { Provokes, aooPreventedByCoverOrFog } from './engine/provoke'
+import { skills } from './game/skills'
 
 const root = document.getElementById('game-root') as HTMLDivElement | null
 if (!root) throw new Error('#game-root not found')
@@ -59,6 +62,9 @@ const G = new Grid({ width: Math.floor(WIDTH/CELL), height: Math.floor(HEIGHT/CE
 // Mark a small wall
 for (let y=3; y<=6; y++) G.set(7, y, { blockLoE: true, blockLoS: true, cover: 4 })
 
+// Effects manager: track LoS-blocking effects (e.g., fog cloud) layered over base grid
+const effects = new EffectManager(G)
+
 const overlay = new Graphics()
 overlay.alpha = 0.9
 world.addChild(overlay)
@@ -98,23 +104,96 @@ let touchMode = false
 let flatFootedMode = false
 let preciseShot = false
 let showLoS = false
+let reachA = false
+let reachB = false
+let useCornerCover = false
 let defensiveCast = false
 let tumbleEnabled = false
 let tumbleBonus = 5
 let concBonus = 5
 let selectedSpell: 'magic-missile'|'fog-cloud' = 'magic-missile'
 
-function threatSetFrom(x: number, y: number, size: 'medium'|'large') {
-  return new Set(threatenedSquares(x, y, size, true).map(([sx,sy]) => `${sx},${sy}`))
+// Undo stack for recent states
+const undoStack: SaveData[] = []
+const UNDO_LIMIT = 20
+
+function captureState(): SaveData {
+  const gridCopy = G.flags.map(row => row.map(cell => ({ ...cell })))
+  const ser = (turns.tracker as any).serialize?.() ?? { order: [], index: 0 }
+  return {
+    version: 2,
+    grid: gridCopy,
+    pawnA: { ...pawnA, reach: reachA },
+    pawnB: { ...pawnB, reach: reachB },
+    round: turns.round,
+    initiative: { order: ser.order, index: ser.index },
+    aooUsed: (turns as any).aooUsed || {},
+    toggles: { rangedMode, touchMode, flatFootedMode, editTerrain, preciseShot, showLoS, defensiveCast, tumble: tumbleEnabled, reachA, reachB, cornerCover: useCornerCover },
+    inputs: { tumbleBonus, concentrationBonus: concBonus, spell: selectedSpell },
+    rngSeed: currentSeed ?? null,
+    effects: { active: effects.serializeEffects() },
+  }
+}
+
+function restoreFromData(data: SaveData) {
+  // grid
+  if (Array.isArray(data.grid)) {
+    for (let y=0; y<G.h; y++) for (let x=0; x<G.w; x++) {
+      if (data.grid[y] && data.grid[y][x]) G.flags[y][x] = { ...data.grid[y][x] }
+    }
+  }
+  // effects
+  if ((data as any).effects?.active) effects.deserializeEffects((data as any).effects.active)
+  // pawns
+  if (data.pawnA) { const { x,y,speed,hp } = data.pawnA; pawnA = { ...pawnA, x, y, speed, hp }; reachA = !!(data.pawnA as any).reach }
+  if (data.pawnB) { const { x,y,speed,hp } = data.pawnB; pawnB = { ...pawnB, x, y, speed, hp }; reachB = !!(data.pawnB as any).reach }
+  // turn state
+  if (typeof data.round === 'number') (turns as any).round = data.round
+  if (data.initiative) { (turns.tracker as any).deserialize?.(data.initiative); (turns as any).active = (turns.tracker as any).current?.() }
+  if (data.aooUsed) (turns as any).aooUsed = { ...data.aooUsed }
+  // toggles + controls sync
+  if (data.toggles) {
+    rangedMode = !!data.toggles.rangedMode
+    touchMode = !!data.toggles.touchMode
+    flatFootedMode = !!data.toggles.flatFootedMode
+    editTerrain = !!data.toggles.editTerrain
+    preciseShot = !!data.toggles.preciseShot
+    showLoS = !!data.toggles.showLoS
+    defensiveCast = !!data.toggles.defensiveCast
+    tumbleEnabled = !!data.toggles.tumble
+    reachA = !!data.toggles.reachA
+    reachB = !!data.toggles.reachB
+    useCornerCover = !!data.toggles.cornerCover
+    const ids = ['ranged-toggle','touch-toggle','flat-toggle','terrain-toggle','precise-toggle','show-los-toggle','defensive-cast-toggle','tumble-toggle','reachA-toggle','reachB-toggle','corner-cover-toggle'] as const
+    const vals: boolean[] = [rangedMode,touchMode,flatFootedMode,editTerrain,preciseShot,showLoS,defensiveCast,tumbleEnabled,reachA,reachB,useCornerCover]
+    ids.forEach((id, i) => { const el = document.getElementById(id) as HTMLInputElement | null; if (el) el.checked = vals[i] })
+  }
+  if (data.inputs) {
+    tumbleBonus = (data.inputs.tumbleBonus ?? tumbleBonus)|0
+    concBonus = (data.inputs.concentrationBonus ?? concBonus)|0
+    const tb = document.getElementById('tumble-bonus') as HTMLInputElement | null; if (tb) tb.value = String(tumbleBonus)
+    const cb = document.getElementById('conc-bonus') as HTMLInputElement | null; if (cb) cb.value = String(concBonus)
+    const ss = document.getElementById('spell-select') as HTMLSelectElement | null; if (ss && (data.inputs as any).spell) { ss.value = (data.inputs as any).spell; selectedSpell = ((data.inputs as any).spell === 'fog-cloud' ? 'fog-cloud' : 'magic-missile') }
+  }
+  if (data.rngSeed !== null && data.rngSeed !== undefined && Number.isFinite(data.rngSeed as any)) { currentSeed = (data.rngSeed as number) >>> 0; currentRNG = seededRNG(currentSeed) }
+  gameOver = null
+  drawAll()
+  updateActionHUD(hudText())
+}
+
+function threatSetFrom(x: number, y: number, size: 'medium'|'large', hasReach: boolean) {
+  return new Set(threatenedSquares(x, y, size, hasReach).map(([sx,sy]) => `${sx},${sy}`))
 }
 
 function drawAll() {
   tokens.clear()
   overlay.clear()
 
-  // Threat layer from B
-  const threat = threatenedSquares(pawnB.x, pawnB.y, pawnB.size, true)
-  for (const [x,y] of threat) drawCell(overlay, x, y, 0xff4444)
+  // Threat layers from both pawns
+  const threatB = threatenedSquares(pawnB.x, pawnB.y, pawnB.size, reachB)
+  for (const [x,y] of threatB) drawCell(overlay, x, y, 0xff4444)
+  const threatA = threatenedSquares(pawnA.x, pawnA.y, pawnA.size, reachA)
+  for (const [x,y] of threatA) drawCell(overlay, x, y, 0x4488ff)
 
   // Tokens
   tokens.circle(pawnA.x*CELL + CELL/2, pawnA.y*CELL + CELL/2, CELL*0.35).fill(0x5aa9e6)
@@ -144,7 +223,7 @@ function planFromActiveTo(mx: number, my: number) {
   const other = turns.active?.id === 'A' ? pawnB : pawnA
   const allowDiagonal = true
   const dontCrossCorners = true
-  const threatSet = threatSetFrom(other.x, other.y, other.size)
+  const threatSet = threatSetFrom(other.x, other.y, other.size, other === pawnB ? reachB : reachA)
   const avoid = (document.getElementById('avoid-toggle') as HTMLInputElement | null)?.checked ?? true
   const path = avoid
     ? planPathAvoidingThreat(G, active.x, active.y, mx, my, { allowDiagonal, dontCrossCorners, avoidThreat: true, threatSet })
@@ -168,6 +247,8 @@ function drawPreview(path: [number, number][], threatSet: Set<string>, trimmed: 
 function commitEndTurn() {
   const before = turns.round
   endTurn(turns)
+  // Expire effects at round transitions
+  effects.onRoundChanged(turns.round)
   if (turns.round !== before) (turns as any).aooUsed = {}
   // skip defeated
   let safety = 0
@@ -212,7 +293,7 @@ app.canvas.addEventListener('mousemove', (ev) => {
   // LoS overlay if enabled
   if (showLoS) {
     const active = turns.active?.id === 'A' ? pawnA : pawnB
-    const los = lineOfSight(G, active.x, active.y, mx, my)
+    const los = effects.losClearConsideringFog(active.x, active.y, mx, my)
     overlay.stroke({ color: los.clear ? 0x66ff66 : 0xff6666, width: 2 }).moveTo(active.x*CELL+CELL/2, active.y*CELL+CELL/2).lineTo(mx*CELL+CELL/2, my*CELL+CELL/2)
   }
 })
@@ -236,7 +317,18 @@ app.canvas.addEventListener('click', (ev) => {
     const active = turns.active?.id === 'A' ? pawnA : pawnB
     if (active.hp <= 0) { appendLogLine(`${turns.active?.id} is down.`); commitEndTurn(); return }
     const last = trimmed[trimmed.length - 1]
-    if (last) { active.x = last[0]; active.y = last[1] }
+    // If attempting to move through/into an enemy-occupied square, require Tumble DC 25
+    const other = turns.active?.id === 'A' ? pawnB : pawnA
+    if (last && last[0] === other.x && last[1] === other.y) {
+      if (!tumbleEnabled) { appendLogLine('Cannot move through an enemy without Tumble.'); return }
+      const roll = Math.floor(currentRNG()*20)+1
+      const total = roll + tumbleBonus
+      const dc = skills.tumble.dcThroughEnemy({})
+      const ok = total >= dc
+      appendLogLine(`Tumble (through enemy square) ${roll}+${tumbleBonus}=${total} vs DC ${dc} -> ${ok?'success':'fail'}`)
+      if (!ok) return
+    }
+    if (last) { undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift(); active.x = last[0]; active.y = last[1] }
   // Enforce simple action economy
   // Five-foot step allowed if exactly 5 ft and not into difficult terrain
   if (info.feet === 5 && info.difficultSquares === 0) {
@@ -244,37 +336,50 @@ app.canvas.addEventListener('click', (ev) => {
     } else {
       if (!consume(turns.budget!, 'move')) { appendLogLine('Move action already used.'); return }
     }
-    // If Tumble is enabled, attempt to avoid provoking: DC 15 + 2 per additional threatened square (simplified DC 15 here)
+    // If Tumble is enabled, attempt to avoid provoking. 3.5e: DC 15 to avoid AoO when moving through threatened squares.
+    // If moving at full speed while tumbling, DC +10 (accelerated tumbling). Cannot run or charge (not modeled here).
     let avoided = false
     if (info.provokes && tumbleEnabled) {
+      const activeSpeed = (turns.active?.id === 'A' ? pawnA : pawnB).speed
+      const movingFullSpeed = info.feet > (activeSpeed / 2)
+      const dc = skills.tumble.dcAvoidAoO({ accelerated: movingFullSpeed })
       const roll = Math.floor(currentRNG()*20)+1
       const total = roll + tumbleBonus
-      avoided = total >= 15
-      appendLogLine(`Tumble check ${roll}+${tumbleBonus}=${total} vs DC 15 -> ${avoided?'success (no AoO)':'fail'}`)
+      avoided = total >= dc
+      appendLogLine(`Tumble ${movingFullSpeed?'(accelerated) ':''}check ${roll}+${tumbleBonus}=${total} vs DC ${dc} -> ${avoided?'success (no AoO)':'fail'}`)
     }
     appendLogLine(`${turns.active?.id} moves ${info.feet} ft${(info.provokes && !avoided) ? ' (provokes)' : ''}.`)
   updateActionHUD(hudText())
     // AoO from the other pawn if path provokes and they have AoO available
     if (info.provokes && !avoided) {
       const otherId = turns.active?.id === 'A' ? 'B' : 'A'
+      const otherPawn = otherId === 'A' ? pawnA : pawnB
       // Flat-footed creatures can't make AoOs (simplified demo toggle)
       if (flatFootedMode) {
         appendLogLine(`${otherId} is flat-footed and cannot make AoOs.`)
       } else {
       const used = (turns as any).aooUsed?.[otherId] ?? 0
       if (used < 1) {
+  // Cover prevents AoOs. Check cover between threatening creature and the starting square of movement.
+    const start = trimmed[0] ?? [active.x, active.y]
+    const prevented = aooPreventedByCoverOrFog(G, effects, { x: otherPawn.x, y: otherPawn.y }, { x: start[0], y: start[1] }, [[active.x, active.y]])
+  if (prevented) {
+          appendLogLine(`${otherId}'s AoO prevented by cover.`)
+        } else {
         const atk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
         const def: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
         const outcome = attackRoll(atk, def, currentRNG)
         appendLogLine(`${otherId} makes AoO: roll=${outcome.attackRoll} total=${outcome.totalToHit} hit=${outcome.hit}${outcome.critical ? ' CRIT!' : ''}`)
         if (outcome.hit) {
+          undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
           const dmg = outcome.critical ? 10 : 5
           const tgt = turns.active?.id === 'A' ? pawnA : pawnB
           tgt.hp = Math.max(0, tgt.hp - dmg)
           appendLogLine(`${otherId} deals ${dmg} damage (target HP ${tgt.hp}).`)
           if (tgt.hp <= 0) { gameOver = otherId; appendLogLine(`${otherId} wins!`); }
         }
-        (turns as any).aooUsed![otherId] = used + 1
+          (turns as any).aooUsed![otherId] = used + 1
+        }
       }
   }
     }
@@ -291,7 +396,7 @@ app.canvas.addEventListener('click', (ev) => {
   const attacker = turns.active?.id === 'A' ? pawnA : pawnB
   // If making a ranged attack while threatened, target gets an AoO first
   if (rangedMode) {
-    const threat = threatSetFrom(target.x, target.y, target.size)
+  const threat = threatSetFrom(target.x, target.y, target.size, target === pawnB ? reachB : reachA)
     const attackerKey = turns.active?.id
     const defenderKey = attackerKey === 'A' ? 'B' : 'A'
     if (threat.has(`${attacker!.x},${attacker!.y}`)) {
@@ -300,32 +405,57 @@ app.canvas.addEventListener('click', (ev) => {
       } else {
         const used = (turns as any).aooUsed?.[defenderKey] ?? 0
         if (used < 1) {
+          // Cover prevents AoOs against the attacker
+          const prevented = aooPreventedByCoverOrFog(G, effects, { x: target.x, y: target.y }, { x: attacker!.x, y: attacker!.y }, [[attacker!.x, attacker!.y]])
+          if (prevented) {
+            appendLogLine(`${defenderKey}'s AoO prevented by cover.`)
+          } else {
           const aooAtk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
           const aooDef: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
           const aooOutcome = attackRoll(aooAtk, aooDef, currentRNG)
           appendLogLine(`${defenderKey} AoO (ranged in melee): roll=${aooOutcome.attackRoll} total=${aooOutcome.totalToHit} hit=${aooOutcome.hit}${aooOutcome.critical ? ' CRIT!' : ''}`)
           if (aooOutcome.hit) {
+            undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
             const dmg = aooOutcome.critical ? 10 : 5
             const atkPawn = attackerKey === 'A' ? pawnA : pawnB
             atkPawn.hp = Math.max(0, atkPawn.hp - dmg)
             appendLogLine(`${defenderKey} deals ${dmg} damage (attacker HP ${atkPawn.hp}).`)
             if (atkPawn.hp <= 0) { gameOver = defenderKey as 'A'|'B'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); return }
           }
-          (turns as any).aooUsed![defenderKey] = used + 1
+            (turns as any).aooUsed![defenderKey] = used + 1
+          }
         }
       }
     }
   }
-  const cover = coverBetweenSquares(G, attacker!.x, attacker!.y, target.x, target.y)
-  const conceal = concealmentAtTarget(G, target.x, target.y)
-  // Apply -4 ranged into melee penalty unless Precise Shot is enabled
-  const inMeleePenalty = (rangedMode && !preciseShot) ? -4 : 0
+  const occupiedSoft: Array<[number,number]> = [[attacker!.x, attacker!.y],[target.x, target.y]]
+  const cover = useCornerCover
+    ? (coverBetweenSquaresCorner(G, attacker!.x, attacker!.y, target.x, target.y, { occupied: occupiedSoft }) || coverBetweenSquares(G, attacker!.x, attacker!.y, target.x, target.y))
+    : coverBetweenSquares(G, attacker!.x, attacker!.y, target.x, target.y)
+  let conceal = concealmentAtTarget(G, target.x, target.y)
+  const fogCon = effects.computeFogConcealment(attacker!.x, attacker!.y, target.x, target.y)
+  if (fogCon > conceal) conceal = fogCon
+  const losCheck = effects.losClearConsideringFog(attacker!.x, attacker!.y, target.x, target.y)
+  if (!losCheck.clear) conceal = 50 as const
+  if (rangedMode && !losCheck.clear) {
+    appendLogLine('No line of sight for ranged attack.')
+    return
+  }
+  // Apply -4 ranged into melee penalty if target is engaged in melee (adjacent to an enemy), unless Precise Shot is enabled
+  let inMeleePenalty = 0
+  if (rangedMode && !preciseShot) {
+    const dx = Math.abs(attacker!.x - target.x)
+    const dy = Math.abs(attacker!.y - target.y)
+    const engaged = (dx + dy) === 1 || (dx === 1 && dy === 1) // adjacent incl. diagonal
+    if (engaged) inMeleePenalty = -4
+  }
   const atkWithPenalty: AttackProfile = { ...atk, miscBonuses: inMeleePenalty ? [{ type: 'unnamed', value: inMeleePenalty }] : undefined }
   // Attack line overlay
   overlay.stroke({ color: 0xffff00, width: 2 }).moveTo(attacker!.x*CELL+CELL/2, attacker!.y*CELL+CELL/2).lineTo(target.x*CELL+CELL/2, target.y*CELL+CELL/2)
   const outcome = attackRoll(atkWithPenalty, def, currentRNG, { coverBonus: cover, concealment: conceal })
   appendLogLine(`${turns.active?.id} attacks: roll=${outcome.attackRoll} total=${outcome.totalToHit} vs AC${cover?`+${cover}`:''} hit=${outcome.hit}${outcome.critical ? ' CRIT!' : ''}${outcome.concealmentMiss?' (concealment)':''}`)
       if (outcome.hit) {
+        undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
         const dmg = outcome.critical ? 12 : 6
         const targetPawn = turns.active?.id === 'A' ? pawnB : pawnA
         targetPawn.hp = Math.max(0, targetPawn.hp - dmg)
@@ -369,6 +499,20 @@ document.getElementById('show-los-toggle')?.addEventListener('change', (e) => {
   showLoS = (e.target as HTMLInputElement).checked
   appendLogLine(`Show LoS: ${showLoS ? 'ON' : 'OFF'}`)
 })
+document.getElementById('reachA-toggle')?.addEventListener('change', (e) => {
+  reachA = (e.target as HTMLInputElement).checked
+  appendLogLine(`Pawn A reach weapon: ${reachA ? 'ON' : 'OFF'}`)
+  drawAll()
+})
+document.getElementById('reachB-toggle')?.addEventListener('change', (e) => {
+  reachB = (e.target as HTMLInputElement).checked
+  appendLogLine(`Pawn B reach weapon: ${reachB ? 'ON' : 'OFF'}`)
+  drawAll()
+})
+document.getElementById('corner-cover-toggle')?.addEventListener('change', (e) => {
+  useCornerCover = (e.target as HTMLInputElement).checked
+  appendLogLine(`Corner-rule cover: ${useCornerCover ? 'ON' : 'OFF'}`)
+})
 document.getElementById('precise-toggle')?.addEventListener('change', (e) => {
   preciseShot = (e.target as HTMLInputElement).checked
   appendLogLine(`Precise Shot: ${preciseShot ? 'ON' : 'OFF'} (ranged into melee penalty ${preciseShot ? 'ignored' : '-4'})`)
@@ -393,45 +537,71 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
   if (!consume(turns.budget!, 'standard')) { appendLogLine('Standard action already used.'); return }
   const attacker = turns.active?.id === 'A' ? pawnA : pawnB
   const target = turns.active?.id === 'A' ? pawnB : pawnA
+  // Define simple spell data
+  const spellLevel = selectedSpell === 'magic-missile' ? 1 : 2
   // Casting can provoke unless casting defensively succeeds
   let provoked = true
   if (defensiveCast) {
     const roll = Math.floor(currentRNG()*20)+1
     const total = roll + concBonus
-    const dc = 15 // simplified
+    const dc = 15 + spellLevel // 3.5e: casting defensively DC 15 + spell level
     appendLogLine(`Concentration (defensive) ${roll}+${concBonus}=${total} vs DC ${dc}`)
     if (total >= dc) provoked = false
   }
   if (provoked) {
     const otherId = turns.active?.id === 'A' ? 'B' : 'A'
     const used = (turns as any).aooUsed?.[otherId] ?? 0
-    const threat = threatSetFrom(target.x, target.y, target.size)
+  const threat = threatSetFrom(target.x, target.y, target.size, target === pawnB ? reachB : reachA)
     if (threat.has(`${attacker!.x},${attacker!.y}`) && used < 1 && !flatFootedMode) {
+      // Cover/fog prevention
+      const prevented = aooPreventedByCoverOrFog(G, effects, { x: target.x, y: target.y }, { x: attacker!.x, y: attacker!.y }, [[attacker!.x, attacker!.y]])
+      if (prevented) {
+        appendLogLine(`${otherId}'s AoO prevented by cover.`)
+      } else {
       const aooAtk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
       const aooDef: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
       const aooOutcome = attackRoll(aooAtk, aooDef, currentRNG)
       appendLogLine(`${otherId} AoO (casting): roll=${aooOutcome.attackRoll} total=${aooOutcome.totalToHit} hit=${aooOutcome.hit}${aooOutcome.critical ? ' CRIT!' : ''}`)
       if (aooOutcome.hit) {
+        undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
         const dmg = aooOutcome.critical ? 10 : 5
         const atkPawn = turns.active?.id === 'A' ? pawnA : pawnB
         atkPawn.hp = Math.max(0, atkPawn.hp - dmg)
         appendLogLine(`${otherId} deals ${dmg} damage (caster HP ${atkPawn.hp}).`)
+        // Concentration check to avoid losing the spell: DC 10 + damage dealt + spell level
+        const roll2 = Math.floor(currentRNG()*20)+1
+        const total2 = roll2 + concBonus
+        const dc2 = 10 + dmg + spellLevel
+        appendLogLine(`Concentration (damage while casting) ${roll2}+${concBonus}=${total2} vs DC ${dc2}`)
+        if (total2 < dc2) {
+          appendLogLine('Spell lost due to damage while casting!')
+          ;(turns as any).aooUsed![otherId] = used + 1
+          updateActionHUD(hudText())
+          return
+        }
       }
       (turns as any).aooUsed![otherId] = used + 1
+      }
     }
   }
   // Resolve simple spells
   if (selectedSpell === 'magic-missile') {
-    const dmg = 4 // simplified flat dmg
-    target.hp = Math.max(0, target.hp - dmg)
-    appendLogLine(`Magic Missile hits for ${dmg}. Target HP ${target.hp}.`)
-  } else {
-    // fog cloud: mark a 3x3 of blockLoS at target
-    for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
-      const x = target.x+dx, y = target.y+dy
-      if (x>=0 && y>=0 && x<G.w && y<G.h) G.set(x,y,{ blockLoS: true })
+    // Require line of sight; Magic Missile auto-hits if LoS is clear
+  const los = effects.losClearConsideringFog(attacker!.x, attacker!.y, target.x, target.y)
+    if (!los.clear) {
+      appendLogLine('Magic Missile fails: no line of sight to target.')
+    } else {
+      const dmg = (Math.floor(currentRNG()*4)+1) + 1 // 1d4+1
+      target.hp = Math.max(0, target.hp - dmg)
+      appendLogLine(`Magic Missile hits for ${dmg}. Target HP ${target.hp}.`)
     }
-    appendLogLine('Fog Cloud placed (blocks LoS in a 3x3 area).')
+  } else {
+    // Fog Cloud: 20-ft radius spread (4 squares), lasts 3 rounds
+    const R = 4
+    const DURATION = 3
+  undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+  effects.addFogCloud(target.x, target.y, R, DURATION, turns.round)
+    appendLogLine('Fog Cloud placed (blocks LoS in a 20-ft radius, 3 rounds).')
   }
   drawAll()
   updateActionHUD(hudText())
@@ -439,9 +609,32 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
 document.getElementById('potion-btn')?.addEventListener('click', () => {
   if (!consume(turns.budget!, 'standard')) { appendLogLine('Standard action already used.'); return }
   const self = turns.active?.id === 'A' ? pawnA : pawnB
+  undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
   const heal = 5
   self.hp = Math.min(self === pawnA ? 20 : 25, self.hp + heal)
   appendLogLine(`Drinks potion: heals ${heal}. HP now ${self.hp}.`)
+  // Drinking a potion provokes if threatened and not prevented by cover/fog
+  const other = turns.active?.id === 'A' ? pawnB : pawnA
+  const threat = threatSetFrom(other.x, other.y, other.size, other === pawnB ? reachB : reachA)
+  const key = `${self.x},${self.y}`
+  const otherId = turns.active?.id === 'A' ? 'B' : 'A'
+  if (Provokes['drink-potion'] && threat.has(key) && !flatFootedMode) {
+    const prevented = aooPreventedByCoverOrFog(G, effects, { x: other.x, y: other.y }, { x: self.x, y: self.y }, [[self.x, self.y]])
+    const used = (turns as any).aooUsed?.[otherId] ?? 0
+    if (!prevented && used < 1) {
+      const aooAtk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
+      const aooDef: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
+      const aooOutcome = attackRoll(aooAtk, aooDef, currentRNG)
+      appendLogLine(`${otherId} AoO (potion): roll=${aooOutcome.attackRoll} total=${aooOutcome.totalToHit} hit=${aooOutcome.hit}${aooOutcome.critical ? ' CRIT!' : ''}`)
+      if (aooOutcome.hit) {
+        undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+        const dmg = aooOutcome.critical ? 10 : 5
+        self.hp = Math.max(0, self.hp - dmg)
+        appendLogLine(`${otherId} deals ${dmg} damage (target HP ${self.hp}).`)
+      }
+      (turns as any).aooUsed![otherId] = used + 1
+    }
+  }
   updateActionHUD(hudText())
 })
 document.getElementById('delay-btn')?.addEventListener('click', () => {
@@ -449,6 +642,7 @@ document.getElementById('delay-btn')?.addEventListener('click', () => {
   if (!id) return
   ;(turns.tracker as any).delay(id)
   appendLogLine(`${id} delays.`)
+  undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
   commitEndTurn()
 })
 document.getElementById('apply-seed')?.addEventListener('click', () => {
@@ -462,6 +656,7 @@ document.getElementById('apply-seed')?.addEventListener('click', () => {
   appendLogLine(`RNG reseeded with ${n >>> 0}`)
 })
 document.getElementById('reset-btn')?.addEventListener('click', () => {
+  undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
   pawnA = { x: 2, y: 2, speed: 30, size: 'medium', hp: 20 }
   pawnB = { x: 12, y: 8, speed: 30, size: 'large', hp: 25 }
   gameOver = null
@@ -471,17 +666,33 @@ document.getElementById('reset-btn')?.addEventListener('click', () => {
   updateActionHUD(hudText())
 })
 
+// Undo button
+document.getElementById('undo-btn')?.addEventListener('click', () => {
+  const last = undoStack.pop()
+  if (!last) { appendLogLine('Undo: nothing to revert.'); return }
+  try {
+    const parsed = SaveDataSchema.parse(last)
+    restoreFromData(parsed)
+    appendLogLine('Undo: state restored.')
+  } catch {
+    appendLogLine('Undo failed.')
+  }
+})
+
 // Save/Load (terrain + pawns)
 document.getElementById('save-btn')?.addEventListener('click', () => {
   const data: SaveData = {
+    version: 2,
     grid: G.flags,
-    pawnA, pawnB,
+    pawnA: { ...pawnA, reach: reachA },
+    pawnB: { ...pawnB, reach: reachB },
     round: turns.round,
     initiative: { order: (turns.tracker as any).serialize().order, index: (turns.tracker as any).serialize().index },
     aooUsed: (turns as any).aooUsed || {},
-  toggles: { rangedMode, touchMode, flatFootedMode, editTerrain, preciseShot, showLoS, defensiveCast, tumble: tumbleEnabled },
+  toggles: { rangedMode, touchMode, flatFootedMode, editTerrain, preciseShot, showLoS, defensiveCast, tumble: tumbleEnabled, reachA, reachB, cornerCover: useCornerCover },
   inputs: { tumbleBonus, concentrationBonus: concBonus, spell: selectedSpell },
     rngSeed: currentSeed ?? null,
+  effects: { active: effects.serializeEffects() }
   }
   try {
     const parsed = SaveDataSchema.parse(data)
@@ -500,13 +711,19 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
         if (data.grid[y] && data.grid[y][x]) G.flags[y][x] = { ...data.grid[y][x] }
       }
     }
+    // restore active effects if present
+    if ((data as any).effects?.active) {
+      effects.deserializeEffects((data as any).effects.active)
+    }
     if (data.pawnA) {
-      const { x,y,speed,hp } = data.pawnA
-      pawnA = { ...pawnA, x, y, speed, hp }
+  const { x,y,speed,hp } = data.pawnA
+  pawnA = { ...pawnA, x, y, speed, hp }
+  reachA = !!(data.pawnA as any).reach
     }
     if (data.pawnB) {
-      const { x,y,speed,hp } = data.pawnB
-      pawnB = { ...pawnB, x, y, speed, hp }
+  const { x,y,speed,hp } = data.pawnB
+  pawnB = { ...pawnB, x, y, speed, hp }
+  reachB = !!(data.pawnB as any).reach
     }
     if (typeof data.round === 'number') (turns as any).round = data.round
     if (data.initiative) {
@@ -523,6 +740,9 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
   showLoS = !!data.toggles.showLoS
   defensiveCast = !!data.toggles.defensiveCast
   tumbleEnabled = !!data.toggles.tumble
+  reachA = !!data.toggles.reachA
+  reachB = !!data.toggles.reachB
+  useCornerCover = !!data.toggles.cornerCover
   const rEl = document.getElementById('ranged-toggle') as HTMLInputElement | null
   if (rEl) rEl.checked = rangedMode
   const tEl = document.getElementById('touch-toggle') as HTMLInputElement | null
@@ -539,6 +759,12 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
   if (dEl) dEl.checked = defensiveCast
   const tuEl = document.getElementById('tumble-toggle') as HTMLInputElement | null
   if (tuEl) tuEl.checked = tumbleEnabled
+  const ra = document.getElementById('reachA-toggle') as HTMLInputElement | null
+  if (ra) ra.checked = reachA
+  const rb = document.getElementById('reachB-toggle') as HTMLInputElement | null
+  if (rb) rb.checked = reachB
+  const cc = document.getElementById('corner-cover-toggle') as HTMLInputElement | null
+  if (cc) cc.checked = useCornerCover
     }
     if (data.inputs) {
       tumbleBonus = (data.inputs.tumbleBonus ?? tumbleBonus)|0
