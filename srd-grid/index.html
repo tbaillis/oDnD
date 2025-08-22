@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SRD Grid</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #0f0f10; color: #e6e6e6; }
+      .center { display: flex; height: 100%; align-items: center; justify-content: center; }
+      #game-root { box-shadow: 0 0 24px rgba(0,0,0,0.6); }
+    </style>
+  </head>
+  <body>
+    <div class="center">
+      <div id="game-root" aria-label="Game Canvas" role="img"></div>
+    </div>
+    <div id="controls" style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.5);padding:6px 8px;border-radius:6px;font-family:system-ui,Segoe UI,Arial,sans-serif;">
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+        <input id="avoid-toggle" type="checkbox" checked />
+        Safest path (avoid AoO)
+      </label>
+      <div style="margin-top:6px;display:flex;gap:8px;">
+        <button id="end-turn" style="cursor:pointer;">End Turn</button>
+        <button id="attack-mode" style="cursor:pointer;">Attack Mode</button>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input id="ranged-toggle" type="checkbox" /> Ranged
+        </label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input id="terrain-toggle" type="checkbox" /> Edit Terrain
+        </label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input id="touch-toggle" type="checkbox" /> Touch
+        </label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input id="flat-toggle" type="checkbox" /> Flat-Footed
+        </label>
+        <input id="seed-input" placeholder="Seed" style="width:80px;" />
+        <button id="apply-seed" style="cursor:pointer;">Apply Seed</button>
+        <button id="save-btn" style="cursor:pointer;">Save</button>
+        <button id="load-btn" style="cursor:pointer;">Load</button>
+        <button id="reset-btn" style="cursor:pointer;">Reset</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
