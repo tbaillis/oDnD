@@ -74,6 +74,14 @@ Move and attack with the active token to reduce the opponent to 0 HP. The game a
 - Save / Load: persist and restore grid, pawns, toggles, round/active, AoO usage, and RNG seed via localStorage.
 - Reset: reset to the starting scenario.
 
+### Character Management
+- **New Character**: Click the button or press **N** to open the character creation interface with full D&D 3.5 point-buy system.
+- **Character Sheet**: Press **C** to view detailed character stats, equipment, and abilities.
+- **Spell Book**: Press **S** to view available spells and casting information.
+- **Close UI**: Press **Escape** to close any open interface.
+
+See [CHARACTER_CREATION.md](CHARACTER_CREATION.md) for detailed character creation instructions.
+
 ### Visuals
 - Red tinted cells show threatened squares from the red token.
 - HP bars render near each token; a winner banner appears when an opponent reaches 0 HP.

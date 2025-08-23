@@ -1,6 +1,6 @@
-import { Application, Container, Graphics } from 'pixi.js'
+import { Application, Container, Graphics, Sprite, Assets, Texture } from 'pixi.js'
 import { createWorld, updateTime } from './engine/world'
-import { initUIPanels, appendLogLine, updateActionHUD } from './ui/panels'
+import { UIManager } from './ui/interface'
 import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
 import { EffectManager } from './engine/effects'
 import { planPath, planPathAvoidingThreat } from './engine/path'
@@ -9,7 +9,7 @@ import { analyzePathMovement } from './engine/movement'
 import { trimPathBySpeed } from './engine/moveExecutor'
 import { createTurnState, startEncounter, endTurn } from './engine/turns'
 import { consume } from './engine/actions'
-import { attackRoll, type AttackProfile, type DefenderProfile } from './game/combat'
+import { attackRoll, type AttackProfile, type DefenderProfile, rollWeaponDamage, applyDamage, type DamagePacket } from './game/combat'
 import { seededRNG, sessionRNG, type RNG } from './engine/rng'
 import { SaveDataSchema, type SaveData } from './data/schemas'
 import { Provokes, aooPreventedByCoverOrFog } from './engine/provoke'
@@ -32,7 +32,22 @@ app.stage.addChild(world)
 
 // Initialize ECS world and UI
 const game = createWorld()
-initUIPanels(document.body)
+const uiManager = new UIManager(document.body)
+
+// Set initial message
+uiManager.combatLog.addMessage('SRD Grid ready.', 'info')
+uiManager.combatLog.addMessage('Press N for New Character, C for Character Sheet, S for Spells', 'info')
+
+// Helper function to maintain compatibility with existing code
+function appendLogLine(text: string) {
+  uiManager.combatLog.addMessage(text, 'info')
+}
+
+function updateActionHUD(text: string) {
+  // Update the HUD display - for now we'll use the existing system
+  const hud = document.getElementById('action-hud')
+  if (hud) hud.textContent = text
+}
 
 // Draw a simple checkerboard grid to validate rendering & scaling
 const grid = new Graphics()
@@ -65,8 +80,11 @@ for (let y=3; y<=6; y++) G.set(7, y, { blockLoE: true, blockLoS: true, cover: 4 
 // Effects manager: track LoS-blocking effects (e.g., fog cloud) layered over base grid
 const effects = new EffectManager(G)
 
+// Sprites layer for pawn icons
+const pieces = new Container()
 const overlay = new Graphics()
 overlay.alpha = 0.9
+world.addChild(pieces)
 world.addChild(overlay)
 
 function drawCell(g: Graphics, x: number, y: number, color: number) {
@@ -77,13 +95,18 @@ function drawCell(g: Graphics, x: number, y: number, color: number) {
 let pawnA = { x: 2, y: 2, speed: 30, size: 'medium' as const, hp: 20 }
 let pawnB = { x: 12, y: 8, speed: 30, size: 'large' as const, hp: 25 }
 
+// Persistent defender profiles for each pawn (demo stats)
+const baseAC = { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }
+const defenderA: DefenderProfile = { ac: baseAC, energyResistance: { fire: 5 }, vulnerability: ['cold'] }
+const defenderB: DefenderProfile = { ac: baseAC, damageReduction: { amount: 5, bypass: 'magic' }, regeneration: { rate: 2, bypass: ['fire','acid'] } }
+
 // Turn/initiative setup
 const turns = createTurnState()
-startEncounter(turns, [
+  startEncounter(turns, [
   { id: 'A', dexMod: 2, initiative: 15 },
   { id: 'B', dexMod: 0, initiative: 12 },
 ])
-appendLogLine(`Encounter start: Round ${turns.round}, Active=${turns.active?.id}`)
+uiManager.combatLog.addMessage(`Encounter start: Round ${turns.round}, Active=${turns.active?.id}`, 'info')
 
 function hudText() {
   const b = turns.budget!
@@ -112,9 +135,11 @@ let tumbleEnabled = false
 let tumbleBonus = 5
 let concBonus = 5
 let selectedSpell: 'magic-missile'|'fog-cloud' = 'magic-missile'
+let preferEasyTerrain = true
 
 // Undo stack for recent states
 const undoStack: SaveData[] = []
+const redoStack: SaveData[] = []
 const UNDO_LIMIT = 20
 
 function captureState(): SaveData {
@@ -195,9 +220,33 @@ function drawAll() {
   const threatA = threatenedSquares(pawnA.x, pawnA.y, pawnA.size, reachA)
   for (const [x,y] of threatA) drawCell(overlay, x, y, 0x4488ff)
 
-  // Tokens
-  tokens.circle(pawnA.x*CELL + CELL/2, pawnA.y*CELL + CELL/2, CELL*0.35).fill(0x5aa9e6)
-  tokens.circle(pawnB.x*CELL + CELL/2, pawnB.y*CELL + CELL/2, CELL*0.4).fill(0xe65a5a)
+  // Tokens: sprites if available, otherwise draw vector circles
+  const center = (n: number) => n*CELL + CELL/2
+  const scaleToCell = (s: Sprite) => {
+    const pad = 6
+    const target = CELL - pad
+    const sx = target / (s.texture.width || target)
+    const sy = target / (s.texture.height || target)
+    s.scale.set(Math.min(sx, sy))
+  }
+  if (pawnASprite && pawnASprite.texture && pawnASprite.texture.width > 0 && pawnASprite.texture.height > 0) {
+    pawnASprite.x = center(pawnA.x)
+    pawnASprite.y = center(pawnA.y)
+    scaleToCell(pawnASprite)
+    pawnASprite.visible = true
+  } else {
+    if (pawnASprite) pawnASprite.visible = false
+    tokens.circle(center(pawnA.x), center(pawnA.y), CELL*0.35).fill(0x5aa9e6)
+  }
+  if (pawnBSprite && pawnBSprite.texture && pawnBSprite.texture.width > 0 && pawnBSprite.texture.height > 0) {
+    pawnBSprite.x = center(pawnB.x)
+    pawnBSprite.y = center(pawnB.y)
+    scaleToCell(pawnBSprite)
+    pawnBSprite.visible = true
+  } else {
+    if (pawnBSprite) pawnBSprite.visible = false
+    tokens.circle(center(pawnB.x), center(pawnB.y), CELL*0.4).fill(0xe65a5a)
+  }
   // HP bars
   const barW = CELL*0.7
   const barH = 6
@@ -216,7 +265,253 @@ function drawAll() {
   }
 }
 
+// Initialize sprite variables before drawAll is called
+let pawnASprite: Sprite | null = null
+let pawnBSprite: Sprite | null = null
+
 drawAll()
+
+// Import SVG assets directly with ?url to ensure they work in both dev and production
+import pawnAUrl from './assets/pawns/pawnA.svg?url'
+import pawnBUrl from './assets/pawns/pawnB.svg?url'
+
+// Create available tokens list with the imported URLs
+const availableTokens = [
+  { path: './assets/pawns/pawnA.svg', url: pawnAUrl, name: 'pawnA.svg' },
+  { path: './assets/pawns/pawnB.svg', url: pawnBUrl, name: 'pawnB.svg' }
+]
+
+console.log('Available tokens:', availableTokens)
+
+function ensureSprite(ref: 'A'|'B') {
+  const cur = ref === 'A' ? pawnASprite : pawnBSprite
+  if (cur) return cur
+  const s = new Sprite()
+  s.anchor.set(0.5)
+  pieces.addChild(s)
+  if (ref === 'A') pawnASprite = s; else pawnBSprite = s
+  return s
+}
+
+async function setPawnTexture(ref: 'A'|'B', url: string) {
+  console.log(`Loading texture for ${ref} from:`, url)
+  const sp = ensureSprite(ref)
+  sp.visible = false
+  
+  try {
+    // First try to load via PixiJS Assets system
+    let texture: Texture
+    
+    // Check if texture is already in cache
+    if (Assets.cache.has(url)) {
+      texture = Assets.cache.get(url)
+      console.log(`Using cached texture for ${ref}:`, url)
+    } else {
+      // Load the texture
+      texture = await Assets.load(url)
+      console.log(`Loaded new texture for ${ref}:`, url)
+    }
+    
+    if (texture && texture.width > 0 && texture.height > 0) {
+      sp.texture = texture
+      sp.visible = true
+      console.log(`Successfully set texture for ${ref}`)
+      drawAll()
+      return
+    }
+  } catch (e1) {
+    console.warn(`Assets.load failed for ${ref}:`, e1)
+  }
+  
+  try {
+    // Fallback: direct Texture.from
+    const texture = Texture.from(url)
+    sp.texture = texture
+    sp.visible = true
+    console.log(`Fallback texture set for ${ref}:`, url)
+    drawAll()
+  } catch (e2) {
+    console.error(`All texture loading methods failed for ${ref}:`, url, e2)
+    drawAll()
+  }
+}
+
+// Default selection: prefer pawnA.svg/pawnB.svg; else first available if present
+const defA = availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0]
+const defB = availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0]
+if (defA) setPawnTexture('A', defA.url)
+if (defB) setPawnTexture('B', defB.url)
+
+// Build comprehensive token selector interface
+function buildTokenSelectors() {
+  const wrap = document.createElement('div')
+  wrap.style.cssText = [
+    'position:fixed',
+    'bottom:8px',
+    'right:8px',
+    'background:rgba(20,25,30,0.95)',
+    'color:#e5e7eb',
+    'padding:12px 16px',
+    'border:1px solid #374151',
+    'border-radius:8px',
+    'font-family:system-ui, sans-serif',
+    'font-size:13px',
+    'line-height:1.3',
+    'z-index:900',
+    'box-shadow:0 4px 12px rgba(0,0,0,0.6)',
+    'max-width:320px',
+    'max-height:400px',
+    'overflow-y:auto'
+  ].join(';')
+
+  const titleHeader = document.createElement('div')
+  titleHeader.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;'
+  
+  const titleText = document.createElement('span')
+  titleText.textContent = 'Token Manager'
+  titleText.style.cssText = 'font-weight:700; letter-spacing:0.3px; font-size:16px; color:#fbbf24;'
+  
+  const collapseBtn = document.createElement('button')
+  collapseBtn.textContent = '−'
+  collapseBtn.style.cssText = 'padding:4px 8px; background:#dc2626; color:white; border:0; border-radius:4px; cursor:pointer; font-weight:700; font-size:12px; margin-left:8px;'
+  collapseBtn.title = 'Collapse'
+  
+  titleHeader.appendChild(titleText)
+  titleHeader.appendChild(collapseBtn)
+  wrap.appendChild(titleHeader)
+  
+  // Create content container for collapsible content
+  const content = document.createElement('div')
+  content.style.cssText = 'display:block;'
+
+  // Create token button grid for each pawn
+  const createTokenRow = (label: string, who: 'A'|'B', def?: { url: string, name: string } | undefined) => {
+    const cont = document.createElement('div')
+    cont.style.cssText = 'margin-bottom:12px; padding:8px; background:rgba(17,24,39,0.5); border-radius:6px;'
+    
+    const header = document.createElement('div')
+    header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;'
+    
+    const lab = document.createElement('label')
+    lab.textContent = label
+    lab.style.cssText = 'font-weight:600; color:#cbd5e1; font-size:15px;'
+    
+    const preview = document.createElement('img')
+    preview.width = 48; preview.height = 48
+    preview.style.cssText = 'width:48px; height:48px; object-fit:contain; background:#0b1020; border:2px solid #374151; border-radius:6px;'
+    
+    header.appendChild(lab)
+    header.appendChild(preview)
+    cont.appendChild(header)
+
+    const buttonGrid = document.createElement('div')
+    buttonGrid.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; max-height:120px; overflow-y:auto;'
+
+    if (availableTokens.length) {
+      availableTokens.forEach(t => {
+        const btn = document.createElement('button')
+        btn.textContent = t.name
+        btn.title = t.name
+        const isDefault = def && t.url === def.url
+        btn.style.cssText = [
+          'padding:6px 10px',
+          `background:${isDefault ? '#0ea5e9' : '#374151'}`,
+          `color:${isDefault ? '#0b1020' : '#e5e7eb'}`,
+          'border:0',
+          'border-radius:4px',
+          'cursor:pointer',
+          'font-weight:500',
+          'font-size:12px',
+          'transition:all 0.2s',
+          'max-width:120px',
+          'overflow:hidden',
+          'text-overflow:ellipsis',
+          'white-space:nowrap'
+        ].join(';')
+        
+        btn.onmouseover = () => {
+          if (!isDefault) btn.style.background = '#4b5563'
+        }
+        btn.onmouseout = () => {
+          if (!isDefault) btn.style.background = '#374151'
+        }
+        
+        btn.onclick = () => {
+          // Update all buttons in this group
+          Array.from(buttonGrid.children).forEach(child => {
+            if (child !== btn) {
+              (child as HTMLElement).style.background = '#374151';
+              (child as HTMLElement).style.color = '#e5e7eb'
+            }
+          })
+          btn.style.background = '#0ea5e9'
+          btn.style.color = '#0b1020'
+          
+          preview.src = t.url
+          setPawnTexture(who, t.url)
+        }
+        
+        buttonGrid.appendChild(btn)
+      })
+      
+      if (def) {
+        preview.src = def.url
+      }
+    } else {
+      const msg = document.createElement('div')
+      msg.textContent = 'No tokens found — add .png/.jpg/.webp/.svg files to src/assets/pawns/'
+      msg.style.cssText = 'color:#9ca3af; font-style:italic; padding:8px;'
+      buttonGrid.appendChild(msg)
+      preview.alt = 'No tokens'
+    }
+
+    cont.appendChild(buttonGrid)
+    return { cont, preview }
+  }
+
+  const a = createTokenRow('Pawn A', 'A', defA)
+  const b = createTokenRow('Pawn B', 'B', defB)
+  content.appendChild(a.cont)
+  content.appendChild(b.cont)
+
+  const foot = document.createElement('div')
+  foot.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid #374151;'
+  
+  const status = document.createElement('div')
+  status.textContent = `${availableTokens.length} tokens found`
+  status.style.cssText = 'opacity:0.8; font-size:12px; color:#9ca3af;'
+  
+  const actions = document.createElement('div')
+  actions.style.cssText = 'display:flex; gap:8px;'
+  
+  const rescan = document.createElement('button')
+  rescan.textContent = 'Rescan Assets'
+  rescan.style.cssText = 'padding:6px 12px; background:#059669; color:white; border:0; border-radius:4px; cursor:pointer; font-weight:600; font-size:12px;'
+  rescan.onclick = () => location.reload()
+  
+  actions.appendChild(rescan)
+  foot.appendChild(status)
+  foot.appendChild(actions)
+  content.appendChild(foot)
+  
+  // Add collapse functionality
+  let collapsed = false
+  collapseBtn.onclick = () => {
+    collapsed = !collapsed
+    content.style.display = collapsed ? 'none' : 'block'
+    collapseBtn.textContent = collapsed ? '+' : '−'
+    collapseBtn.title = collapsed ? 'Expand' : 'Collapse'
+  }
+  
+  wrap.appendChild(content)
+
+  document.body.appendChild(wrap)
+}
+buildTokenSelectors()
+
+
+// Demo defenses helper
+function defenderFor(id: 'A'|'B'): DefenderProfile { return id === 'A' ? defenderA : defenderB }
 
 function planFromActiveTo(mx: number, my: number) {
   const active = turns.active?.id === 'A' ? pawnA : pawnB
@@ -226,8 +521,8 @@ function planFromActiveTo(mx: number, my: number) {
   const threatSet = threatSetFrom(other.x, other.y, other.size, other === pawnB ? reachB : reachA)
   const avoid = (document.getElementById('avoid-toggle') as HTMLInputElement | null)?.checked ?? true
   const path = avoid
-    ? planPathAvoidingThreat(G, active.x, active.y, mx, my, { allowDiagonal, dontCrossCorners, avoidThreat: true, threatSet })
-    : planPath(G, active.x, active.y, mx, my, { allowDiagonal, dontCrossCorners })
+    ? planPathAvoidingThreat(G, active.x, active.y, mx, my, { allowDiagonal, dontCrossCorners, avoidThreat: true, threatSet, avoidDifficult: preferEasyTerrain })
+    : planPath(G, active.x, active.y, mx, my, { allowDiagonal, dontCrossCorners, avoidDifficult: preferEasyTerrain })
   const trimmed = trimPathBySpeed(G, path, active.speed)
   const info = analyzePathMovement(G, trimmed, threatSet, active.speed)
   return { path, trimmed, info, threatSet }
@@ -328,7 +623,7 @@ app.canvas.addEventListener('click', (ev) => {
       appendLogLine(`Tumble (through enemy square) ${roll}+${tumbleBonus}=${total} vs DC ${dc} -> ${ok?'success':'fail'}`)
       if (!ok) return
     }
-    if (last) { undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift(); active.x = last[0]; active.y = last[1] }
+  if (last) { undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift(); active.x = last[0]; active.y = last[1] }
   // Enforce simple action economy
   // Five-foot step allowed if exactly 5 ft and not into difficult terrain
   if (info.feet === 5 && info.difficultSquares === 0) {
@@ -372,10 +667,13 @@ app.canvas.addEventListener('click', (ev) => {
         appendLogLine(`${otherId} makes AoO: roll=${outcome.attackRoll} total=${outcome.totalToHit} hit=${outcome.hit}${outcome.critical ? ' CRIT!' : ''}`)
         if (outcome.hit) {
           undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
-          const dmg = outcome.critical ? 10 : 5
+          const raw = rollWeaponDamage(currentRNG, { count: 1, sides: 6, strMod: 3, strScale: 1, critMult: outcome.critical ? 2 : 1 })
           const tgt = turns.active?.id === 'A' ? pawnA : pawnB
-          tgt.hp = Math.max(0, tgt.hp - dmg)
-          appendLogLine(`${otherId} deals ${dmg} damage (target HP ${tgt.hp}).`)
+          const packet: DamagePacket = { amount: raw, types: ['slashing'], bypassTags: ['magic'] }
+          const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+          const taken = applied.taken
+          tgt.hp = Math.max(0, tgt.hp - taken)
+          appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${tgt.hp}.`)
           if (tgt.hp <= 0) { gameOver = otherId; appendLogLine(`${otherId} wins!`); }
         }
           (turns as any).aooUsed![otherId] = used + 1
@@ -383,6 +681,34 @@ app.canvas.addEventListener('click', (ev) => {
       }
   }
     }
+  // If target had readied 'attack-when-adjacent' and ended adjacent, trigger now
+  const idNow = turns.active?.id
+  const otherIdNow = idNow === 'A' ? 'B' : 'A'
+  const otherPawnNow = otherIdNow === 'A' ? pawnA : pawnB
+  const readyMap: any = (turns as any).ready || {}
+  if (readyMap[otherIdNow]?.type === 'attack-when-adjacent' && !readyMap[otherIdNow].used) {
+    const dx = Math.abs((idNow === 'A' ? pawnA.x : pawnB.x) - otherPawnNow.x)
+    const dy = Math.abs((idNow === 'A' ? pawnA.y : pawnB.y) - otherPawnNow.y)
+    if (Math.max(dx, dy) === 1) {
+      readyMap[otherIdNow].used = true
+      appendLogLine(`${otherIdNow}'s readied action triggers!`)
+      const atk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
+      const def: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: false, flatFooted: flatFootedMode }
+      const out = attackRoll(atk, def, currentRNG)
+      appendLogLine(`${otherIdNow} readied attack: roll=${out.attackRoll} total=${out.totalToHit} hit=${out.hit}${out.critical?' CRIT!':''}`)
+      if (out.hit) {
+        undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+        const raw = rollWeaponDamage(currentRNG, { count: 1, sides: 6, strMod: 3, strScale: 1, critMult: out.critical ? 2 : 1 })
+        const tgt = idNow === 'A' ? pawnA : pawnB
+  const packet: DamagePacket = { amount: raw, types: ['slashing'], bypassTags: ['magic'] }
+  const applied = applyDamage(defenderFor(idNow === 'A' ? 'A' : 'B'), packet)
+        const taken = applied.taken
+        tgt.hp = Math.max(0, tgt.hp - taken)
+        appendLogLine(`${otherIdNow} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${tgt.hp}.`)
+        if (tgt.hp <= 0) { gameOver = otherIdNow as 'A'|'B'; appendLogLine(`${otherIdNow} wins!`) }
+      }
+    }
+  }
   drawAll()
   // Remain on the same turn; use End Turn button to proceed.
   } else {
@@ -416,10 +742,13 @@ app.canvas.addEventListener('click', (ev) => {
           appendLogLine(`${defenderKey} AoO (ranged in melee): roll=${aooOutcome.attackRoll} total=${aooOutcome.totalToHit} hit=${aooOutcome.hit}${aooOutcome.critical ? ' CRIT!' : ''}`)
           if (aooOutcome.hit) {
             undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
-            const dmg = aooOutcome.critical ? 10 : 5
+            const base = aooOutcome.critical ? 10 : 5
             const atkPawn = attackerKey === 'A' ? pawnA : pawnB
-            atkPawn.hp = Math.max(0, atkPawn.hp - dmg)
-            appendLogLine(`${defenderKey} deals ${dmg} damage (attacker HP ${atkPawn.hp}).`)
+            const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
+            const applied = applyDamage(defenderFor(attackerKey === 'A' ? 'A' : 'B'), packet)
+            const taken = applied.taken
+            atkPawn.hp = Math.max(0, atkPawn.hp - taken)
+            appendLogLine(`${defenderKey} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Attacker HP ${atkPawn.hp}.`)
             if (atkPawn.hp <= 0) { gameOver = defenderKey as 'A'|'B'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); return }
           }
             (turns as any).aooUsed![defenderKey] = used + 1
@@ -456,10 +785,13 @@ app.canvas.addEventListener('click', (ev) => {
   appendLogLine(`${turns.active?.id} attacks: roll=${outcome.attackRoll} total=${outcome.totalToHit} vs AC${cover?`+${cover}`:''} hit=${outcome.hit}${outcome.critical ? ' CRIT!' : ''}${outcome.concealmentMiss?' (concealment)':''}`)
       if (outcome.hit) {
         undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
-        const dmg = outcome.critical ? 12 : 6
+        const raw = rollWeaponDamage(currentRNG, { count: 1, sides: 8, strMod: 3, strScale: 1, critMult: outcome.critical ? 2 : 1 })
         const targetPawn = turns.active?.id === 'A' ? pawnB : pawnA
-        targetPawn.hp = Math.max(0, targetPawn.hp - dmg)
-        appendLogLine(`${turns.active?.id} deals ${dmg} damage (target HP ${targetPawn.hp}).`)
+  const packet: DamagePacket = { amount: raw, types: ['slashing'], bypassTags: ['magic'] }
+  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'B' : 'A'), packet)
+        const taken = applied.taken
+        targetPawn.hp = Math.max(0, targetPawn.hp - taken)
+        appendLogLine(`${turns.active?.id} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${targetPawn.hp}.`)
         if (targetPawn.hp <= 0) { gameOver = turns.active?.id === 'A' ? 'A' : 'B'; appendLogLine(`${gameOver} wins!`) }
       }
   drawAll()
@@ -470,6 +802,21 @@ app.canvas.addEventListener('click', (ev) => {
 })
 
 // Controls wiring
+// Character management buttons
+document.getElementById('new-character-btn')?.addEventListener('click', () => {
+  uiManager.characterCreation.show((character) => {
+    uiManager.characterSheet.setCharacter(character)
+    uiManager.combatLog.addMessage(`Created new character: ${character.name}`, 'success')
+  })
+})
+document.getElementById('character-sheet-btn')?.addEventListener('click', () => {
+  uiManager.characterSheet.toggle()
+})
+document.getElementById('spellbook-btn')?.addEventListener('click', () => {
+  uiManager.spellBook.toggle()
+})
+
+// Combat controls
 document.getElementById('end-turn')?.addEventListener('click', () => { (turns as any).aooUsed = {}; commitEndTurn() })
 document.getElementById('attack-mode')?.addEventListener('click', () => {
   attackMode = !attackMode
@@ -495,6 +842,10 @@ document.getElementById('defensive-cast-toggle')?.addEventListener('change', (e)
   defensiveCast = (e.target as HTMLInputElement).checked
   appendLogLine(`Defensive Cast: ${defensiveCast ? 'ON' : 'OFF'}`)
 })
+document.getElementById('prefer-easy-toggle')?.addEventListener('change', (e) => {
+  preferEasyTerrain = (e.target as HTMLInputElement).checked
+  appendLogLine(`Prefer easy terrain: ${preferEasyTerrain ? 'ON' : 'OFF'}`)
+})
 document.getElementById('show-los-toggle')?.addEventListener('change', (e) => {
   showLoS = (e.target as HTMLInputElement).checked
   appendLogLine(`Show LoS: ${showLoS ? 'ON' : 'OFF'}`)
@@ -516,6 +867,14 @@ document.getElementById('corner-cover-toggle')?.addEventListener('change', (e) =
 document.getElementById('precise-toggle')?.addEventListener('change', (e) => {
   preciseShot = (e.target as HTMLInputElement).checked
   appendLogLine(`Precise Shot: ${preciseShot ? 'ON' : 'OFF'} (ranged into melee penalty ${preciseShot ? 'ignored' : '-4'})`)
+})
+document.getElementById('ready-btn')?.addEventListener('click', () => {
+  const id = turns.active?.id
+  if (!id) return
+  if (!consume(turns.budget!, 'standard')) { appendLogLine('Ready: need a Standard action available.'); return }
+  ;(turns as any).ready ||= {}
+  ;(turns as any).ready[id] = { type: 'attack-when-adjacent', used: false }
+  appendLogLine(`${id} readies: attack when enemy is adjacent.`)
 })
 document.getElementById('tumble-toggle')?.addEventListener('change', (e) => {
   tumbleEnabled = (e.target as HTMLInputElement).checked
@@ -564,14 +923,17 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
       appendLogLine(`${otherId} AoO (casting): roll=${aooOutcome.attackRoll} total=${aooOutcome.totalToHit} hit=${aooOutcome.hit}${aooOutcome.critical ? ' CRIT!' : ''}`)
       if (aooOutcome.hit) {
         undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
-        const dmg = aooOutcome.critical ? 10 : 5
+        const base = aooOutcome.critical ? 10 : 5
         const atkPawn = turns.active?.id === 'A' ? pawnA : pawnB
-        atkPawn.hp = Math.max(0, atkPawn.hp - dmg)
-        appendLogLine(`${otherId} deals ${dmg} damage (caster HP ${atkPawn.hp}).`)
+  const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
+  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+        const taken = applied.taken
+        atkPawn.hp = Math.max(0, atkPawn.hp - taken)
+        appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Caster HP ${atkPawn.hp}.`)
         // Concentration check to avoid losing the spell: DC 10 + damage dealt + spell level
         const roll2 = Math.floor(currentRNG()*20)+1
         const total2 = roll2 + concBonus
-        const dc2 = 10 + dmg + spellLevel
+        const dc2 = 10 + taken + spellLevel
         appendLogLine(`Concentration (damage while casting) ${roll2}+${concBonus}=${total2} vs DC ${dc2}`)
         if (total2 < dc2) {
           appendLogLine('Spell lost due to damage while casting!')
@@ -591,9 +953,12 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
     if (!los.clear) {
       appendLogLine('Magic Missile fails: no line of sight to target.')
     } else {
-      const dmg = (Math.floor(currentRNG()*4)+1) + 1 // 1d4+1
-      target.hp = Math.max(0, target.hp - dmg)
-      appendLogLine(`Magic Missile hits for ${dmg}. Target HP ${target.hp}.`)
+      const base = (Math.floor(currentRNG()*4)+1) + 1 // 1d4+1
+  const packet: DamagePacket = { amount: base, types: ['force'] }
+  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'B' : 'A'), packet)
+      const taken = applied.taken
+      target.hp = Math.max(0, target.hp - taken)
+      appendLogLine(`Magic Missile hits for ${taken}${applied.preventedByER?` (ER)`:''}. Target HP ${target.hp}.`)
     }
   } else {
     // Fog Cloud: 20-ft radius spread (4 squares), lasts 3 rounds
@@ -628,9 +993,12 @@ document.getElementById('potion-btn')?.addEventListener('click', () => {
       appendLogLine(`${otherId} AoO (potion): roll=${aooOutcome.attackRoll} total=${aooOutcome.totalToHit} hit=${aooOutcome.hit}${aooOutcome.critical ? ' CRIT!' : ''}`)
       if (aooOutcome.hit) {
         undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
-        const dmg = aooOutcome.critical ? 10 : 5
-        self.hp = Math.max(0, self.hp - dmg)
-        appendLogLine(`${otherId} deals ${dmg} damage (target HP ${self.hp}).`)
+        const base = aooOutcome.critical ? 10 : 5
+  const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
+  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+        const taken = applied.taken
+        self.hp = Math.max(0, self.hp - taken)
+        appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${self.hp}.`)
       }
       (turns as any).aooUsed![otherId] = used + 1
     }
@@ -671,12 +1039,26 @@ document.getElementById('undo-btn')?.addEventListener('click', () => {
   const last = undoStack.pop()
   if (!last) { appendLogLine('Undo: nothing to revert.'); return }
   try {
+    const current = captureState()
     const parsed = SaveDataSchema.parse(last)
     restoreFromData(parsed)
     appendLogLine('Undo: state restored.')
+    redoStack.push(current)
+    if (redoStack.length > UNDO_LIMIT) redoStack.shift()
   } catch {
     appendLogLine('Undo failed.')
   }
+})
+// Redo button
+document.getElementById('redo-btn')?.addEventListener('click', () => {
+  const next = redoStack.pop()
+  if (!next) { appendLogLine('Redo: nothing to reapply.'); return }
+  try {
+    undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+    const parsed = SaveDataSchema.parse(next)
+    restoreFromData(parsed)
+    appendLogLine('Redo: state restored.')
+  } catch { appendLogLine('Redo failed.') }
 })
 
 // Save/Load (terrain + pawns)
@@ -786,3 +1168,21 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
 
 // Expose for quick dev tools inspection
 Object.assign(window as any, { app, G })
+
+// Optional: quick object hardness test via keyboard (acid/fire/electricity/cold/sonic)
+document.addEventListener('keydown', (e) => {
+  const key = e.key
+  const map: Record<string, { label: string, types: DamagePacket['types'], amount: number }> = {
+    '1': { label: 'acid', types: ['acid'], amount: 10 },
+    '2': { label: 'fire', types: ['fire'], amount: 10 },
+    '3': { label: 'electricity', types: ['electricity'], amount: 10 },
+    '4': { label: 'cold', types: ['cold'], amount: 10 },
+    '5': { label: 'sonic', types: ['sonic'], amount: 10 },
+  }
+  const sel = map[key]
+  if (!sel) return
+  const objectDef: DefenderProfile = { ac: { base: 10, armor: 0, shield: 0, natural: 0, deflection: 0, dodge: 0, misc: 0 }, isObject: true, objectHardness: 5 }
+  const packet: DamagePacket = { amount: sel.amount, types: sel.types }
+  const applied = applyDamage(objectDef, packet)
+  appendLogLine(`Object test (${sel.label} ${sel.amount}) -> after hardness: ${applied.taken} ${applied.hardnessPrevented?`(hardness -${applied.hardnessPrevented})`:''}`)
+})

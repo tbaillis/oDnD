@@ -21,6 +21,10 @@ export interface DefenderProfile {
   damageReduction?: { amount: number, bypass?: string } // DR 5/magic etc. (simplified)
   energyResistance?: Partial<Record<DamageType, number>>
   regeneration?: { rate: number, bypass?: DamageType[] }
+  vulnerability?: DamageType[] // +50% damage from listed types
+  // Objects/hardness handling (Breaking & Entering SRD): energy modifiers apply before hardness
+  isObject?: boolean
+  objectHardness?: number
 }
 
 export function computeAC(ac: ACBreakdown, opts?: { touch?: boolean, flatFooted?: boolean, misc?: Bonus[] }) {
@@ -86,6 +90,9 @@ export function attackRoll(attacker: AttackProfile, defender: DefenderProfile, r
 export interface DamagePacket {
   amount: number
   types: DamageType[]
+  // Optional tags that can bypass DR (e.g., 'magic', 'adamantine', 'good').
+  // Simplified: compared against defender.damageReduction.bypass if provided.
+  bypassTags?: string[]
 }
 
 export interface AppliedDamage {
@@ -94,43 +101,106 @@ export interface AppliedDamage {
   preventedByER?: Partial<Record<DamageType, number>>
   wasLethal?: boolean
   regenerationApplied?: number
+  vulnerabilityBonus?: number
+  hardnessPrevented?: number
 }
 
 export function applyDamage(defender: DefenderProfile, dmg: DamagePacket): AppliedDamage {
   let remaining = dmg.amount
   const preventedByER: Partial<Record<DamageType, number>> = {}
+  let preventedByDR = 0
+  let hardnessPrevented = 0
+  let vulnerabilityBonus = 0
 
-  // Energy resistance per type
+  const isPhysical = (t: DamageType) => (t === 'bludgeoning' || t === 'piercing' || t === 'slashing')
+
+  // Objects: apply energy attack modifiers BEFORE hardness (SRD Breaking & Entering)
+  if (defender.isObject && defender.objectHardness && defender.objectHardness > 0) {
+    // If damage is energy vs objects, scale first.
+    if (dmg.types.includes('cold')) {
+      remaining = Math.floor(remaining / 4) || (remaining > 0 ? 1 : 0)
+    } else if (dmg.types.includes('electricity') || dmg.types.includes('fire')) {
+      remaining = Math.floor(remaining / 2) || (remaining > 0 ? 1 : 0)
+    } else if (dmg.types.includes('acid') || dmg.types.includes('sonic')) {
+      // full damage
+    }
+    // Then subtract hardness
+    const prevented = Math.min(defender.objectHardness, remaining)
+    remaining -= prevented
+    hardnessPrevented = prevented
+  }
+
+  // Energy resistance per type (simplified to apply against the whole packet for that type)
   for (const t of dmg.types) {
     const er = defender.energyResistance?.[t]
-    if (er && (t !== 'bludgeoning' && t !== 'piercing' && t !== 'slashing')) {
+    if (er && !isPhysical(t)) {
       const prevent = Math.min(er, remaining)
       remaining -= prevent
-      preventedByER[t] = prevent
+      preventedByER[t] = (preventedByER[t] || 0) + prevent
     }
   }
 
-  // Damage Reduction for physical
-  let preventedByDR = 0
-  if (dmg.types.some(t => t === 'bludgeoning' || t === 'piercing' || t === 'slashing')) {
+  // Damage Reduction for physical unless bypassed
+  if (dmg.types.some(isPhysical)) {
     const dr = defender.damageReduction?.amount || 0
-    preventedByDR = Math.min(dr, remaining)
-    remaining -= preventedByDR
+    const bypassKey = defender.damageReduction?.bypass
+    const bypassed = !!(bypassKey && dmg.bypassTags && dmg.bypassTags.includes(bypassKey))
+    if (dr > 0 && !bypassed) {
+      const prevent = Math.min(dr, remaining)
+      remaining -= prevent
+      preventedByDR += prevent
+    }
   }
 
-  // Regeneration: if damage types do not bypass, nonlethal conversion
+  // Vulnerability: +50% damage from listed energy types; apply after ER/DR and before regeneration conversion
+  if (defender.vulnerability && defender.vulnerability.length > 0) {
+    const vulnerable = dmg.types.some(t => defender.vulnerability!.includes(t))
+    if (vulnerable && remaining > 0) {
+      const bonus = Math.floor(remaining / 2)
+      remaining += bonus
+      vulnerabilityBonus = bonus
+    }
+  }
+
+  // Regeneration: if none of the damage types bypass, damage becomes nonlethal
   let wasLethal = true
   let regenerationApplied = 0
-  if (defender.regeneration) {
+  if (defender.regeneration && remaining > 0) {
     const bypass = defender.regeneration.bypass || []
-    const bypassed = dmg.types.some(t => bypass.includes(t))
-    if (!bypassed) {
+    const anyBypass = dmg.types.some(t => bypass.includes(t))
+    if (!anyBypass) {
       wasLethal = false
-      // Regeneration healing happens on turn ticks; we record that regen could apply
       regenerationApplied = defender.regeneration.rate
     }
   }
 
-  return { taken: Math.max(0, remaining), preventedByDR, preventedByER, wasLethal, regenerationApplied }
+  return {
+    taken: Math.max(0, remaining),
+    preventedByDR: preventedByDR || undefined,
+    preventedByER: Object.keys(preventedByER).length ? preventedByER : undefined,
+    wasLethal,
+    regenerationApplied: regenerationApplied || undefined,
+    vulnerabilityBonus: vulnerabilityBonus || undefined,
+    hardnessPrevented: hardnessPrevented || undefined,
+  }
+}
+
+// Simple weapon damage roller with STR scaling and crit multiplier support.
+export function rollWeaponDamage(rng: RNG = sessionRNG, opts: {
+  count: number
+  sides: number
+  flatBonus?: number
+  strMod?: number
+  strScale?: number // e.g., 1 for 1H melee, 1.5 for 2H, 0.5 offhand
+  critMult?: 1|2|3|4
+}): number {
+  const { count, sides } = opts
+  let total = 0
+  for (let i=0;i<count;i++) total += Math.floor(rng()*sides)+1
+  if (opts.strMod) total += Math.floor((opts.strMod) * (opts.strScale ?? 1))
+  if (opts.flatBonus) total += opts.flatBonus
+  const mult = opts.critMult ?? 1
+  if (mult > 1) total = Math.max(1, total * mult)
+  return Math.max(1, total)
 }
 

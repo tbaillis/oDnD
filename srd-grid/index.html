@@ -9,72 +9,146 @@
       html, body { height: 100%; margin: 0; background: #0f0f10; color: #e6e6e6; }
       .center { display: flex; height: 100%; align-items: center; justify-content: center; }
       #game-root { box-shadow: 0 0 24px rgba(0,0,0,0.6); }
+      
+      /* Responsive design for UI elements */
+      @media (max-width: 1400px) {
+        #controls { max-width: 500px !important; }
+      }
+      
+      @media (max-width: 1200px) {
+        #controls { max-width: 400px !important; font-size: 12px; }
+        #controls > div > div { flex-wrap: wrap; }
+      }
+      
+      @media (max-width: 900px) {
+        #controls { 
+          max-width: 350px !important; 
+          font-size: 11px;
+          left: 4px !important;
+          top: 4px !important;
+        }
+        #action-hud { 
+          right: 4px !important;
+          top: 4px !important;
+          font-size: 12px;
+        }
+        #combat-log { 
+          width: 280px !important; 
+          max-height: 120px !important;
+          left: 4px !important;
+          bottom: 4px !important;
+        }
+      }
     </style>
   </head>
   <body>
     <div class="center">
       <div id="game-root" aria-label="Game Canvas" role="img"></div>
     </div>
-    <div id="controls" style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,0.5);padding:6px 8px;border-radius:6px;font-family:system-ui,Segoe UI,Arial,sans-serif;">
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-        <input id="avoid-toggle" type="checkbox" checked />
-        Safest path (avoid AoO)
-      </label>
-      <div style="margin-top:6px;display:flex;gap:8px;">
-        <button id="end-turn" style="cursor:pointer;">End Turn</button>
-        <button id="attack-mode" style="cursor:pointer;">Attack Mode</button>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="ranged-toggle" type="checkbox" /> Ranged
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="precise-toggle" type="checkbox" /> Precise Shot
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="defensive-cast-toggle" type="checkbox" /> Defensive Cast
-        </label>
-        <select id="spell-select">
-          <option value="magic-missile">Magic Missile</option>
-          <option value="fog-cloud">Fog Cloud</option>
-        </select>
-        <button id="cast-btn" style="cursor:pointer;">Cast Spell</button>
-        <button id="potion-btn" style="cursor:pointer;">Drink Potion</button>
-        <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-          <input id="tumble-toggle" type="checkbox" /> Tumble
-          <input id="tumble-bonus" type="number" value="5" style="width:52px" />
-        </label>
-        <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-          Concentration +
-          <input id="conc-bonus" type="number" value="5" style="width:52px" />
-        </label>
-        <button id="delay-btn" style="cursor:pointer;">Delay</button>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="terrain-toggle" type="checkbox" /> Edit Terrain
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="touch-toggle" type="checkbox" /> Touch
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="flat-toggle" type="checkbox" /> Flat-Footed
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="show-los-toggle" type="checkbox" /> Show LoS
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="reachA-toggle" type="checkbox" /> A: Reach Wpn
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="reachB-toggle" type="checkbox" /> B: Reach Wpn
-        </label>
-        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-          <input id="corner-cover-toggle" type="checkbox" /> Corner Cover
-        </label>
-        <input id="seed-input" placeholder="Seed" style="width:80px;" />
-        <button id="apply-seed" style="cursor:pointer;">Apply Seed</button>
-        <button id="save-btn" style="cursor:pointer;">Save</button>
-        <button id="load-btn" style="cursor:pointer;">Load</button>
-        <button id="reset-btn" style="cursor:pointer;">Reset</button>
-        <button id="undo-btn" style="cursor:pointer;">Undo</button>
+    <div id="controls" style="position:fixed;top:8px;left:8px;background:rgba(20,25,30,0.95);padding:12px 16px;border-radius:8px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;box-shadow:0 4px 12px rgba(0,0,0,0.6);max-width:600px;z-index:1100;">
+      <!-- Primary Actions -->
+      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+          <button id="new-character-btn" style="padding:6px 12px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">New Character (N)</button>
+          <button id="character-sheet-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Character (C)</button>
+          <button id="spellbook-btn" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Spells (S)</button>
+        </div>
       </div>
+
+      <!-- Combat Actions -->
+      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button id="end-turn" style="padding:6px 12px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">End Turn</button>
+          <button id="attack-mode" style="padding:6px 12px;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;">Attack Mode</button>
+          <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;">
+            <input id="avoid-toggle" type="checkbox" checked style="accent-color:#7c3aed;" />
+            Safest path (avoid AoO)
+          </label>
+        </div>
+      </div>
+
+      <!-- Combat Options -->
+      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="ranged-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Ranged
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="precise-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Precise Shot
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="defensive-cast-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Defensive Cast
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="tumble-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Tumble
+            <input id="tumble-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Spell Casting -->
+      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="spell-select" style="padding:4px 8px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;">
+            <option value="magic-missile">Magic Missile</option>
+            <option value="fog-cloud">Fog Cloud</option>
+          </select>
+          <button id="cast-btn" style="padding:6px 12px;background:#8b5cf6;color:white;border:none;border-radius:4px;cursor:pointer;">Cast Spell</button>
+          <button id="potion-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;">Drink Potion</button>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;font-size:13px;">
+            Conc +<input id="conc-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Advanced Options (Collapsible) -->
+      <details style="margin-bottom:8px;">
+        <summary style="cursor:pointer;font-weight:600;color:#d1d5db;margin-bottom:8px;">Advanced Options</summary>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:#d1d5db;">
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="terrain-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Edit Terrain
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="touch-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Touch AC
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="flat-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Flat-Footed
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="show-los-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Show LoS
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="reachA-toggle" type="checkbox" style="accent-color:#7c3aed;" /> A: Reach
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="reachB-toggle" type="checkbox" style="accent-color:#7c3aed;" /> B: Reach
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="corner-cover-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Corner Cover
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <input id="prefer-easy-toggle" type="checkbox" checked style="accent-color:#7c3aed;" /> Prefer Easy Terrain
+          </label>
+        </div>
+      </details>
+
+      <!-- System Controls -->
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">
+        <button id="ready-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Ready</button>
+        <button id="delay-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Delay</button>
+        <input id="seed-input" placeholder="Seed" style="width:60px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+        <button id="apply-seed" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Apply</button>
+        <button id="save-btn" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;">Save</button>
+        <button id="load-btn" style="padding:4px 8px;background:#dc2626;color:white;border:none;border-radius:3px;cursor:pointer;">Load</button>
+        <button id="reset-btn" style="padding:4px 8px;background:#f59e0b;color:white;border:none;border-radius:3px;cursor:pointer;">Reset</button>
+        <button id="undo-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Undo</button>
+        <button id="redo-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Redo</button>
+      </div>
+    </div>
+
+    <!-- Action HUD -->
+    <div id="action-hud" style="position:fixed;top:8px;right:8px;background:rgba(20,25,30,0.95);padding:8px 12px;border-radius:6px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;font-weight:600;font-size:14px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,0.6);">
+      Actions: —
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

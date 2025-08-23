@@ -7,10 +7,11 @@ export interface TurnState {
   active?: Combatant
   budget?: TurnBudget
   aooUsed?: Record<string, number>
+  ready?: Record<string, { type: 'attack-when-adjacent'; used?: boolean }>
 }
 
 export function createTurnState(): TurnState {
-  return { round: 1, tracker: new InitiativeTracker(), aooUsed: {} }
+  return { round: 1, tracker: new InitiativeTracker(), aooUsed: {}, ready: {} }
 }
 
 export function startEncounter(state: TurnState, combatants: Combatant[]) {
