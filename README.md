@@ -182,60 +182,7 @@ npm run test:e2e # Run end-to-end tests (requires Playwright)
 
 Current test status: 9/10 unit tests passing, 1 E2E test with known issue.
 
-## Run (Dev)
-
-```bash
-npm run dev  # Starts the development server
-```
-
-- Open the printed local URL (default http://localhost:5173/).
-- Hot-reloads on save.
-
-Alternatively, you can work directly in the srd-grid directory:
-
-```bash
-cd srd-grid
-npm run dev
-```
-
-### Full Development (Client + AI DM Server)
-For AI features, start both the frontend and MCP server:
-
-```bash
-npm run dev:full  # or: cd srd-grid && npm run dev:full
-```
-This starts both:
-- **Frontend**: http://localhost:5173/ (with hot-reload)
-- **AI DM Server**: http://localhost:3001/ (MCP server for AI features)
-
-## Build & Preview
-
-```bash
-npm run build  # Build the application
-npm run preview  # Preview the built application
-```
-
-## AI Setup
-
-### Enable AI Dungeon Master Features
-1. **Get OpenAI API Key**: Visit [OpenAI Platform](https://platform.openai.com/api-keys)
-2. **Create Environment File**:
-   ```bash
-   cd srd-grid
-   cp .env.example .env
-   ```
-3. **Add Your API Key** to `srd-grid/.env`:
-   ```bash
-   OPENAI_API_KEY=sk-your-actual-api-key-here
-   ```
-4. **Start Full Development Server**:
-   ```bash
-   npm run dev:full
-   ```
-
-The AI features are completely optional - the tactical combat system works perfectly without them!
-
-## Game instructions
+## Game Instructions
 
 ### Goal
 Move and attack with the active token to reduce the opponent to 0 HP. The game alternates turns (A then B) via the End Turn button.
@@ -314,6 +261,32 @@ See [srd-grid/AI_DUNGEON_MASTER.md](srd-grid/AI_DUNGEON_MASTER.md) for complete 
 - If TypeScript errors occur, run `npm install` to ensure dependencies are present.
 - Clearing the browser’s localStorage will remove saved scenarios.
 
-## Legal
+## Legal & Licensing
 
-This project aims to follow the Open Game License (OGL) 1.0a. Replace the placeholders in `LICENSES/` with the correct license text and Section 15 entries before distribution.
+This project is built using content from the **D&D 3.5e System Reference Document (SRD)** under the Open Game License (OGL) 1.0a.
+
+**Open Game Content**: All game mechanics, rules, and systems derived from the D&D 3.5e SRD are considered Open Game Content and are available under the OGL.
+
+**Product Identity**: This project does not use any Product Identity from Wizards of the Coast. All original content, code, and implementations are the work of the project contributors.
+
+### License Information
+
+- **Source Code**: This project's original code and implementations are available under standard open-source licensing
+- **Game Content**: D&D 3.5e rules and mechanics are used under the [Open Game License 1.0a](OPEN_GAME_LICENSE.md)
+- **Attribution**: System Reference Document content is used with proper attribution as required by Section 15 of the OGL
+
+For the complete Open Game License text and copyright notices, see [OPEN_GAME_LICENSE.md](OPEN_GAME_LICENSE.md).
+
+### Open Game Content Declaration
+
+The following portions of this work are designated as Open Game Content:
+- All game mechanics, rules, and statistical information derived from the D&D 3.5e SRD
+- Character creation systems including ability scores, races, classes, skills, and feats
+- Combat mechanics including movement, attacks, damage, and tactical positioning
+- All numerical values, formulas, and game calculations based on the SRD
+
+The following are specifically excluded as Product Identity and are not Open Game Content:
+- The application's source code, user interface, and technical implementation
+- Original AI personality descriptions and responses not directly derived from the SRD
+- Custom user interface elements, graphics, and presentation layer
+- Project name, branding, and original documentation
