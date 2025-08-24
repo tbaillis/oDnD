@@ -1,0 +1,38 @@
+{
+  "name": "odnd-srd-grid",
+  "version": "1.0.0",
+  "description": "D&D 3.5e SRD-based tactical combat grid with character creation and AI DM",
+  "main": "srd-grid/index.html",
+  "scripts": {
+    "install": "cd srd-grid && npm install --legacy-peer-deps",
+    "dev": "cd srd-grid && npm run dev",
+    "build": "cd srd-grid && npm run build",
+    "preview": "cd srd-grid && npm run preview",
+    "dev:full": "cd srd-grid && npm run dev:full"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tbaillis/oDnD.git"
+  },
+  "keywords": [
+    "dnd",
+    "d&d",
+    "dungeons-and-dragons",
+    "srd",
+    "tactical-combat",
+    "grid",
+    "typescript",
+    "vite",
+    "pixijs"
+  ],
+  "author": "tbaillis",
+  "license": "OGL-1.0a",
+  "bugs": {
+    "url": "https://github.com/tbaillis/oDnD/issues"
+  },
+  "homepage": "https://github.com/tbaillis/oDnD#readme",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
