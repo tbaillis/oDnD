@@ -48,17 +48,89 @@ A comprehensive browser-based implementation of D&D 3.5e SRD featuring tactical 
 
 ### Installation
 
+### Development Servers
+
 ```bash
-git clone https://github.com/tbaillis/oDnD.git
-cd oDnD
-npm install  # This will automatically install dependencies in srd-grid/ with --legacy-peer-deps
+# Standard development (tactical grid only)
+npm run dev
+
+# Full development (with AI features)
+npm run dev:full
 ```
 
-Alternatively, if you prefer to work directly in the srd-grid directory:
+### AI Setup (Optional)
 
-```bash
-cd srd-grid
-npm install --legacy-peer-deps
+For AI Dungeon Master features:
+
+1. Get an OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Create `.env` file in `srd-grid/` directory:
+   ```bash
+   cd srd-grid
+   cp .env.example .env
+   ```
+3. Add your API key to `.env`:
+   ```
+   OPENAI_API_KEY=sk-your-actual-api-key-here
+   ```
+4. Start with AI features:
+   ```bash
+   npm run dev:full
+   ```
+
+## Usage
+
+### Basic Combat
+1. Open http://localhost:5173/ in your browser
+2. Create characters using the "Create Character" button
+3. Place characters on the grid by clicking
+4. Right-click for movement and attack options
+5. Use the combat controls to manage initiative and turns
+
+### Character Creation
+1. Click "Create Character" to open the creation wizard
+2. Choose a generation method for ability scores:
+   - **Point Buy**: Distribute 27 points across abilities (costs vary by score)
+   - **Elite Array**: Use the standard array (15,14,13,12,10,8)
+   - **4d6 Rolling**: Roll 4d6, drop lowest, for each ability
+3. Select race and class for your character
+4. Assign ability scores to STR, DEX, CON, INT, WIS, CHA
+5. Choose skills and feats (optional steps)
+6. Review and finalize your character
+
+### AI Dungeon Master
+1. Ensure AI setup is complete (see above)
+2. Click the "DM" button in bottom-right corner or press `Ctrl+D`
+3. Choose an AI personality from the settings (⚙️ icon)
+4. Chat with the AI for game assistance, rule clarifications, and story elements
+5. AI has full access to your campaign and character data
+
+## Architecture
+
+### Frontend
+- **Vite + TypeScript**: Fast development and type safety
+- **PixiJS**: Hardware-accelerated 2D graphics for the tactical grid
+- **CSS Grid & Flexbox**: Responsive layout system
+- **LocalStorage**: Persistent game state management
+
+### Backend (AI Features)
+- **Express.js Server**: RESTful API for AI integration
+- **OpenAI GPT Models**: Natural language processing for DM responses  
+- **MCP Protocol**: Model Context Protocol for structured tool usage
+- **17 Specialized Tools**: Game mechanics, combat, environment, and story management
+
+### File Structure
+```
+├── srd-grid/                 # Main application
+│   ├── src/
+│   │   ├── ai/              # AI integration and personalities  
+│   │   ├── core/            # Game engine and mechanics
+│   │   ├── ui/              # User interface components
+│   │   └── types/           # TypeScript definitions
+│   ├── tests/               # Unit and integration tests
+│   └── public/              # Static assets
+├── AI_DUNGEON_MASTER.md     # AI setup guide
+├── CHARACTER_CREATION.md    # Character creation documentation
+└── README.md                # This file
 ```
 
 ## Run (Dev)
