@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monster Selection Theme Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a2e;
+            color: white;
+            font-family: system-ui;
+        }
+        
+        .test-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            margin: 0.5rem;
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+        }
+        
+        #log {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .info {
+            color: #8b5cf6;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monster Selection UI Theme Test</h1>
+    <div class="info">
+        This page tests the monster selection UI with the new purple theme matching the character creation modal.
+    </div>
+    
+    <div class="test-controls">
+        <h3>Test Controls</h3>
+        <button onclick="openMonsterSelection()">Open Monster Selection</button>
+        <button onclick="testRandomMonster()">Test Random Monster</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+    
+    <div id="log"></div>
+    
+    <!-- Add the monster selection panel -->
+    <div id="monster-selection-panel" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:900px;height:80%;max-height:700px;background:rgba(20,25,30,0.95);border:2px solid #8b5cf6;border-radius:12px;z-index:2000;display:none;box-shadow:0 20px 40px rgba(0,0,0,0.8);backdrop-filter:blur(10px);">
+        <!-- Monster UI content will be inserted here -->
+    </div>
+    
+    <script type="module">
+        import { monsterSelectionUI } from './src/game/monsters/ui.js';
+        import { monsterService } from './src/game/monsters/service.js';
+        
+        function log(message) {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.textContent += `[${timestamp}] ${message}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        
+        // Initialize monster UI
+        try {
+            monsterSelectionUI.init('monster-selection-panel');
+            monsterSelectionUI.onMonsterSelected((monster) => {
+                log(`Monster selected: ${monster.name} (CR ${monster.challengeRating})`);
+                closeMonsterSelection();
+            });
+            log('Monster selection UI initialized successfully');
+        } catch (error) {
+            log('Error initializing monster UI: ' + error.message);
+        }
+        
+        window.openMonsterSelection = function() {
+            const panel = document.getElementById('monster-selection-panel');
+            let backdrop = document.getElementById('monster-backdrop');
+            
+            if (!backdrop) {
+                backdrop = document.createElement('div');
+                backdrop.id = 'monster-backdrop';
+                backdrop.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.75);
+                    backdrop-filter: blur(4px);
+                    z-index: 1900;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+                backdrop.addEventListener('click', (e) => {
+                    if (e.target === backdrop) {
+                        closeMonsterSelection();
+                    }
+                });
+                document.body.appendChild(backdrop);
+            }
+            
+            if (panel) {
+                panel.style.display = 'block';
+                log('Monster selection opened');
+            }
+        };
+        
+        function closeMonsterSelection() {
+            const panel = document.getElementById('monster-selection-panel');
+            const backdrop = document.getElementById('monster-backdrop');
+            
+            if (panel) {
+                panel.style.display = 'none';
+            }
+            if (backdrop) {
+                backdrop.remove();
+            }
+            log('Monster selection closed');
+        }
+        
+        window.closeMonsterSelection = closeMonsterSelection;
+        
+        window.testRandomMonster = function() {
+            try {
+                const monster = monsterService.selectRandomMonster();
+                log(`Random monster: ${monster.name} (${monster.type}, CR ${monster.challengeRating})`);
+            } catch (error) {
+                log('Error getting random monster: ' + error.message);
+            }
+        };
+        
+        window.clearLog = function() {
+            document.getElementById('log').textContent = '';
+        };
+        
+        log('Monster selection theme test loaded');
+        log('Click "Open Monster Selection" to test the themed UI');
+        
+        // Add keyboard shortcut
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeMonsterSelection();
+            }
+            if (e.key === 'm' || e.key === 'M') {
+                openMonsterSelection();
+            }
+        });
+        
+        log('Press "M" to open monster selection, "Escape" to close');
+    </script>
+</body>
+</html>

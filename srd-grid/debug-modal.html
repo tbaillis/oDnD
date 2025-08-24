@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Modal Debug</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1b1e22;
+            color: #ddd;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        
+        .debug-panel {
+            background: rgba(20, 25, 30, 0.95);
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .test-button {
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        
+        .test-button:hover {
+            background: #7c3aed;
+        }
+        
+        #console-log {
+            background: #0a0a0a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 15px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Character Creation Modal Debug Test</h1>
+    
+    <div class="debug-panel">
+        <h2>Direct Modal Tests</h2>
+        <button class="test-button" onclick="testModalExists()">1. Check if Modal Class Exists</button>
+        <button class="test-button" onclick="testCreateModal()">2. Create Modal Instance</button>
+        <button class="test-button" onclick="testShowModal()">3. Show Modal</button>
+        <button class="test-button" onclick="testKeyboardShortcut()">4. Test 'N' Key</button>
+        <button class="test-button" onclick="testGlobalModal()">5. Test Global Modal</button>
+        <button class="test-button" onclick="clearLog()">Clear Log</button>
+    </div>
+    
+    <div class="debug-panel">
+        <h2>Console Output</h2>
+        <div id="console-log"></div>
+    </div>
+
+    <script type="module">
+        // Capture console.log and display in our debug panel
+        const logDiv = document.getElementById('console-log');
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        function addToLog(level, ...args) {
+            const timestamp = new Date().toLocaleTimeString();
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            
+            logDiv.textContent += `[${timestamp}] ${level.toUpperCase()}: ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            // Also log to real console
+            if (level === 'error') {
+                originalError(...args);
+            } else {
+                originalLog(...args);
+            }
+        }
+        
+        console.log = (...args) => addToLog('info', ...args);
+        console.error = (...args) => addToLog('error', ...args);
+        
+        // Wait for the app to load
+        setTimeout(() => {
+            console.log('=== INITIALIZATION CHECK ===');
+            console.log('window.characterCreationModal exists:', !!window.characterCreationModal);
+            console.log('Type:', typeof window.characterCreationModal);
+            
+            // Check if UIManager exists
+            console.log('window.uiManager exists:', !!window.uiManager);
+            
+            // Check what's in the DOM
+            const newCharBtn = document.getElementById('new-character-btn');
+            console.log('new-character-btn found:', !!newCharBtn);
+            
+            // Check if main app canvas exists
+            const canvas = document.querySelector('canvas');
+            console.log('PIXI canvas found:', !!canvas);
+            
+        }, 1000);
+
+        // Test functions
+        window.testModalExists = function() {
+            console.log('=== TESTING MODAL CLASS EXISTS ===');
+            try {
+                // Import the module
+                import('./src/ui/characterCreation.js').then(module => {
+                    console.log('CharacterCreation module imported:', module);
+                    console.log('CharacterCreationModal class:', module.CharacterCreationModal);
+                }).catch(err => {
+                    console.error('Failed to import CharacterCreation module:', err);
+                });
+            } catch (err) {
+                console.error('Error importing modal:', err);
+            }
+        }
+        
+        window.testCreateModal = function() {
+            console.log('=== TESTING MODAL CREATION ===');
+            try {
+                import('./src/ui/characterCreation.js').then(module => {
+                    const CharacterCreationModal = module.CharacterCreationModal || module.default;
+                    console.log('Creating modal instance...');
+                    
+                    const modal = new CharacterCreationModal({
+                        onComplete: (character) => {
+                            console.log('Modal completed with character:', character);
+                        },
+                        onCancel: () => {
+                            console.log('Modal cancelled');
+                        }
+                    });
+                    
+                    console.log('Modal created successfully:', modal);
+                    window.testModal = modal;
+                }).catch(err => {
+                    console.error('Failed to create modal:', err);
+                });
+            } catch (err) {
+                console.error('Error creating modal:', err);
+            }
+        }
+        
+        window.testShowModal = function() {
+            console.log('=== TESTING MODAL SHOW ===');
+            if (window.testModal) {
+                console.log('Calling show() on test modal...');
+                window.testModal.show();
+            } else if (window.characterCreationModal) {
+                console.log('Calling show() on global modal...');
+                window.characterCreationModal.show();
+            } else {
+                console.error('No modal instance found to test');
+            }
+        }
+        
+        window.testKeyboardShortcut = function() {
+            console.log('=== TESTING KEYBOARD SHORTCUT ===');
+            console.log('Dispatching "n" keydown event...');
+            document.dispatchEvent(new KeyboardEvent('keydown', { 
+                key: 'n',
+                bubbles: true,
+                cancelable: true
+            }));
+        }
+        
+        window.testGlobalModal = function() {
+            console.log('=== TESTING GLOBAL MODAL ACCESS ===');
+            console.log('window keys containing "character":', 
+                Object.keys(window).filter(key => key.toLowerCase().includes('character')));
+            console.log('window keys containing "modal":', 
+                Object.keys(window).filter(key => key.toLowerCase().includes('modal')));
+            console.log('window keys containing "ui":', 
+                Object.keys(window).filter(key => key.toLowerCase().includes('ui')));
+        }
+        
+        window.clearLog = function() {
+            logDiv.textContent = '';
+        }
+    </script>
+</body>
+</html>

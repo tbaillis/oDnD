@@ -1,7 +1,11 @@
-import type { Character } from '../game/character'
+import type { Character, ClassType } from '../game/character'
 import type { Spell } from '../game/magic'
-import { CharacterCreationUI } from './characterCreation'
+import { CharacterCreationModal } from './characterCreation'
 import { Toolbar } from './toolbar'
+import { DMChatPanel } from './dmChat'
+
+// Import CSS
+import './dmChat.css'
 
 // Character Sheet UI
 export class CharacterSheetUI {
@@ -379,37 +383,119 @@ export class UIManager {
   characterSheet: CharacterSheetUI
   spellBook: SpellBookUI
   combatLog: CombatLog
-  characterCreation: CharacterCreationUI
+  characterCreation: CharacterCreationModal
   toolbar: Toolbar
+  dmChat: DMChatPanel
 
   constructor(parent: HTMLElement) {
+    console.log('UIManager constructor called')
+    
     this.characterSheet = new CharacterSheetUI(parent)
     this.spellBook = new SpellBookUI(parent)
     this.combatLog = new CombatLog(parent)
-    this.characterCreation = new CharacterCreationUI(parent)
+    
+    console.log('Creating CharacterCreationModal...')
+    this.characterCreation = new CharacterCreationModal({
+      onComplete: (character) => {
+        console.log('CharacterCreationModal onComplete called with:', character)
+        // Convert the modal character data to the expected Character type
+        const convertedCharacter = this.convertCharacterData(character)
+        this.characterSheet.setCharacter(convertedCharacter)
+        this.combatLog.addMessage(`Created new character: ${character.name}`)
+        
+        // Notify DM about new character
+        this.dmChat.addSystemMessage(`New character created: ${character.name}, a ${character.race} ${character.characterClass}`)
+        
+        // Apply character to Pawn A if applyCharacterToPawnA is available globally
+        if (typeof (window as any).applyCharacterToPawnA === 'function') {
+          (window as any).applyCharacterToPawnA(convertedCharacter)
+        }
+      },
+      onCancel: () => {
+        console.log('CharacterCreationModal onCancel called')
+        this.combatLog.addMessage('Character creation cancelled')
+      }
+    })
+    console.log('CharacterCreationModal created:', this.characterCreation)
+    
+    // Initialize DM Chat Panel
+    this.dmChat = new DMChatPanel()
+    
     this.toolbar = new Toolbar(parent, this)
     
     this.setupKeyboardShortcuts()
+    
+    // Make modal available globally for HTML onclick handlers
+    window.characterCreationModal = this.characterCreation
+    console.log('CharacterCreationModal exposed globally:', window.characterCreationModal)
+  }
+
+  private convertCharacterData(modalData: any): Character {
+    // Convert the modal character data format to the expected Character type
+    const characterClass = modalData.characterClass as ClassType
+    
+    return {
+      name: modalData.name,
+      race: modalData.race,
+      classes: [{
+        class: characterClass,
+        level: 1,
+        hitPointsRolled: modalData.hitPoints,
+        skillPointsSpent: {},
+        featsGained: []
+      }],
+      abilityScores: {
+        STR: modalData.abilities.strength,
+        DEX: modalData.abilities.dexterity,
+        CON: modalData.abilities.constitution,
+        INT: modalData.abilities.intelligence,
+        WIS: modalData.abilities.wisdom,
+        CHA: modalData.abilities.charisma
+      },
+      hitPoints: { 
+        current: modalData.hitPoints, 
+        max: modalData.hitPoints,
+        temporary: 0
+      },
+      armorClass: { base: 10, total: 10, touch: 10, flatFooted: 10 },
+      savingThrows: { fortitude: 0, reflex: 0, will: 0 },
+      skills: modalData.skills || [],
+      feats: [],
+      equipment: modalData.equipment || [],
+      spells: {
+        known: {},
+        perDay: {}
+      }
+    } as Character
   }
 
   private setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
+      console.log('Key pressed:', e.key, 'ctrlKey:', e.ctrlKey, 'altKey:', e.altKey)
+      
+      // Don't execute shortcuts if user is typing in any input field
+      if (DMChatPanel.isAnyInputFocused()) {
+        return;
+      }
+      
       if (e.key === 'c' && !e.ctrlKey && !e.altKey) {
+        console.log('Character sheet toggle requested')
         this.characterSheet.toggle()
       }
       if (e.key === 's' && !e.ctrlKey && !e.altKey) {
+        console.log('Spellbook toggle requested')
         this.spellBook.toggle()
       }
       if (e.key === 'n' && !e.ctrlKey && !e.altKey) {
-        this.characterCreation.show((character) => {
-          this.characterSheet.setCharacter(character)
-          this.combatLog.addMessage(`Created new character: ${character.name}`)
-        })
+        console.log('Character creation requested')
+        this.characterCreation.show()
       }
       if (e.key === 'Escape') {
+        console.log('Escape pressed - hiding UI elements')
         this.characterSheet.hide()
         this.spellBook.hide()
         this.characterCreation.hide()
+        this.dmChat.close()
       }
     })
   }

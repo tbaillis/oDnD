@@ -5,10 +5,30 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SRD Grid</title>
+    <link rel="stylesheet" href="/src/game/monsters/monster-ui.css" />
     <style>
       html, body { height: 100%; margin: 0; background: #0f0f10; color: #e6e6e6; }
       .center { display: flex; height: 100%; align-items: center; justify-content: center; }
       #game-root { box-shadow: 0 0 24px rgba(0,0,0,0.6); }
+      
+      /* Collapsible controls styling */
+      #advanced-controls {
+        transition: all 0.3s ease-in-out;
+        overflow: hidden;
+      }
+      
+      #collapse-toggle {
+        transition: all 0.2s ease-in-out;
+      }
+      
+      #collapse-toggle:hover {
+        background: #6b7280 !important;
+        transform: translateY(-1px);
+      }
+      
+      #collapse-icon {
+        transition: transform 0.2s ease-in-out;
+      }
       
       /* Responsive design for UI elements */
       @media (max-width: 1400px) {
@@ -46,103 +66,119 @@
       <div id="game-root" aria-label="Game Canvas" role="img"></div>
     </div>
     <div id="controls" style="position:fixed;top:8px;left:8px;background:rgba(20,25,30,0.95);padding:12px 16px;border-radius:8px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;box-shadow:0 4px 12px rgba(0,0,0,0.6);max-width:600px;z-index:1100;">
-      <!-- Primary Actions -->
-      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-          <button id="new-character-btn" style="padding:6px 12px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">New Character (N)</button>
-          <button id="character-sheet-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Character (C)</button>
-          <button id="spellbook-btn" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Spells (S)</button>
+      <!-- Essential Actions (Always Visible) -->
+      <div id="essential-actions" style="margin-bottom:12px;">
+        <!-- Primary Buttons -->
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <button id="new-character-btn" style="padding:6px 12px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">New Character (N)</button>
+          <button id="character-sheet-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Character (C)</button>
+          <button id="spellbook-btn" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Spells (S)</button>
+        </div>
+        
+        <!-- Combat & System Actions -->
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <button id="end-turn" style="padding:5px 10px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px;">End Turn</button>
+          <button id="attack-mode" style="padding:5px 10px;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Attack Mode</button>
+          <button id="undo-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Undo</button>
+          <button id="redo-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Redo</button>
+        </div>
+        
+        <!-- Collapse Toggle -->
+        <div style="display:flex;align-items:center;justify-content:center;border-top:1px solid #374151;padding-top:8px;">
+          <button id="collapse-toggle" style="padding:4px 12px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;display:flex;align-items:center;gap:4px;">
+            <span id="collapse-icon">▼</span>
+            <span id="collapse-text">Show More</span>
+          </button>
         </div>
       </div>
 
-      <!-- Combat Actions -->
-      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button id="end-turn" style="padding:6px 12px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;">End Turn</button>
-          <button id="attack-mode" style="padding:6px 12px;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;">Attack Mode</button>
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;">
-            <input id="avoid-toggle" type="checkbox" checked style="accent-color:#7c3aed;" />
-            Safest path (avoid AoO)
-          </label>
+      <!-- Advanced Controls (Collapsible) -->
+      <div id="advanced-controls" style="display:block;">
+        <!-- Combat Options -->
+        <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;">
+              <input id="avoid-toggle" type="checkbox" checked style="accent-color:#7c3aed;" />
+              Safest path (avoid AoO)
+            </label>
+          </div>
         </div>
-      </div>
 
-      <!-- Combat Options -->
-      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="ranged-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Ranged
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="precise-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Precise Shot
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="defensive-cast-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Defensive Cast
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="tumble-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Tumble
-            <input id="tumble-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
-          </label>
+        <!-- Combat Options -->
+        <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="ranged-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Ranged
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="precise-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Precise Shot
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="defensive-cast-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Defensive Cast
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="tumble-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Tumble
+              <input id="tumble-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+            </label>
+          </div>
         </div>
-      </div>
 
-      <!-- Spell Casting -->
-      <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <select id="spell-select" style="padding:4px 8px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;">
-            <option value="magic-missile">Magic Missile</option>
-            <option value="fog-cloud">Fog Cloud</option>
-          </select>
-          <button id="cast-btn" style="padding:6px 12px;background:#8b5cf6;color:white;border:none;border-radius:4px;cursor:pointer;">Cast Spell</button>
-          <button id="potion-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;">Drink Potion</button>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;font-size:13px;">
-            Conc +<input id="conc-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
-          </label>
+        <!-- Spell Casting -->
+        <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="spell-select" style="padding:4px 8px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;">
+              <option value="magic-missile">Magic Missile</option>
+              <option value="fog-cloud">Fog Cloud</option>
+            </select>
+            <button id="cast-btn" style="padding:6px 12px;background:#8b5cf6;color:white;border:none;border-radius:4px;cursor:pointer;">Cast Spell</button>
+            <button id="potion-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;">Drink Potion</button>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;font-size:13px;">
+              Conc +<input id="conc-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+            </label>
+          </div>
         </div>
-      </div>
 
-      <!-- Advanced Options (Collapsible) -->
-      <details style="margin-bottom:8px;">
-        <summary style="cursor:pointer;font-weight:600;color:#d1d5db;margin-bottom:8px;">Advanced Options</summary>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:#d1d5db;">
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="terrain-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Edit Terrain
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="touch-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Touch AC
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="flat-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Flat-Footed
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="show-los-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Show LoS
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="reachA-toggle" type="checkbox" style="accent-color:#7c3aed;" /> A: Reach
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="reachB-toggle" type="checkbox" style="accent-color:#7c3aed;" /> B: Reach
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="corner-cover-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Corner Cover
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-            <input id="prefer-easy-toggle" type="checkbox" checked style="accent-color:#7c3aed;" /> Prefer Easy Terrain
-          </label>
+        <!-- Advanced Options (Nested Collapsible) -->
+        <details style="margin-bottom:8px;">
+          <summary style="cursor:pointer;font-weight:600;color:#d1d5db;margin-bottom:8px;">Advanced Options</summary>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:#d1d5db;">
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="terrain-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Edit Terrain
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="touch-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Touch AC
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="flat-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Flat-Footed
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="show-los-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Show LoS
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="reachA-toggle" type="checkbox" style="accent-color:#7c3aed;" /> A: Reach
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="reachB-toggle" type="checkbox" style="accent-color:#7c3aed;" /> B: Reach
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="corner-cover-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Corner Cover
+            </label>
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+              <input id="prefer-easy-toggle" type="checkbox" checked style="accent-color:#7c3aed;" /> Prefer Easy Terrain
+            </label>
+          </div>
+        </details>
+
+        <!-- System Controls -->
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">
+          <button id="ready-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Ready</button>
+          <button id="delay-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Delay</button>
+          <input id="seed-input" placeholder="Seed" style="width:60px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+          <button id="apply-seed" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Apply</button>
+          <button id="save-btn" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;">Save</button>
+          <button id="load-btn" style="padding:4px 8px;background:#dc2626;color:white;border:none;border-radius:3px;cursor:pointer;">Load</button>
+          <button id="reset-btn" style="padding:4px 8px;background:#f59e0b;color:white;border:none;border-radius:3px;cursor:pointer;">Reset</button>
         </div>
-      </details>
-
-      <!-- System Controls -->
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">
-        <button id="ready-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Ready</button>
-        <button id="delay-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Delay</button>
-        <input id="seed-input" placeholder="Seed" style="width:60px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
-        <button id="apply-seed" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Apply</button>
-        <button id="save-btn" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;">Save</button>
-        <button id="load-btn" style="padding:4px 8px;background:#dc2626;color:white;border:none;border-radius:3px;cursor:pointer;">Load</button>
-        <button id="reset-btn" style="padding:4px 8px;background:#f59e0b;color:white;border:none;border-radius:3px;cursor:pointer;">Reset</button>
-        <button id="undo-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Undo</button>
-        <button id="redo-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Redo</button>
       </div>
     </div>
 
@@ -150,6 +186,13 @@
     <div id="action-hud" style="position:fixed;top:8px;right:8px;background:rgba(20,25,30,0.95);padding:8px 12px;border-radius:6px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;font-weight:600;font-size:14px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,0.6);">
       Actions: —
     </div>
+
+    <!-- Monster Selection UI (initially hidden) -->
+    <div id="monster-selection-panel" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:900px;height:80%;max-height:700px;background:rgba(20,25,30,0.95);border:2px solid #8b5cf6;border-radius:12px;z-index:2000;display:none;box-shadow:0 20px 40px rgba(0,0,0,0.8);backdrop-filter:blur(10px);">
+      <!-- Monster UI content will be inserted here by the UI class -->
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
+    <script src="/test-modal.js"></script>
   </body>
 </html>

@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
-describe('Character Creation UI', () => {
-  it('should import character creation UI successfully', () => {
+describe('Character Creation Modal', () => {
+  it('should import character creation modal successfully', () => {
     // Simple import test to verify the module structure
     expect(async () => {
-      const { CharacterCreationUI } = await import('../ui/characterCreation')
-      expect(CharacterCreationUI).toBeDefined()
-      expect(typeof CharacterCreationUI).toBe('function')
+      const CharacterCreationModal = (await import('../ui/characterCreation')).default
+      expect(CharacterCreationModal).toBeDefined()
+      expect(typeof CharacterCreationModal).toBe('function')
     }).not.toThrow()
   })
 
@@ -18,9 +18,9 @@ describe('Character Creation UI', () => {
     }).not.toThrow()
   })
 
-  it('should export CharacterCreationUI class', async () => {
+  it('should export CharacterCreationModal class', async () => {
     const module = await import('../ui/characterCreation')
-    expect(module.CharacterCreationUI).toBeDefined()
-    expect(typeof module.CharacterCreationUI).toBe('function')
+    expect(module.default).toBeDefined()
+    expect(typeof module.default).toBe('function')
   })
 })

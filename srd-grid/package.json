@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "tsx watch api/server.ts",
+    "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "vite build",
+    "build:server": "tsc api/server.ts --outDir dist-server --module esnext --target es2020",
     "preview": "vite preview",
+    "start:server": "node dist-server/server.js",
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "e2e": "playwright test"
@@ -21,9 +25,17 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
     "bitecs": "^0.3.40",
+    "concurrently": "^9.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "openai": "^5.15.0",
     "pathfinding": "^0.4.18",
     "pixi.js": "^8.12.0",
+    "tsx": "^4.20.5",
     "zod": "^4.0.17"
   }
 }

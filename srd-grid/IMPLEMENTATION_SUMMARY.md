@@ -16,8 +16,27 @@
 - **Interactive Elements**: Click-to-select cards, increment/decrement buttons, and hover effects
 - **Keyboard Shortcuts**: Press 'N' to open character creation, 'Escape' to close
 - **Toolbar Integration**: Convenient buttons for New Character, Character Sheet, and Spells
+- **Collapsible Control Panel**: Toggle advanced controls while keeping essential buttons visible (Press ` or Tab)
+- **Right-Click Pawn Context Menu**: Direct pawn interaction with Attack Mode, End Turn, Cast Spell, and Pawn Stats options
 
-#### 🔧 Technical Implementation
+#### 🧙‍♂️ Pawn Interaction System
+- **Right-Click Context Menu**: Comprehensive pawn interaction interface with hover effects and visual feedback
+- **Attack Mode Toggle**: Toggle attack mode directly from pawn context menu (⚔️ Enter/❌ Exit Attack Mode)
+- **End Turn Action**: End the active pawn's turn without using the main control panel (� End Turn)
+- **Spell Casting**: Cast spells directly from pawn context menu using current spell selection (🪄 Cast Spell)
+- **Pawn Statistics**: View detailed pawn stats including HP, position, AC, reach, and threat information (📋 Pawn Stats)
+- **Keyboard Shortcuts**: Press 'Z' (Pawn A) or 'X' (Pawn B) to open context menu, 'Escape' to close
+- **Visual Enhancements**: Color-coded headers, status indicators, and smooth hover transitions
+- **Smart Positioning**: Context menu appears at cursor position and auto-closes when clicking outside
+
+#### 🪄 Spell Casting System
+- **Integrated Spell System**: Full integration with existing spell mechanics (Magic Missile, Fog Cloud)
+- **Concentration Checks**: Automatic concentration checks for defensive casting and damage interruption
+- **Attack of Opportunity Resolution**: Proper AoO mechanics when casting in threatened squares
+- **Line of Sight Verification**: Automatic LoS checks for targeted spells
+- **Action Economy**: Uses standard action and integrates with turn budget system
+- **Multiple Access Points**: Cast spells from main control panel or pawn context menu
+- **Combat Log Integration**: Detailed spell resolution reporting with dice rolls and effects
 - **TypeScript Integration**: Full type safety with proper interfaces and validation
 - **ECS Compatibility**: Created characters automatically integrate with the Entity Component System
 - **Real-time Calculation**: Live updates for ability modifiers, costs, and character statistics
@@ -29,6 +48,9 @@
 - **Combat Log**: Success messages when characters are created
 - **UI Manager**: Centralized interface management with consistent theming
 - **Character Sheet Display**: Complete stat integration with equipment and abilities
+- **Pawn A Integration**: Created characters directly impact Pawn A's combat statistics
+- **Real-time Combat Stats**: Character HP, AC, speed, and equipment automatically update Pawn A
+- **Dynamic Context Menu**: Right-click pawn menu shows character-based HP and stats
 
 ### 🎨 User Experience
 
@@ -57,6 +79,16 @@
 - **CHARACTER_CREATION.md**: Comprehensive documentation (100+ lines)
 - **characterCreation.test.ts**: Test coverage for character creation module
 
+#### 🎮 Character-to-Pawn Integration
+- **Automatic Stat Transfer**: Created characters automatically update Pawn A's combat statistics
+- **Hit Point Synchronization**: Character HP (current/max) directly transfers to Pawn A
+- **Armor Class Calculation**: Character equipment and DEX modifier update Pawn A's AC
+- **Reach Weapon Detection**: Reach weapons automatically enable reach mode for Pawn A
+- **Speed Transfer**: Character movement speed updates Pawn A's movement capabilities
+- **Combat Log Integration**: Detailed reporting of character application to Pawn A
+- **Dynamic HP Display**: Context menu and combat interface show character-based HP values
+- **Equipment Integration**: Armor, shields, and weapons from character creation affect combat stats
+
 #### System Integration
 - **D&D 3.5 SRD Compliance**: Full adherence to Open Game License rules
 - **Point-Buy Validation**: Standard 27-point allocation with proper cost scaling
@@ -75,6 +107,11 @@
 - Character validation and error reporting
 - Auto-integration with character sheet
 - Keyboard shortcuts and toolbar access
+- Collapsible control panel with essential buttons always visible
+- Right-click pawn context menu with Attack Mode, End Turn, Cast Spell, and Stats
+- Full spell casting system with Magic Missile and Fog Cloud
+- Concentration checks and attack of opportunity resolution
+- Character-to-Pawn A integration with automatic stat transfer and equipment effects
 
 #### Ready for Production
 - **Development Server**: Running on http://localhost:5175/

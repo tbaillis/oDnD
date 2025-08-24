@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Character Creation Modal Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1b1e22;
+            color: #ddd;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .test-button {
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .test-button:hover {
+            background: #7c3aed;
+        }
+    </style>
+</head>
+<body>
+    <h1>Character Creation Modal Test</h1>
+    <button class="test-button" onclick="testModal()">Test Character Creation Modal</button>
+    <button class="test-button" onclick="testKeyboardShortcut()">Test 'N' Key</button>
+    
+    <div id="log" style="margin-top: 20px; font-family: monospace; font-size: 12px;"></div>
+
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
+            console.log(message);
+        }
+        
+        function testModal() {
+            log('Testing modal via direct call...');
+            if (window.characterCreationModal) {
+                log('Found characterCreationModal, calling show()...');
+                window.characterCreationModal.show();
+            } else {
+                log('ERROR: characterCreationModal not found on window');
+            }
+        }
+        
+        function testKeyboardShortcut() {
+            log('Simulating N key press...');
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
+        }
+        
+        // Wait for the main app to load and then log what's available
+        setTimeout(() => {
+            log('Checking what is available...');
+            log('window.characterCreationModal: ' + (window.characterCreationModal ? 'YES' : 'NO'));
+            log('UIManager type: ' + typeof window.uiManager);
+        }, 2000);
+    </script>
+</body>
+</html>

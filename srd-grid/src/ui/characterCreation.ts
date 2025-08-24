@@ -1,197 +1,742 @@
-import type { Character, AbilityScores, ClassType } from '../game/character'
-import { createCharacter, sampleRaces, getAbilityModifier, validateCharacterPrerequisites } from '../game/character'
-import { sampleWeapons, sampleArmor } from '../game/equipment'
+/**
+ * Modern Character Creation Modal
+ * Built following UX/UI design best practices for modal forms
+ * Features: Multi-step progression, inline validation, accessibility support
+ */
 
-// Character creation state
-interface CharacterCreationState {
-  step: 'race' | 'class' | 'abilities' | 'skills' | 'equipment' | 'review'
+import { FantasyNameGenerator } from './nameGenerator.js'
+
+interface CharacterData {
   name: string
-  selectedRace: string
-  selectedClass: ClassType | null
-  abilityScores: AbilityScores
-  remainingPoints: number
-  selectedEquipment: {
-    weapons: string[]
-    armor?: string
+  race: string
+  characterClass: string
+  abilityGenerationMethod: 'pointBuy' | 'eliteArray' | 'roll4d6'
+  abilities: {
+    strength: number
+    dexterity: number
+    constitution: number
+    intelligence: number
+    wisdom: number
+    charisma: number
   }
-  character: Character | null
+  rolledAbilities?: number[] // For 4d6 method - stores rolled values before assignment
+  hitPoints: number
+  skills: string[]
+  feats: string[]
+  equipment: string[]
 }
 
-export class CharacterCreationUI {
-  private container: HTMLElement
-  private state: CharacterCreationState
-  private onComplete?: (character: Character) => void
+interface FormValidation {
+  isValid: boolean
+  errors: Record<string, string>
+}
 
-  constructor(parent: HTMLElement) {
-    this.state = {
-      step: 'race',
+type Step = 'basics' | 'race' | 'class' | 'abilities' | 'skills' | 'feats' | 'equipment' | 'review'
+
+interface StepConfig {
+  id: Step
+  title: string
+  description: string
+  isRequired: boolean
+}
+
+export class CharacterCreationModal {
+  private modal: HTMLElement | null = null
+  private currentStep: Step = 'basics'
+  private characterData: Partial<CharacterData> = {}
+  private completedSteps: Set<Step> = new Set()
+  private onComplete?: (character: CharacterData) => void
+  private onCancel?: () => void
+
+  private readonly steps: StepConfig[] = [
+    { id: 'basics', title: 'Character Basics', description: 'Name and basic information', isRequired: true },
+    { id: 'race', title: 'Choose Race', description: 'Select your character race', isRequired: true },
+    { id: 'class', title: 'Choose Class', description: 'Select your character class', isRequired: true },
+    { id: 'abilities', title: 'Ability Scores', description: 'Assign your ability scores', isRequired: true },
+    { id: 'skills', title: 'Select Skills', description: 'Choose your starting skills', isRequired: false },
+    { id: 'feats', title: 'Select Feats', description: 'Choose your starting feats', isRequired: false },
+    { id: 'equipment', title: 'Starting Equipment', description: 'Choose your starting gear', isRequired: false },
+    { id: 'review', title: 'Review Character', description: 'Review and finalize', isRequired: true }
+  ]
+
+  private readonly raceData = [
+    {
+      id: 'human',
+      name: 'Human',
+      description: 'Versatile and ambitious, humans are the most common race in most worlds.',
+      traits: ['+1 to any ability score', 'Extra feat at 1st level', 'Extra skill points'],
+      size: 'Medium',
+      speed: 30
+    },
+    {
+      id: 'elf',
+      name: 'Elf',
+      description: 'Graceful and long-lived, elves are known for their connection to magic and nature.',
+      traits: ['+2 Dexterity, -2 Constitution', 'Darkvision 60 ft', 'Keen Senses', 'Elven Magic'],
+      size: 'Medium',
+      speed: 30
+    },
+    {
+      id: 'dwarf',
+      name: 'Dwarf',
+      description: 'Hardy and resilient, dwarves are known for their craftsmanship and combat prowess.',
+      traits: ['+2 Constitution, -2 Charisma', 'Darkvision 60 ft', 'Stonecunning', 'Weapon Familiarity'],
+      size: 'Medium',
+      speed: 20
+    },
+    {
+      id: 'halfling',
+      name: 'Halfling',
+      description: 'Small and nimble, halflings are known for their luck and stealth.',
+      traits: ['+2 Dexterity, -2 Strength', 'Small size', 'Lucky', 'Halfling Stealth'],
+      size: 'Small',
+      speed: 20
+    }
+  ]
+
+  private readonly classData = [
+    {
+      id: 'fighter',
+      name: 'Fighter',
+      description: 'Masters of combat, fighters excel with weapons and armor.',
+      hitDie: 'd10',
+      skillPoints: 2,
+      baseAttackBonus: 'High',
+      saves: { fortitude: 'High', reflex: 'Low', will: 'Low' }
+    },
+    {
+      id: 'wizard',
+      name: 'Wizard',
+      description: 'Masters of arcane magic, wizards cast powerful spells.',
+      hitDie: 'd4',
+      skillPoints: 2,
+      baseAttackBonus: 'Low',
+      saves: { fortitude: 'Low', reflex: 'Low', will: 'High' }
+    },
+    {
+      id: 'rogue',
+      name: 'Rogue',
+      description: 'Masters of stealth and skill, rogues excel at finding and exploiting weaknesses.',
+      hitDie: 'd6',
+      skillPoints: 8,
+      baseAttackBonus: 'Medium',
+      saves: { fortitude: 'Low', reflex: 'High', will: 'Low' }
+    },
+    {
+      id: 'cleric',
+      name: 'Cleric',
+      description: 'Divine spellcasters who serve deities and can heal or harm.',
+      hitDie: 'd8',
+      skillPoints: 2,
+      baseAttackBonus: 'Medium',
+      saves: { fortitude: 'High', reflex: 'Low', will: 'High' }
+    }
+  ]
+
+  private readonly featData = [
+    {
+      id: 'combat-reflexes',
+      name: 'Combat Reflexes',
+      description: 'You can make additional attacks of opportunity equal to your Dex modifier.',
+      prerequisites: [],
+      type: 'General'
+    },
+    {
+      id: 'dodge',
+      name: 'Dodge',
+      description: '+1 dodge bonus to AC against attacks from one opponent you designate.',
+      prerequisites: ['Dex 13'],
+      type: 'General'
+    },
+    {
+      id: 'improved-initiative',
+      name: 'Improved Initiative',
+      description: '+4 bonus on initiative checks.',
+      prerequisites: [],
+      type: 'General'
+    },
+    {
+      id: 'power-attack',
+      name: 'Power Attack',
+      description: 'Trade attack bonus for extra damage with melee weapons.',
+      prerequisites: ['Str 13'],
+      type: 'General'
+    },
+    {
+      id: 'weapon-finesse',
+      name: 'Weapon Finesse',
+      description: 'Use Dex instead of Str for attack rolls with light weapons.',
+      prerequisites: ['Base attack bonus +1'],
+      type: 'General'
+    },
+    {
+      id: 'toughness',
+      name: 'Toughness',
+      description: '+3 hit points.',
+      prerequisites: [],
+      type: 'General'
+    },
+    {
+      id: 'skill-focus-perception',
+      name: 'Skill Focus (Perception)',
+      description: '+3 bonus on all Perception skill checks.',
+      prerequisites: [],
+      type: 'General'
+    },
+    {
+      id: 'spell-focus-evocation',
+      name: 'Spell Focus (Evocation)',
+      description: '+1 to save DCs of Evocation spells you cast.',
+      prerequisites: ['Ability to cast spells'],
+      type: 'General'
+    },
+    {
+      id: 'weapon-focus-longsword',
+      name: 'Weapon Focus (Longsword)',
+      description: '+1 bonus on attack rolls with longswords.',
+      prerequisites: ['Proficiency with longsword', 'base attack bonus +1'],
+      type: 'Fighter'
+    },
+    {
+      id: 'cleave',
+      name: 'Cleave',
+      description: 'Make an additional attack against adjacent foe when you drop an enemy.',
+      prerequisites: ['Power Attack'],
+      type: 'General'
+    }
+  ]
+
+  constructor(options: { onComplete?: (character: CharacterData) => void; onCancel?: () => void } = {}) {
+    console.log('CharacterCreationModal constructor called with options:', options)
+    this.onComplete = options.onComplete
+    this.onCancel = options.onCancel
+    this.initializeCharacterData()
+    console.log('CharacterCreationModal constructor completed, initialized with character data:', this.characterData)
+  }
+
+  private initializeCharacterData(): void {
+    this.characterData = {
       name: '',
-      selectedRace: 'human',
-      selectedClass: null,
-      abilityScores: { STR: 8, DEX: 8, CON: 8, INT: 8, WIS: 8, CHA: 8 },
-      remainingPoints: 27, // Point-buy system (25 base + 2 for human)
-      selectedEquipment: { weapons: [] },
-      character: null
+      race: '',
+      characterClass: '',
+      abilityGenerationMethod: 'pointBuy',
+      abilities: {
+        strength: 10,
+        dexterity: 10,
+        constitution: 10,
+        intelligence: 10,
+        wisdom: 10,
+        charisma: 10
+      },
+      hitPoints: 0,
+      skills: [],
+      feats: [],
+      equipment: []
+    }
+  }
+
+  public show(): void {
+    console.log('CharacterCreationModal: show() called')
+    if (this.modal) {
+      console.log('CharacterCreationModal: Existing modal found, removing it first')
+      this.hide()
     }
 
-    this.container = document.createElement('div')
-    this.container.id = 'character-creation'
-    this.container.style.cssText = `
+    this.createModal()
+    this.setupEventListeners()
+    this.render()
+    this.focusModal()
+    console.log('CharacterCreationModal: modal created and rendered')
+    
+    // Additional debugging
+    console.log('Modal element in DOM:', document.body.contains(this.modal))
+    console.log('Modal computed style:', this.modal ? window.getComputedStyle(this.modal) : 'No modal')
+    console.log('Modal innerHTML length:', this.modal?.innerHTML.length)
+  }
+
+  public hide(): void {
+    if (this.modal) {
+      this.modal.remove()
+      this.modal = null
+    }
+    this.restoreFocus()
+  }
+
+  private createModal(): void {
+    console.log('CharacterCreationModal: createModal() called')
+    // Create modal backdrop with proper accessibility attributes
+    this.modal = document.createElement('div')
+    this.modal.className = 'character-modal-backdrop'
+    this.modal.setAttribute('role', 'dialog')
+    this.modal.setAttribute('aria-labelledby', 'character-modal-title')
+    this.modal.setAttribute('aria-modal', 'true')
+    this.modal.setAttribute('tabindex', '-1')
+    
+    // Add inline styles as fallback to ensure the modal displays correctly
+    this.modal.style.cssText = `
       position: fixed;
       top: 0;
       left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.9);
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 1300;
       display: flex;
-      justify-content: center;
       align-items: center;
-      z-index: 2000;
+      justify-content: center;
+      padding: 2rem;
+      overflow-y: auto;
+    `
+
+    // Create modal container
+    const modalContainer = document.createElement('div')
+    modalContainer.className = 'character-modal-container'
+    modalContainer.style.cssText = `
+      background: rgba(20, 25, 30, 0.95);
+      border: 1px solid #444;
+      border-radius: 16px;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+      width: 100%;
+      max-width: 800px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      animation: modalSlideIn 0.3s ease-out;
+      color: #ddd;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     `
     
-    parent.appendChild(this.container)
-    this.render()
+    this.modal.appendChild(modalContainer)
+    document.body.appendChild(this.modal)
+    console.log('CharacterCreationModal: modal DOM elements created and added to body')
+    console.log('Modal element:', this.modal)
+    console.log('Modal classes:', this.modal.classList.toString())
+
+    // Disable background scrolling and interaction
+    document.body.style.overflow = 'hidden'
+    this.setBackgroundAriaHidden(true)
   }
 
-  show(onComplete?: (character: Character) => void) {
-    this.onComplete = onComplete
-    this.container.style.display = 'flex'
+  private setupEventListeners(): void {
+    if (!this.modal) return
+
+    // ESC key to close modal
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.cancel()
+      }
+    }
+
+    // Click outside to close (on backdrop only)
+    const handleBackdropClick = (e: MouseEvent) => {
+      if (e.target === this.modal) {
+        this.cancel()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    this.modal.addEventListener('click', handleBackdropClick)
+
+    // Store event listeners for cleanup
+    this.modal.dataset.keyDownHandler = 'attached'
+    this.modal.dataset.clickHandler = 'attached'
   }
 
-  hide() {
-    this.container.style.display = 'none'
-  }
-
-  private render() {
-    const content = document.createElement('div')
-    content.style.cssText = `
-      background: #1a1a2e;
-      border: 2px solid #333;
-      border-radius: 8px;
-      width: 90vw;
-      max-width: 800px;
-      max-height: 90vh;
-      overflow-y: auto;
-      padding: 24px;
-      color: #ddd;
-    `
-
-    content.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid #333; padding-bottom: 16px;">
-        <h2 style="margin: 0; color: #fff;">Create New Character</h2>
-        <button id="close-creation" style="background: none; border: none; color: #999; font-size: 24px; cursor: pointer; padding: 4px 8px;">×</button>
-      </div>
-      
-      ${this.renderStepIndicator()}
-      ${this.renderCurrentStep()}
-      ${this.renderNavigation()}
-    `
-
-    this.container.innerHTML = ''
-    this.container.appendChild(content)
-
-    this.attachEventListeners()
-  }
-
-  private renderStepIndicator(): string {
-    const steps = [
-      { key: 'race', label: 'Race' },
-      { key: 'class', label: 'Class' },
-      { key: 'abilities', label: 'Abilities' },
-      { key: 'skills', label: 'Skills' },
-      { key: 'equipment', label: 'Equipment' },
-      { key: 'review', label: 'Review' }
-    ]
-
-    const currentIndex = steps.findIndex(s => s.key === this.state.step)
-
-    return `
-      <div style="display: flex; justify-content: center; margin-bottom: 32px;">
-        ${steps.map((step, index) => `
-          <div style="
-            display: flex;
-            align-items: center;
-            color: ${index <= currentIndex ? '#7ed321' : '#666'};
-            font-weight: ${index === currentIndex ? 'bold' : 'normal'};
-          ">
-            <div style="
-              width: 24px;
-              height: 24px;
-              border-radius: 50%;
-              background: ${index < currentIndex ? '#7ed321' : (index === currentIndex ? '#f5a623' : '#333')};
-              color: ${index <= currentIndex ? '#000' : '#666'};
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: 12px;
-              font-weight: bold;
-            ">${index + 1}</div>
-            <span style="margin-left: 8px;">${step.label}</span>
-            ${index < steps.length - 1 ? '<div style="width: 40px; height: 2px; background: #333; margin: 0 16px;"></div>' : ''}
-          </div>
-        `).join('')}
-      </div>
-    `
-  }
-
-  private renderCurrentStep(): string {
-    switch (this.state.step) {
-      case 'race': return this.renderRaceSelection()
-      case 'class': return this.renderClassSelection()
-      case 'abilities': return this.renderAbilityScores()
-      case 'skills': return this.renderSkillSelection()
-      case 'equipment': return this.renderEquipmentSelection()
-      case 'review': return this.renderReview()
-      default: return ''
+  private focusModal(): void {
+    if (this.modal) {
+      this.modal.focus()
+      // Focus first interactive element
+      const firstInput = this.modal.querySelector('input, select, textarea, button') as HTMLElement
+      if (firstInput) {
+        firstInput.focus()
+      }
     }
   }
 
-  private renderRaceSelection(): string {
-    return `
-      <div>
-        <h3 style="color: #fff; margin-bottom: 16px;">Choose Your Race</h3>
-        
-        <div style="margin-bottom: 24px;">
-          <label style="display: block; margin-bottom: 8px;">Character Name:</label>
-          <input type="text" id="character-name" value="${this.state.name}" placeholder="Enter character name" style="
-            width: 100%;
-            padding: 8px;
-            background: #2a2a3e;
-            border: 1px solid #444;
-            border-radius: 4px;
-            color: #ddd;
-            font-size: 16px;
-          ">
+  private restoreFocus(): void {
+    document.body.style.overflow = ''
+    this.setBackgroundAriaHidden(false)
+  }
+
+  private setBackgroundAriaHidden(hidden: boolean): void {
+    const mainContent = document.querySelector('main, #app, .app')
+    if (mainContent) {
+      mainContent.setAttribute('aria-hidden', hidden.toString())
+    }
+  }
+
+  private render(): void {
+    if (!this.modal) {
+      console.error('CharacterCreationModal: render() called but modal is null')
+      return
+    }
+
+    console.log('CharacterCreationModal: render() starting for step:', this.currentStep)
+    
+    const container = this.modal.querySelector('.character-modal-container')
+    if (!container) {
+      console.error('CharacterCreationModal: modal container not found')
+      return
+    }
+
+    const stepIndex = this.steps.findIndex(step => step.id === this.currentStep)
+    const currentStepConfig = this.steps[stepIndex]
+
+    console.log('CharacterCreationModal: rendering step', stepIndex + 1, 'of', this.steps.length)
+    
+    container.innerHTML = `
+      <div class="character-modal-content">
+        <!-- Modal Header -->
+        <header class="character-modal-header">
+          <div class="modal-title-section">
+            <h1 id="character-modal-title" class="modal-title">${currentStepConfig.title}</h1>
+            <p class="modal-subtitle">${currentStepConfig.description}</p>
+          </div>
+          <button 
+            type="button" 
+            class="modal-close-button" 
+            id="close-modal-btn"
+            aria-label="Close character creation">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 6l12 12M6 18L18 6"/>
+            </svg>
+          </button>
+        </header>
+
+        <!-- Progress Indicator -->
+        <div class="progress-section">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${((stepIndex + 1) / this.steps.length) * 100}%"></div>
+          </div>
+          <div class="step-indicators">
+            ${this.steps.map((step, index) => `
+              <div class="step-indicator ${index <= stepIndex ? 'active' : ''} ${this.completedSteps.has(step.id) ? 'completed' : ''}">
+                <div class="step-number">${index + 1}</div>
+                <div class="step-label">${step.title}</div>
+              </div>
+            `).join('')}
+          </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
-          ${Object.entries(sampleRaces).map(([key, race]) => `
-            <div class="race-option" data-race="${key}" style="
-              border: 2px solid ${this.state.selectedRace === key ? '#7ed321' : '#444'};
-              border-radius: 8px;
-              padding: 16px;
-              cursor: pointer;
-              background: ${this.state.selectedRace === key ? 'rgba(126, 211, 33, 0.1)' : 'rgba(0,0,0,0.2)'};
-              transition: all 0.2s;
-            ">
-              <h4 style="margin: 0 0 8px 0; color: ${this.state.selectedRace === key ? '#7ed321' : '#fff'};">${race.name}</h4>
-              <div style="font-size: 13px; color: #aaa; margin-bottom: 12px;">
-                Size: ${race.size} • Speed: ${race.baseSpeed}ft
+        <!-- Form Content -->
+        <main class="character-form-content">
+          ${this.renderStepContent()}
+        </main>
+
+        <!-- Navigation Footer -->
+        <footer class="character-modal-footer">
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            id="prev-button"
+            ${stepIndex === 0 ? 'disabled' : ''}>
+            Previous
+          </button>
+          
+          <div class="step-info">
+            Step ${stepIndex + 1} of ${this.steps.length}
+          </div>
+          
+          <button 
+            type="button" 
+            class="btn btn-primary" 
+            id="next-button">
+            ${stepIndex === this.steps.length - 1 ? 'Create Character' : 'Next'}
+          </button>
+        </footer>
+      </div>
+    `
+
+    console.log('CharacterCreationModal: Modal HTML generated, length:', container.innerHTML.length)
+    console.log('CharacterCreationModal: Step content preview:', this.renderStepContent().substring(0, 200))
+
+    // Add event listeners for navigation buttons
+    this.setupNavigationEvents()
+    
+    // Update next button state based on validation
+    this.updateNavigationState()
+    
+    console.log('CharacterCreationModal: render() completed for step:', this.currentStep)
+  }
+
+  private setupNavigationEvents(): void {
+    if (!this.modal) {
+      console.error('CharacterCreationModal: setupNavigationEvents called but modal is null')
+      return
+    }
+
+    console.log('CharacterCreationModal: Setting up navigation events')
+
+    // Close button
+    const closeBtn = this.modal.querySelector('#close-modal-btn') as HTMLButtonElement
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        console.log('CharacterCreationModal: Close button clicked')
+        this.cancel()
+      })
+      console.log('CharacterCreationModal: Close button event listener added')
+    } else {
+      console.error('CharacterCreationModal: Close button not found')
+    }
+
+    // Previous button
+    const prevBtn = this.modal.querySelector('#prev-button') as HTMLButtonElement
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        console.log('CharacterCreationModal: Previous button clicked')
+        this.previousStep()
+      })
+      console.log('CharacterCreationModal: Previous button event listener added')
+    } else {
+      console.error('CharacterCreationModal: Previous button not found')
+    }
+
+    // Next button
+    const nextBtn = this.modal.querySelector('#next-button') as HTMLButtonElement
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        console.log('CharacterCreationModal: Next button clicked')
+        this.nextStep()
+      })
+      console.log('CharacterCreationModal: Next button event listener added')
+    } else {
+      console.error('CharacterCreationModal: Next button not found')
+    }
+
+    // Setup step-specific event listeners
+    this.setupStepSpecificEvents()
+  }
+
+  private setupStepSpecificEvents(): void {
+    if (!this.modal) return
+
+    console.log('CharacterCreationModal: Setting up step-specific events for:', this.currentStep)
+
+    switch (this.currentStep) {
+      case 'basics':
+        const nameInput = this.modal.querySelector('#character-name') as HTMLInputElement
+        if (nameInput) {
+          nameInput.addEventListener('input', (e) => {
+            const target = e.target as HTMLInputElement
+            console.log('CharacterCreationModal: Name input changed to:', target.value)
+            this.updateCharacterData('name', target.value)
+            // Hide suggestions when user starts typing
+            this.hideNameSuggestions()
+          })
+          console.log('CharacterCreationModal: Name input event listener added')
+        } else {
+          console.error('CharacterCreationModal: Name input not found')
+        }
+
+        // Random name generator button
+        const randomNameBtn = this.modal.querySelector('#random-name-btn') as HTMLButtonElement
+        if (randomNameBtn) {
+          randomNameBtn.addEventListener('click', () => {
+            this.showNameSuggestions()
+          })
+          console.log('CharacterCreationModal: Random name button event listener added')
+        }
+        break
+
+      case 'race':
+        // Race selection will be handled by the race option clicks
+        const raceOptions = this.modal.querySelectorAll('.race-option')
+        console.log('CharacterCreationModal: Found', raceOptions.length, 'race options')
+        raceOptions.forEach(option => {
+          option.addEventListener('click', () => {
+            const raceId = (option as HTMLElement).dataset.raceId
+            console.log('CharacterCreationModal: Race option clicked:', raceId)
+            if (raceId) {
+              this.selectRace(raceId)
+            }
+          })
+        })
+        break
+
+      case 'class':
+        // Class selection will be handled by the class option clicks
+        const classOptions = this.modal.querySelectorAll('.class-option')
+        classOptions.forEach(option => {
+          option.addEventListener('click', () => {
+            const classId = (option as HTMLElement).dataset.classId
+            if (classId) {
+              this.selectClass(classId)
+            }
+          })
+        })
+        break
+
+      case 'abilities':
+        // Ability generation method selection
+        const methodOptions = this.modal.querySelectorAll('.method-option-compact')
+        methodOptions.forEach(option => {
+          option.addEventListener('click', () => {
+            const method = (option as HTMLElement).dataset.method
+            if (method) {
+              this.selectAbilityGenerationMethod(method)
+            }
+          })
+        })
+
+        // Point buy adjustment buttons
+        const abilityBtns = this.modal.querySelectorAll('.ability-btn-compact')
+        abilityBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const ability = (btn as HTMLElement).dataset.ability
+            const change = parseInt((btn as HTMLElement).dataset.change || '0')
+            if (ability) {
+              this.adjustAbility(ability, change)
+            }
+          })
+        })
+
+        // Elite array selection
+        const eliteSelects = this.modal.querySelectorAll('.ability-select-compact')
+        eliteSelects.forEach(select => {
+          select.addEventListener('change', (e) => {
+            const target = e.target as HTMLSelectElement
+            const ability = target.dataset.ability
+            const value = parseInt(target.value)
+            if (ability && !isNaN(value)) {
+              this.assignEliteArrayScore(ability, value)
+            }
+          })
+        })
+
+        // Rolled abilities button
+        const rollBtn = this.modal.querySelector('.roll-btn-compact') as HTMLButtonElement
+        if (rollBtn) {
+          rollBtn.addEventListener('click', () => {
+            this.rollAbilities()
+          })
+        }
+
+        // Rolled ability assignment
+        const rolledSelects = this.modal.querySelectorAll('.ability-select-rolled-compact')
+        rolledSelects.forEach(select => {
+          select.addEventListener('change', (e) => {
+            const target = e.target as HTMLSelectElement
+            const ability = target.dataset.ability
+            const value = parseInt(target.value)
+            if (ability && !isNaN(value)) {
+              this.assignRolledScore(ability, value)
+            }
+          })
+        })
+        break
+
+      case 'skills':
+        const skillCheckboxes = this.modal.querySelectorAll('.skill-checkbox input[type="checkbox"]')
+        skillCheckboxes.forEach(checkbox => {
+          checkbox.addEventListener('change', (e) => {
+            const target = e.target as HTMLInputElement
+            this.toggleSkill(target.value, target.checked)
+          })
+        })
+        break
+
+      case 'feats':
+        const featCheckboxes = this.modal.querySelectorAll('.feat-option input[type="checkbox"]')
+        featCheckboxes.forEach(checkbox => {
+          checkbox.addEventListener('change', (e) => {
+            const target = e.target as HTMLInputElement
+            this.toggleFeat(target.value, target.checked)
+          })
+        })
+        break
+
+      case 'equipment':
+        const equipmentCheckboxes = this.modal.querySelectorAll('.equipment-checkbox input[type="checkbox"]')
+        equipmentCheckboxes.forEach(checkbox => {
+          checkbox.addEventListener('change', (e) => {
+            const target = e.target as HTMLInputElement
+            this.toggleEquipment(target.value, target.checked)
+          })
+        })
+        break
+    }
+  }
+
+  private renderStepContent(): string {
+    switch (this.currentStep) {
+      case 'basics':
+        return this.renderBasicsStep()
+      case 'race':
+        return this.renderRaceStep()
+      case 'class':
+        return this.renderClassStep()
+      case 'abilities':
+        return this.renderAbilitiesStep()
+      case 'skills':
+        return this.renderSkillsStep()
+      case 'feats':
+        return this.renderFeatsStep()
+      case 'equipment':
+        return this.renderEquipmentStep()
+      case 'review':
+        return this.renderReviewStep()
+      default:
+        return '<p>Invalid step</p>'
+    }
+  }
+
+  private renderBasicsStep(): string {
+    return `
+      <div class="form-section">
+        <div class="form-group">
+          <label for="character-name" class="form-label">Character Name *</label>
+          <div class="name-input-container">
+            <input 
+              type="text" 
+              id="character-name" 
+              class="form-input" 
+              value="${this.characterData.name || ''}"
+              placeholder="Enter your character's name"
+              required
+            />
+            <button 
+              type="button" 
+              id="random-name-btn" 
+              class="random-name-btn"
+              title="Generate random name"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="name-suggestions" id="name-suggestions" style="display: none;">
+            <small class="suggestions-label">Suggestions:</small>
+            <div class="suggestions-list" id="suggestions-list"></div>
+          </div>
+          <small class="form-help">Give your character a memorable name that fits the setting. Click the dice to generate random suggestions! (Names will match your selected race)</small>
+        </div>
+      </div>
+    `
+  }
+
+  private renderRaceStep(): string {
+    return `
+      <div class="form-section">
+        <div class="race-selection">
+          ${this.raceData.map(race => `
+            <div class="race-option ${this.characterData.race === race.id ? 'selected' : ''}" 
+                 data-race-id="${race.id}">
+              <div class="race-header">
+                <h3 class="race-name">${race.name}</h3>
+                <div class="race-size-speed">
+                  <span class="race-size">${race.size}</span>
+                  <span class="race-speed">${race.speed} ft. speed</span>
+                </div>
               </div>
-              <div style="font-size: 12px; color: #ccc;">
-                <div><strong>Ability Adjustments:</strong></div>
-                ${Object.entries(race.abilityAdjustments).length > 0 
-                  ? Object.entries(race.abilityAdjustments).map(([ability, mod]) => 
-                      `<span style="color: ${mod > 0 ? '#7ed321' : '#e94b3c'}">${ability} ${mod > 0 ? '+' : ''}${mod}</span>`
-                    ).join(', ')
-                  : '<span style="color: #aaa">None</span>'
-                }
-              </div>
-              <div style="font-size: 12px; color: #ccc; margin-top: 8px;">
-                <div><strong>Special:</strong> ${race.specialAbilities.join(', ') || 'None'}</div>
-                ${race.bonusSkillPoints > 0 ? `<div>+${race.bonusSkillPoints} skill points</div>` : ''}
-                ${race.bonusFeats > 0 ? `<div>+${race.bonusFeats} bonus feats</div>` : ''}
+              <p class="race-description">${race.description}</p>
+              <div class="race-traits">
+                <h4>Racial Traits:</h4>
+                <ul>
+                  ${race.traits.map(trait => `<li>${trait}</li>`).join('')}
+                </ul>
               </div>
             </div>
           `).join('')}
@@ -200,39 +745,35 @@ export class CharacterCreationUI {
     `
   }
 
-  private renderClassSelection(): string {
-    const classes: { key: ClassType, name: string, description: string, hitDie: string, skills: string }[] = [
-      { key: 'fighter', name: 'Fighter', description: 'Masters of weapons and armor', hitDie: 'd10', skills: '2 + Int' },
-      { key: 'wizard', name: 'Wizard', description: 'Arcane spellcasters who study magic', hitDie: 'd4', skills: '2 + Int' },
-      { key: 'cleric', name: 'Cleric', description: 'Divine spellcasters and healers', hitDie: 'd8', skills: '2 + Int' },
-      { key: 'rogue', name: 'Rogue', description: 'Skilled scouts and sneaks', hitDie: 'd6', skills: '8 + Int' },
-      { key: 'ranger', name: 'Ranger', description: 'Skilled hunters and trackers', hitDie: 'd8', skills: '6 + Int' },
-      { key: 'barbarian', name: 'Barbarian', description: 'Fierce warriors who rage in battle', hitDie: 'd12', skills: '4 + Int' },
-      { key: 'bard', name: 'Bard', description: 'Versatile performers and spellcasters', hitDie: 'd6', skills: '6 + Int' },
-      { key: 'druid', name: 'Druid', description: 'Nature priests with wild shape', hitDie: 'd8', skills: '4 + Int' },
-      { key: 'monk', name: 'Monk', description: 'Martial artists with inner power', hitDie: 'd8', skills: '4 + Int' },
-      { key: 'paladin', name: 'Paladin', description: 'Holy warriors with divine power', hitDie: 'd10', skills: '2 + Int' },
-      { key: 'sorcerer', name: 'Sorcerer', description: 'Natural-born arcane spellcasters', hitDie: 'd4', skills: '2 + Int' }
-    ]
-
+  private renderClassStep(): string {
     return `
-      <div>
-        <h3 style="color: #fff; margin-bottom: 16px;">Choose Your Class</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
-          ${classes.map(cls => `
-            <div class="class-option" data-class="${cls.key}" style="
-              border: 2px solid ${this.state.selectedClass === cls.key ? '#7ed321' : '#444'};
-              border-radius: 8px;
-              padding: 16px;
-              cursor: pointer;
-              background: ${this.state.selectedClass === cls.key ? 'rgba(126, 211, 33, 0.1)' : 'rgba(0,0,0,0.2)'};
-              transition: all 0.2s;
-            ">
-              <h4 style="margin: 0 0 8px 0; color: ${this.state.selectedClass === cls.key ? '#7ed321' : '#fff'};">${cls.name}</h4>
-              <div style="font-size: 13px; color: #ccc; margin-bottom: 8px;">${cls.description}</div>
-              <div style="font-size: 12px; color: #aaa;">
-                <div>Hit Die: ${cls.hitDie}</div>
-                <div>Skill Points: ${cls.skills}</div>
+      <div class="form-section">
+        <div class="class-selection">
+          ${this.classData.map(cls => `
+            <div class="class-option ${this.characterData.characterClass === cls.id ? 'selected' : ''}" 
+                 data-class-id="${cls.id}">
+              <div class="class-header">
+                <h3 class="class-name">${cls.name}</h3>
+                <div class="class-hit-die">Hit Die: ${cls.hitDie}</div>
+              </div>
+              <p class="class-description">${cls.description}</p>
+              <div class="class-stats">
+                <div class="class-stat">
+                  <label>Skill Points:</label>
+                  <span>${cls.skillPoints} + Int modifier</span>
+                </div>
+                <div class="class-stat">
+                  <label>Base Attack:</label>
+                  <span>${cls.baseAttackBonus}</span>
+                </div>
+                <div class="class-saves">
+                  <label>Saving Throws:</label>
+                  <div class="saves-grid">
+                    <span class="save-item save-${cls.saves.fortitude.toLowerCase()}">Fort: ${cls.saves.fortitude}</span>
+                    <span class="save-item save-${cls.saves.reflex.toLowerCase()}">Ref: ${cls.saves.reflex}</span>
+                    <span class="save-item save-${cls.saves.will.toLowerCase()}">Will: ${cls.saves.will}</span>
+                  </div>
+                </div>
               </div>
             </div>
           `).join('')}
@@ -241,180 +782,411 @@ export class CharacterCreationUI {
     `
   }
 
-  private renderAbilityScores(): string {
-    const abilities: (keyof AbilityScores)[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA']
+  private renderAbilitiesStep(): string {
+    const abilities = this.characterData.abilities!
+    const method = this.characterData.abilityGenerationMethod || 'pointBuy'
     
     return `
-      <div>
-        <h3 style="color: #fff; margin-bottom: 16px;">Set Ability Scores</h3>
-        <div style="margin-bottom: 16px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 4px;">
-          <div style="color: #f5a623; font-weight: bold;">Point Buy System</div>
-          <div style="font-size: 13px; color: #ccc;">
-            You have <strong style="color: #7ed321;">${this.state.remainingPoints}</strong> points remaining.
-            Base cost: 8=0pts, 9=1pt, 10=2pts, 11=3pts, 12=4pts, 13=5pts, 14=6pts, 15=8pts
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-          ${abilities.map(ability => {
-            const score = this.state.abilityScores[ability]
-            const modifier = getAbilityModifier(score)
-            const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`
-            
-            return `
-              <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 16px; text-align: center;">
-                <h4 style="margin: 0 0 12px 0; color: #fff;">${ability}</h4>
-                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
-                  <button class="ability-btn" data-ability="${ability}" data-action="decrease" style="
-                    width: 30px; height: 30px; border: none; background: #e94b3c; color: white; border-radius: 50%; cursor: pointer;
-                    ${score <= 8 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
-                  ">−</button>
-                  <div style="font-size: 24px; font-weight: bold; color: #fff; min-width: 40px;">${score}</div>
-                  <button class="ability-btn" data-ability="${ability}" data-action="increase" style="
-                    width: 30px; height: 30px; border: none; background: #7ed321; color: white; border-radius: 50%; cursor: pointer;
-                    ${score >= 15 || this.state.remainingPoints <= 0 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
-                  ">+</button>
+      <div class="form-section">
+        <div class="abilities-section-split">
+          <!-- Left Panel: Method Selection -->
+          <div class="ability-method-panel">
+            <h3>Generation Method</h3>
+            <div class="method-options-compact">
+              <div class="method-option-compact ${method === 'pointBuy' ? 'selected' : ''}" data-method="pointBuy">
+                <div class="method-header-compact">
+                  <h4>Point Buy</h4>
+                  <span class="method-badge">Balanced</span>
                 </div>
-                <div style="font-size: 14px; color: #ccc;">Modifier: ${modStr}</div>
-                <div style="font-size: 12px; color: #aaa;">Cost: ${this.getAbilityCost(score)}pts</div>
+                <p class="method-description-compact">Spend 27 points to customize ability scores.</p>
               </div>
-            `
-          }).join('')}
-        </div>
-      </div>
-    `
-  }
-
-  private renderSkillSelection(): string {
-    return `
-      <div>
-        <h3 style="color: #fff; margin-bottom: 16px;">Skills</h3>
-        <div style="text-align: center; color: #aaa; font-style: italic; padding: 40px;">
-          Skill selection will be implemented with class-specific skill lists.<br>
-          For now, default skills will be assigned automatically.
-        </div>
-      </div>
-    `
-  }
-
-  private renderEquipmentSelection(): string {
-    const weapons = Object.entries(sampleWeapons).slice(0, 6) // Show first 6 weapons
-    const armors = Object.entries(sampleArmor)
-
-    return `
-      <div>
-        <h3 style="color: #fff; margin-bottom: 16px;">Starting Equipment</h3>
-        
-        <div style="margin-bottom: 24px;">
-          <h4 style="color: #fff; margin-bottom: 12px;">Weapons</h4>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
-            ${weapons.map(([key, weapon]) => `
-              <div class="weapon-option" data-weapon="${key}" style="
-                border: 1px solid ${this.state.selectedEquipment.weapons.includes(key) ? '#7ed321' : '#444'};
-                border-radius: 4px;
-                padding: 12px;
-                cursor: pointer;
-                background: ${this.state.selectedEquipment.weapons.includes(key) ? 'rgba(126, 211, 33, 0.1)' : 'rgba(0,0,0,0.2)'};
-                transition: all 0.2s;
-              ">
-                <div style="font-weight: bold; color: ${this.state.selectedEquipment.weapons.includes(key) ? '#7ed321' : '#fff'};">${weapon.name}</div>
-                <div style="font-size: 12px; color: #aaa;">Damage: ${weapon.damage} • ${weapon.damageType.join('/')}</div>
-                <div style="font-size: 12px; color: #aaa;">Critical: ${weapon.critical.threat}-20/×${weapon.critical.multiplier}</div>
+              
+              <div class="method-option-compact ${method === 'eliteArray' ? 'selected' : ''}" data-method="eliteArray">
+                <div class="method-header-compact">
+                  <h4>Elite Array</h4>
+                  <span class="method-badge">Quick</span>
+                </div>
+                <p class="method-description-compact">Assign fixed values: 15, 14, 13, 12, 10, 8.</p>
               </div>
-            `).join('')}
-          </div>
-        </div>
-
-        <div>
-          <h4 style="color: #fff; margin-bottom: 12px;">Armor</h4>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
-            ${armors.map(([key, armor]) => `
-              <div class="armor-option" data-armor="${key}" style="
-                border: 1px solid ${this.state.selectedEquipment.armor === key ? '#7ed321' : '#444'};
-                border-radius: 4px;
-                padding: 12px;
-                cursor: pointer;
-                background: ${this.state.selectedEquipment.armor === key ? 'rgba(126, 211, 33, 0.1)' : 'rgba(0,0,0,0.2)'};
-                transition: all 0.2s;
-              ">
-                <div style="font-weight: bold; color: ${this.state.selectedEquipment.armor === key ? '#7ed321' : '#fff'};">${armor.name}</div>
-                <div style="font-size: 12px; color: #aaa;">AC: +${armor.acBonus} • Max Dex: ${armor.maxDexBonus ?? '∞'}</div>
-                <div style="font-size: 12px; color: #aaa;">ACP: ${armor.armorCheckPenalty} • ASF: ${armor.arcaneSpellFailure}%</div>
+              
+              <div class="method-option-compact ${method === 'roll4d6' ? 'selected' : ''}" data-method="roll4d6">
+                <div class="method-header-compact">
+                  <h4>Roll 4d6</h4>
+                  <span class="method-badge">Random</span>
+                </div>
+                <p class="method-description-compact">Roll dice for random ability scores.</p>
               </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    `
-  }
-
-  private renderReview(): string {
-    if (!this.state.character) {
-      this.createCharacterFromState()
-    }
-
-    const char = this.state.character!
-    const errors = validateCharacterPrerequisites(char)
-
-    return `
-      <div>
-        <h3 style="color: #fff; margin-bottom: 16px;">Review Character</h3>
-        
-        ${errors.length > 0 ? `
-          <div style="background: rgba(233, 75, 60, 0.2); border: 1px solid #e94b3c; border-radius: 4px; padding: 12px; margin-bottom: 16px;">
-            <div style="color: #e94b3c; font-weight: bold; margin-bottom: 8px;">⚠ Character Issues:</div>
-            ${errors.map(error => `<div style="color: #e94b3c; font-size: 13px;">• ${error}</div>`).join('')}
-          </div>
-        ` : `
-          <div style="background: rgba(126, 211, 33, 0.2); border: 1px solid #7ed321; border-radius: 4px; padding: 12px; margin-bottom: 16px;">
-            <div style="color: #7ed321; font-weight: bold;">✓ Character is valid and ready!</div>
-          </div>
-        `}
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-          <div>
-            <h4 style="color: #fff; margin-bottom: 12px;">Basic Info</h4>
-            <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 12px;">
-              <div><strong>Name:</strong> ${char.name}</div>
-              <div><strong>Race:</strong> ${char.race}</div>
-              <div><strong>Class:</strong> ${char.classes.map(c => `${c.class} ${c.level}`).join(', ')}</div>
-              <div><strong>Hit Points:</strong> ${char.hitPoints.max}</div>
-              <div><strong>Armor Class:</strong> ${char.armorClass.total}</div>
             </div>
+            
+            ${this.renderMethodDetails(method)}
+          </div>
+          
+          <!-- Right Panel: Ability Scores Assignment -->
+          <div class="ability-assignment-panel">
+            <h3>Ability Scores</h3>
+            ${this.renderAbilityScoresForMethod(method, abilities)}
+          </div>
+        </div>
+      </div>
+    `
+  }
 
-            <h4 style="color: #fff; margin: 16px 0 12px 0;">Ability Scores</h4>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-              ${Object.entries(char.abilityScores).map(([ability, score]) => {
-                const mod = getAbilityModifier(score)
-                const modStr = mod >= 0 ? `+${mod}` : `${mod}`
-                return `
-                  <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 8px; text-align: center;">
-                    <div style="font-size: 12px; color: #aaa;">${ability}</div>
-                    <div style="font-weight: bold;">${score} (${modStr})</div>
-                  </div>
-                `
+  private renderMethodDetails(method: string): string {
+    switch (method) {
+      case 'pointBuy':
+        return `
+          <div class="method-details-panel">
+            <h5>Point Buy Rules:</h5>
+            <ul class="rules-list">
+              <li>Start with 8 in each ability</li>
+              <li>Scores 8-13 cost 1 point each</li>
+              <li>Scores 14-15 cost 2 points each</li>
+              <li>Total budget: 27 points</li>
+            </ul>
+          </div>
+        `
+      case 'eliteArray':
+        return `
+          <div class="method-details-panel">
+            <h5>Elite Array Values:</h5>
+            <div class="elite-preview">
+              <span class="elite-value">15</span>
+              <span class="elite-value">14</span>
+              <span class="elite-value">13</span>
+              <span class="elite-value">12</span>
+              <span class="elite-value">10</span>
+              <span class="elite-value">8</span>
+            </div>
+            <p class="elite-note">Assign these six values to your abilities</p>
+          </div>
+        `
+      case 'roll4d6':
+        return `
+          <div class="method-details-panel">
+            <h5>Rolling Rules:</h5>
+            <ul class="rules-list">
+              <li>Roll 4d6 six times</li>
+              <li>Drop lowest die each roll</li>
+              <li>Assign results to abilities</li>
+              <li>High variance possible</li>
+            </ul>
+          </div>
+        `
+      default:
+        return ''
+    }
+  }
+
+  private renderAbilityScoresForMethod(method: string, abilities: Record<string, number>): string {
+    switch (method) {
+      case 'pointBuy':
+        return this.renderPointBuyAbilities(abilities)
+      case 'eliteArray':
+        return this.renderEliteArrayAbilities(abilities)
+      case 'roll4d6':
+        return this.renderRolledAbilities(abilities)
+      default:
+        return this.renderPointBuyAbilities(abilities)
+    }
+  }
+
+  private renderPointBuyAbilities(abilities: Record<string, number>): string {
+    const pointBuy = this.calculatePointBuyCost()
+    
+    return `
+      <div class="point-buy-compact">
+        <div class="points-tracker">
+          <span class="points-label">Points Remaining:</span>
+          <span class="points-value ${pointBuy.remaining < 0 ? 'negative' : ''}">${pointBuy.remaining}</span>
+        </div>
+        
+        <div class="abilities-grid-compact">
+          ${Object.entries(abilities).map(([ability, value]) => `
+            <div class="ability-row">
+              <label class="ability-label-compact">${this.capitalizeFirst(ability)}</label>
+              <div class="ability-controls-compact">
+                <button 
+                  type="button" 
+                  class="ability-btn-compact" 
+                  data-ability="${ability}"
+                  data-change="-1"
+                  ${value <= 8 ? 'disabled' : ''}>
+                  −
+                </button>
+                <div class="ability-display-compact">
+                  <span class="score-compact">${value}</span>
+                  <span class="modifier-compact">${this.getModifier(value) >= 0 ? '+' : ''}${this.getModifier(value)}</span>
+                </div>
+                <button 
+                  type="button" 
+                  class="ability-btn-compact" 
+                  data-ability="${ability}"
+                  data-change="1"
+                  ${value >= 15 || pointBuy.remaining <= 0 ? 'disabled' : ''}>
+                  +
+                </button>
+              </div>
+              <small class="ability-cost-compact">${this.getAbilityCost(value)}pts</small>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `
+  }
+
+  private renderEliteArrayAbilities(abilities: Record<string, number>): string {
+    const eliteArray = [15, 14, 13, 12, 10, 8]
+    const usedValues = Object.values(abilities) as number[]
+    
+    return `
+      <div class="elite-array-compact">
+        <div class="available-values">
+          <small class="available-label">Available Values:</small>
+          <div class="value-pool-compact">
+            ${eliteArray.map(score => {
+              const isUsed = usedValues.includes(score)
+              return `<span class="pool-value ${isUsed ? 'used' : 'available'}" data-score="${score}">${score}</span>`
+            }).join('')}
+          </div>
+        </div>
+        
+        <div class="abilities-grid-compact">
+          ${Object.entries(abilities).map(([ability, value]) => `
+            <div class="ability-row">
+              <label class="ability-label-compact">${this.capitalizeFirst(ability)}</label>
+              <div class="ability-assignment-compact">
+                <select class="ability-select-compact" data-ability="${ability}">
+                  <option value="">--</option>
+                  ${eliteArray.map(score => 
+                    `<option value="${score}" ${value === score ? 'selected' : ''}>${score}</option>`
+                  ).join('')}
+                </select>
+                <div class="ability-display-compact">
+                  <span class="score-compact">${value || '--'}</span>
+                  <span class="modifier-compact">${value ? (this.getModifier(value) >= 0 ? '+' : '') + this.getModifier(value) : '--'}</span>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `
+  }
+
+  private renderRolledAbilities(abilities: Record<string, number>): string {
+    const rolledValues = this.characterData.rolledAbilities || []
+    const hasRolled = rolledValues.length > 0
+    
+    return `
+      <div class="rolled-abilities-compact">
+        <div class="roll-controls-compact">
+          <button type="button" class="roll-btn-compact ${hasRolled ? 'reroll' : ''}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5,3H19A2,2 0 0,1 21,5V19A2,2 0 0,1 19,21H5A2,2 0 0,1 3,19V5A2,2 0 0,1 5,3M7,5A2,2 0 0,0 5,7A2,2 0 0,0 7,9A2,2 0 0,0 9,7A2,2 0 0,0 7,5M7,13A2,2 0 0,0 5,15A2,2 0 0,0 7,17A2,2 0 0,0 9,15A2,2 0 0,0 7,13M17,5A2,2 0 0,0 15,7A2,2 0 0,0 17,9A2,2 0 0,0 19,7A2,2 0 0,0 17,5M17,13A2,2 0 0,0 15,15A2,2 0 0,0 17,17A2,2 0 0,0 19,15A2,2 0 0,0 17,13Z"/>
+            </svg>
+            ${hasRolled ? 'Re-roll' : 'Roll 4d6'}
+          </button>
+        </div>
+        
+        ${hasRolled ? `
+          <div class="rolled-values">
+            <small class="available-label">Rolled Values:</small>
+            <div class="value-pool-compact">
+              ${rolledValues.map((score, index) => {
+                const isUsed = Object.values(abilities).includes(score)
+                return `<span class="pool-value ${isUsed ? 'used' : 'available'}" data-score="${score}" data-roll-index="${index}">${score}</span>`
               }).join('')}
             </div>
           </div>
+          
+          <div class="abilities-grid-compact">
+            ${Object.entries(abilities).map(([ability, value]) => `
+              <div class="ability-row">
+                <label class="ability-label-compact">${this.capitalizeFirst(ability)}</label>
+                <div class="ability-assignment-compact">
+                  <select class="ability-select-rolled-compact" data-ability="${ability}">
+                    <option value="">--</option>
+                    ${rolledValues.map((score, index) => 
+                      `<option value="${score}" data-roll-index="${index}" ${value === score ? 'selected' : ''}>${score}</option>`
+                    ).join('')}
+                  </select>
+                  <div class="ability-display-compact">
+                    <span class="score-compact">${value || '--'}</span>
+                    <span class="modifier-compact">${value ? (this.getModifier(value) >= 0 ? '+' : '') + this.getModifier(value) : '--'}</span>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="roll-prompt-compact">Click "Roll 4d6" to generate ability scores</div>'}
+      </div>
+    `
+  }
 
-          <div>
-            <h4 style="color: #fff; margin-bottom: 12px;">Combat</h4>
-            <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 12px;">
-              <div><strong>Base Attack:</strong> +${this.calculateBAB(char)}</div>
-              <div><strong>Fort Save:</strong> +${char.savingThrows.fortitude}</div>
-              <div><strong>Ref Save:</strong> +${char.savingThrows.reflex}</div>
-              <div><strong>Will Save:</strong> +${char.savingThrows.will}</div>
+  private renderSkillsStep(): string {
+    const availableSkills = [
+      'Appraise', 'Balance', 'Bluff', 'Climb', 'Concentration', 'Craft', 'Decipher Script',
+      'Diplomacy', 'Disable Device', 'Disguise', 'Escape Artist', 'Forgery', 'Gather Information',
+      'Handle Animal', 'Heal', 'Hide', 'Intimidate', 'Jump', 'Knowledge', 'Listen', 'Move Silently',
+      'Open Lock', 'Perform', 'Profession', 'Ride', 'Search', 'Sense Motive', 'Sleight of Hand',
+      'Spellcraft', 'Spot', 'Survival', 'Swim', 'Tumble', 'Use Magic Device', 'Use Rope'
+    ]
+
+    return `
+      <div class="form-section">
+        <div class="skills-section">
+          <h3>Select Starting Skills</h3>
+          <p>Choose skills that complement your character class and background.</p>
+          
+          <div class="skills-grid">
+            ${availableSkills.map(skill => `
+              <div class="skill-option">
+                <label class="skill-checkbox">
+                  <input 
+                    type="checkbox" 
+                    value="${skill}"
+                    ${this.characterData.skills?.includes(skill) ? 'checked' : ''}
+                  />
+                  <span class="skill-name">${skill}</span>
+                </label>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `
+  }
+
+  private renderFeatsStep(): string {
+    return `
+      <div class="form-section">
+        <div class="feats-section">
+          <h3>Select Feats</h3>
+          <p>Choose feats to enhance your character's abilities. Humans get an extra feat at 1st level.</p>
+          
+          <div class="feats-grid">
+            ${this.featData.map(feat => `
+              <div class="feat-card ${this.characterData.feats?.includes(feat.name) ? 'selected' : ''}">
+                <label class="feat-option">
+                  <input 
+                    type="checkbox" 
+                    value="${feat.name}"
+                    ${this.characterData.feats?.includes(feat.name) ? 'checked' : ''}
+                  />
+                  <div class="feat-content">
+                    <h4 class="feat-name">${feat.name} <span class="feat-type">[${feat.type}]</span></h4>
+                    <p class="feat-description">${feat.description}</p>
+                    ${feat.prerequisites.length > 0 ? 
+                      `<div class="feat-prerequisites">
+                        <strong>Prerequisites:</strong> ${feat.prerequisites.join(', ')}
+                      </div>` : 
+                      '<div class="feat-no-prereq">No prerequisites</div>'
+                    }
+                  </div>
+                </label>
+              </div>
+            `).join('')}
+          </div>
+          
+          <div class="feats-info">
+            <p><strong>Selected Feats:</strong> ${this.characterData.feats?.length || 0}</p>
+            <p class="feat-note">Most characters get 1 feat at 1st level. Humans get a bonus feat.</p>
+          </div>
+        </div>
+      </div>
+    `
+  }
+
+  private renderEquipmentStep(): string {
+    const equipment = [
+      'Backpack', 'Bedroll', 'Belt Pouch', 'Blanket', 'Candles (10)', 'Chain (10 ft.)',
+      'Chalk (1 piece)', 'Crowbar', 'Dagger', 'Flint and Steel', 'Grappling Hook',
+      'Hammer', 'Ink (1 vial)', 'Inkpen', 'Lantern (Bullseye)', 'Lock (Simple)',
+      'Manacles', 'Mirror (Small Steel)', 'Oil (1 pint)', 'Paper (Sheet)', 'Pick (Miner\'s)',
+      'Piton', 'Pole (10-foot)', 'Rations (Trail/Per Day)', 'Rope (Hemp/50 ft.)',
+      'Sack', 'Sealing Wax', 'Sewing Needle', 'Signal Whistle', 'Signet Ring',
+      'Sledge', 'Soap (Per lb.)', 'Spade or Shovel', 'Tent', 'Torch', 'Vial', 'Waterskin'
+    ]
+
+    return `
+      <div class="form-section">
+        <div class="equipment-section">
+          <h3>Starting Equipment</h3>
+          <p>Select basic equipment for your adventure. You'll start with class-specific gear automatically.</p>
+          
+          <div class="equipment-grid">
+            ${equipment.map(item => `
+              <div class="equipment-option">
+                <label class="equipment-checkbox">
+                  <input 
+                    type="checkbox" 
+                    value="${item}"
+                    ${this.characterData.equipment?.includes(item) ? 'checked' : ''}
+                  />
+                  <span class="equipment-name">${item}</span>
+                </label>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `
+  }
+
+  private renderReviewStep(): string {
+    const race = this.raceData.find(r => r.id === this.characterData.race)
+    const characterClass = this.classData.find(c => c.id === this.characterData.characterClass)
+    
+    return `
+      <div class="form-section">
+        <div class="character-review">
+          <h3>Character Summary</h3>
+          
+          <div class="review-grid">
+            <div class="review-section">
+              <h4>Basic Information</h4>
+              <div class="review-item">
+                <label>Name:</label>
+                <span>${this.characterData.name}</span>
+              </div>
+              <div class="review-item">
+                <label>Race:</label>
+                <span>${race?.name}</span>
+              </div>
+              <div class="review-item">
+                <label>Class:</label>
+                <span>${characterClass?.name}</span>
+              </div>
             </div>
-
-            <h4 style="color: #fff; margin: 16px 0 12px 0;">Equipment</h4>
-            <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 12px;">
-              <div><strong>Weapons:</strong> ${char.equipment.weapons.map(w => w.name).join(', ') || 'None'}</div>
-              <div><strong>Armor:</strong> ${char.equipment.armor?.name || 'None'}</div>
+            
+            <div class="review-section">
+              <h4>Ability Scores</h4>
+              ${Object.entries(this.characterData.abilities!).map(([ability, value]) => `
+                <div class="review-item">
+                  <label>${this.capitalizeFirst(ability)}:</label>
+                  <span>${value} (${this.getModifier(value) >= 0 ? '+' : ''}${this.getModifier(value)})</span>
+                </div>
+              `).join('')}
             </div>
-
-            <h4 style="color: #fff; margin: 16px 0 12px 0;">Feats</h4>
-            <div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 12px;">
-              ${char.feats.length > 0 ? char.feats.map(feat => `<div>• ${feat}</div>`).join('') : '<div style="color: #aaa;">None selected</div>'}
+            
+            <div class="review-section">
+              <h4>Skills Selected</h4>
+              <div class="review-list">
+                ${this.characterData.skills?.length ? 
+                  this.characterData.skills.map(skill => `<span class="skill-tag">${skill}</span>`).join('') :
+                  '<span class="no-items">No skills selected</span>'
+                }
+              </div>
+            </div>
+            
+            <div class="review-section">
+              <h4>Equipment</h4>
+              <div class="review-list">
+                ${this.characterData.equipment?.length ?
+                  this.characterData.equipment.map(item => `<span class="equipment-tag">${item}</span>`).join('') :
+                  '<span class="no-items">No additional equipment selected</span>'
+                }
+              </div>
             </div>
           </div>
         </div>
@@ -422,253 +1194,464 @@ export class CharacterCreationUI {
     `
   }
 
-  private renderNavigation(): string {
-    const canGoNext = this.canProceedFromCurrentStep()
-    const isLastStep = this.state.step === 'review'
-
-    return `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #333;">
-        <button id="prev-step" style="
-          padding: 10px 20px; 
-          background: #666; 
-          border: none; 
-          border-radius: 4px; 
-          color: white; 
-          cursor: pointer;
-          ${this.state.step === 'race' ? 'opacity: 0.5; cursor: not-allowed;' : ''}
-        " ${this.state.step === 'race' ? 'disabled' : ''}>
-          ← Previous
-        </button>
-
-        <div style="color: #aaa; font-size: 13px;">
-          Step ${this.getStepIndex() + 1} of 6
-        </div>
-
-        <button id="next-step" style="
-          padding: 10px 20px; 
-          background: ${isLastStep ? '#7ed321' : '#4a90e2'}; 
-          border: none; 
-          border-radius: 4px; 
-          color: white; 
-          cursor: pointer;
-          font-weight: bold;
-          ${!canGoNext ? 'opacity: 0.5; cursor: not-allowed;' : ''}
-        " ${!canGoNext ? 'disabled' : ''}>
-          ${isLastStep ? 'Create Character' : 'Next →'}
-        </button>
-      </div>
-    `
+  // Public methods for UI interaction
+  public updateCharacterData(field: string, value: any): void {
+    (this.characterData as any)[field] = value
+    this.updateNavigationState()
   }
 
-  private attachEventListeners() {
-    // Close button
-    const closeBtn = document.getElementById('close-creation')
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => this.hide())
-    }
-
-    // Character name
-    const nameInput = document.getElementById('character-name') as HTMLInputElement
-    if (nameInput) {
-      nameInput.addEventListener('input', () => {
-        this.state.name = nameInput.value
-      })
-    }
-
-    // Race selection
-    document.querySelectorAll('.race-option').forEach(element => {
-      element.addEventListener('click', () => {
-        this.state.selectedRace = (element as HTMLElement).dataset.race!
-        this.render()
-      })
-    })
-
-    // Class selection
-    document.querySelectorAll('.class-option').forEach(element => {
-      element.addEventListener('click', () => {
-        this.state.selectedClass = (element as HTMLElement).dataset.class! as ClassType
-        this.render()
-      })
-    })
-
-    // Ability score buttons
-    document.querySelectorAll('.ability-btn').forEach(button => {
-      button.addEventListener('click', () => {
-        const ability = (button as HTMLElement).dataset.ability! as keyof AbilityScores
-        const action = (button as HTMLElement).dataset.action!
-        
-        if (action === 'increase' && this.canIncreaseAbility(ability)) {
-          this.increaseAbility(ability)
-        } else if (action === 'decrease' && this.canDecreaseAbility(ability)) {
-          this.decreaseAbility(ability)
-        }
-        this.render()
-      })
-    })
-
-    // Equipment selection
-    document.querySelectorAll('.weapon-option').forEach(element => {
-      element.addEventListener('click', () => {
-        const weapon = (element as HTMLElement).dataset.weapon!
-        const weapons = this.state.selectedEquipment.weapons
-        if (weapons.includes(weapon)) {
-          this.state.selectedEquipment.weapons = weapons.filter(w => w !== weapon)
-        } else {
-          weapons.push(weapon)
-        }
-        this.render()
-      })
-    })
-
-    document.querySelectorAll('.armor-option').forEach(element => {
-      element.addEventListener('click', () => {
-        const armor = (element as HTMLElement).dataset.armor!
-        this.state.selectedEquipment.armor = this.state.selectedEquipment.armor === armor ? undefined : armor
-        this.render()
-      })
-    })
-
-    // Navigation
-    const prevBtn = document.getElementById('prev-step')
-    const nextBtn = document.getElementById('next-step')
-
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => this.goToPreviousStep())
-    }
-
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => {
-        if (this.state.step === 'review') {
-          this.completeCharacterCreation()
-        } else {
-          this.goToNextStep()
-        }
-      })
-    }
-  }
-
-  private getAbilityCost(score: number): number {
-    if (score <= 8) return 0
-    if (score <= 13) return score - 8
-    if (score === 14) return 6
-    if (score === 15) return 8
-    return 10 // Should not reach here in point-buy
-  }
-
-  private canIncreaseAbility(ability: keyof AbilityScores): boolean {
-    const score = this.state.abilityScores[ability]
-    const currentCost = this.getAbilityCost(score)
-    const newCost = this.getAbilityCost(score + 1)
-    const costDiff = newCost - currentCost
+  public selectRace(raceId: string): void {
+    this.characterData.race = raceId
+    this.render()
+    this.updateNavigationState()
     
-    return score < 15 && costDiff <= this.state.remainingPoints
+    // Update name suggestions if they are currently visible
+    this.updateNameSuggestionsForRace()
   }
 
-  private canDecreaseAbility(ability: keyof AbilityScores): boolean {
-    return this.state.abilityScores[ability] > 8
+  public selectClass(classId: string): void {
+    this.characterData.characterClass = classId
+    this.render()
+    this.updateNavigationState()
   }
 
-  private increaseAbility(ability: keyof AbilityScores) {
-    const score = this.state.abilityScores[ability]
-    const currentCost = this.getAbilityCost(score)
-    const newCost = this.getAbilityCost(score + 1)
-    const costDiff = newCost - currentCost
+  public adjustAbility(ability: string, change: number): void {
+    const abilities = this.characterData.abilities!
+    const currentValue = abilities[ability as keyof typeof abilities]
+    const newValue = Math.max(8, Math.min(15, currentValue + change))
     
-    this.state.abilityScores[ability] = score + 1
-    this.state.remainingPoints -= costDiff
-  }
-
-  private decreaseAbility(ability: keyof AbilityScores) {
-    const score = this.state.abilityScores[ability]
-    const currentCost = this.getAbilityCost(score)
-    const newCost = this.getAbilityCost(score - 1)
-    const costDiff = currentCost - newCost
+    const pointBuy = this.calculatePointBuyCost()
+    const newCost = this.getAbilityCost(newValue)
+    const oldCost = this.getAbilityCost(currentValue)
+    const costDifference = newCost - oldCost
     
-    this.state.abilityScores[ability] = score - 1
-    this.state.remainingPoints += costDiff
-  }
-
-  private canProceedFromCurrentStep(): boolean {
-    switch (this.state.step) {
-      case 'race': return this.state.name.trim().length > 0 && this.state.selectedRace !== null
-      case 'class': return this.state.selectedClass !== null
-      case 'abilities': return this.state.remainingPoints >= 0
-      case 'skills': return true // Always can proceed from skills for now
-      case 'equipment': return true // Always can proceed from equipment
-      case 'review': return this.state.character !== null
-      default: return false
-    }
-  }
-
-  private getStepIndex(): number {
-    const steps = ['race', 'class', 'abilities', 'skills', 'equipment', 'review']
-    return steps.indexOf(this.state.step)
-  }
-
-  private goToPreviousStep() {
-    const steps = ['race', 'class', 'abilities', 'skills', 'equipment', 'review']
-    const currentIndex = steps.indexOf(this.state.step)
-    if (currentIndex > 0) {
-      this.state.step = steps[currentIndex - 1] as any
+    if (pointBuy.remaining >= costDifference) {
+      abilities[ability as keyof typeof abilities] = newValue
       this.render()
     }
   }
 
-  private goToNextStep() {
-    const steps = ['race', 'class', 'abilities', 'skills', 'equipment', 'review']
-    const currentIndex = steps.indexOf(this.state.step)
-    if (currentIndex < steps.length - 1) {
-      this.state.step = steps[currentIndex + 1] as any
-      this.render()
+  public selectAbilityGenerationMethod(method: string): void {
+    this.characterData.abilityGenerationMethod = method as 'pointBuy' | 'eliteArray' | 'roll4d6'
+    
+    // Reset abilities based on method
+    switch (method) {
+      case 'pointBuy':
+        this.characterData.abilities = {
+          strength: 8,
+          dexterity: 8,
+          constitution: 8,
+          intelligence: 8,
+          wisdom: 8,
+          charisma: 8
+        }
+        break
+      case 'eliteArray':
+        this.characterData.abilities = {
+          strength: 0,
+          dexterity: 0,
+          constitution: 0,
+          intelligence: 0,
+          wisdom: 0,
+          charisma: 0
+        }
+        break
+      case 'roll4d6':
+        this.characterData.abilities = {
+          strength: 0,
+          dexterity: 0,
+          constitution: 0,
+          intelligence: 0,
+          wisdom: 0,
+          charisma: 0
+        }
+        this.characterData.rolledAbilities = []
+        break
     }
+    this.render()
   }
 
-  private createCharacterFromState() {
-    if (!this.state.selectedClass) return
+  public assignEliteArrayScore(ability: string, value: number): void {
+    if (!this.characterData.abilities) return
 
-    const character = createCharacter({
-      name: this.state.name,
-      race: this.state.selectedRace,
-      class: this.state.selectedClass,
-      abilityScores: this.state.abilityScores
-    })
-
-    // Add selected equipment
-    if (this.state.selectedEquipment.weapons.length > 0) {
-      character.equipment.weapons = this.state.selectedEquipment.weapons.map(key => sampleWeapons[key])
-    }
-
-    if (this.state.selectedEquipment.armor) {
-      character.equipment.armor = sampleArmor[this.state.selectedEquipment.armor]
-    }
-
-    this.state.character = character
-  }
-
-  private calculateBAB(character: Character): number {
-    return character.classes.reduce((total, classLevel) => {
-      switch (classLevel.class) {
-        case 'fighter':
-        case 'barbarian':
-        case 'paladin':
-        case 'ranger':
-          return total + classLevel.level
-        case 'cleric':
-        case 'druid':
-        case 'monk':
-        case 'bard':
-        case 'rogue':
-          return total + Math.floor(classLevel.level * 3 / 4)
-        default:
-          return total + Math.floor(classLevel.level / 2)
+    // Check if this value is already assigned to another ability
+    const currentAssignments = Object.entries(this.characterData.abilities)
+    for (const [otherAbility, otherValue] of currentAssignments) {
+      if (otherAbility !== ability && otherValue === value) {
+        // Swap the values
+        this.characterData.abilities[otherAbility as keyof typeof this.characterData.abilities] = 
+          this.characterData.abilities[ability as keyof typeof this.characterData.abilities]
+        break
       }
-    }, 0)
+    }
+
+    this.characterData.abilities[ability as keyof typeof this.characterData.abilities] = value
+    this.render()
   }
 
-  private completeCharacterCreation() {
-    if (this.state.character && this.onComplete) {
-      this.onComplete(this.state.character)
+  public rollAbilities(): void {
+    // Roll 4d6 drop lowest six times
+    const rolledAbilities: number[] = []
+    for (let i = 0; i < 6; i++) {
+      const rolls = [
+        Math.floor(Math.random() * 6) + 1,
+        Math.floor(Math.random() * 6) + 1,
+        Math.floor(Math.random() * 6) + 1,
+        Math.floor(Math.random() * 6) + 1
+      ]
+      rolls.sort((a, b) => b - a) // Sort descending
+      const sum = rolls.slice(0, 3).reduce((total, roll) => total + roll, 0) // Take top 3
+      rolledAbilities.push(sum)
+    }
+
+    this.characterData.rolledAbilities = rolledAbilities
+    // Reset ability assignments
+    this.characterData.abilities = {
+      strength: 0,
+      dexterity: 0,
+      constitution: 0,
+      intelligence: 0,
+      wisdom: 0,
+      charisma: 0
+    }
+    this.render()
+  }
+
+  public assignRolledScore(ability: string, value: number): void {
+    if (!this.characterData.abilities) return
+
+    // Check if this value is already assigned to another ability
+    const currentAssignments = Object.entries(this.characterData.abilities)
+    for (const [otherAbility, otherValue] of currentAssignments) {
+      if (otherAbility !== ability && otherValue === value) {
+        // Swap the values
+        this.characterData.abilities[otherAbility as keyof typeof this.characterData.abilities] = 
+          this.characterData.abilities[ability as keyof typeof this.characterData.abilities]
+        break
+      }
+    }
+
+    this.characterData.abilities[ability as keyof typeof this.characterData.abilities] = value
+    this.render()
+  }
+
+  public toggleSkill(skill: string, selected: boolean): void {
+    if (!this.characterData.skills) {
+      this.characterData.skills = []
+    }
+    
+    if (selected && !this.characterData.skills.includes(skill)) {
+      this.characterData.skills.push(skill)
+    } else if (!selected) {
+      this.characterData.skills = this.characterData.skills.filter(s => s !== skill)
+    }
+  }
+
+  public toggleEquipment(equipment: string, selected: boolean): void {
+    if (!this.characterData.equipment) {
+      this.characterData.equipment = []
+    }
+    
+    if (selected && !this.characterData.equipment.includes(equipment)) {
+      this.characterData.equipment.push(equipment)
+    } else if (!selected) {
+      this.characterData.equipment = this.characterData.equipment.filter(e => e !== equipment)
+    }
+  }
+
+  private showNameSuggestions(): void {
+    // Determine race and gender for name generation
+    const race = this.characterData.race || 'human'
+    // For now, we'll generate both male and female names
+    const maleSuggestions = FantasyNameGenerator.generateSuggestions(3, race, 'male')
+    const femaleSuggestions = FantasyNameGenerator.generateSuggestions(3, race, 'female')
+    const allSuggestions = [...maleSuggestions, ...femaleSuggestions]
+    
+    // Show suggestions container
+    const suggestionsContainer = this.modal?.querySelector('#name-suggestions') as HTMLElement
+    const suggestionsList = this.modal?.querySelector('#suggestions-list')
+    
+    if (suggestionsContainer && suggestionsList) {
+      // Clear previous suggestions
+      suggestionsList.innerHTML = ''
+      
+      // Add suggestion buttons
+      allSuggestions.forEach(name => {
+        const suggestionBtn = document.createElement('button')
+        suggestionBtn.type = 'button'
+        suggestionBtn.className = 'name-suggestion-btn'
+        suggestionBtn.textContent = name
+        suggestionBtn.addEventListener('click', () => {
+          this.selectSuggestedName(name)
+        })
+        suggestionsList.appendChild(suggestionBtn)
+      })
+      
+      // Show the suggestions container
+      suggestionsContainer.style.display = 'block'
+    }
+  }
+
+  private selectSuggestedName(name: string): void {
+    // Update the character data
+    this.updateCharacterData('name', name)
+    
+    // Update the input field
+    const nameInput = this.modal?.querySelector('#character-name') as HTMLInputElement
+    if (nameInput) {
+      nameInput.value = name
+    }
+    
+    // Hide suggestions
+    const suggestionsContainer = this.modal?.querySelector('#name-suggestions') as HTMLElement
+    if (suggestionsContainer) {
+      suggestionsContainer.style.display = 'none'
+    }
+  }
+
+  private updateNameSuggestionsForRace(): void {
+    // Only update if suggestions are currently visible
+    const suggestionsContainer = this.modal?.querySelector('#name-suggestions') as HTMLElement
+    if (suggestionsContainer && suggestionsContainer.style.display !== 'none') {
+      this.showNameSuggestions()
+    }
+  }
+
+  private hideNameSuggestions(): void {
+    const suggestionsContainer = this.modal?.querySelector('#name-suggestions') as HTMLElement
+    if (suggestionsContainer) {
+      suggestionsContainer.style.display = 'none'
+    }
+  }
+
+  public toggleFeat(featName: string, selected: boolean): void {
+    if (!this.characterData.feats) {
+      this.characterData.feats = []
+    }
+    
+    if (selected && !this.characterData.feats.includes(featName)) {
+      // Check if feat prerequisites are met (for now, allow all selections)
+      // TODO: Add prerequisite validation
+      this.characterData.feats.push(featName)
+      console.log('CharacterCreationModal: Added feat:', featName)
+    } else if (!selected) {
+      this.characterData.feats = this.characterData.feats.filter(f => f !== featName)
+      console.log('CharacterCreationModal: Removed feat:', featName)
+    }
+
+    // Update the feat count display
+    const featsInfo = this.modal?.querySelector('.feats-info p')
+    if (featsInfo) {
+      featsInfo.textContent = `Selected Feats: ${this.characterData.feats.length}`
+    }
+
+    // Update visual selection
+    const featCards = this.modal?.querySelectorAll('.feat-card')
+    featCards?.forEach(card => {
+      const checkbox = card.querySelector('input[type="checkbox"]') as HTMLInputElement
+      if (checkbox && checkbox.value === featName) {
+        card.classList.toggle('selected', selected)
+      }
+    })
+  }
+
+  public nextStep(): void {
+    const currentIndex = this.steps.findIndex(step => step.id === this.currentStep)
+    
+    if (currentIndex === this.steps.length - 1) {
+      // Final step - create character
+      this.createCharacter()
+    } else {
+      // Always allow progression, but log validation issues
+      const validation = this.validateCurrentStep()
+      if (!validation.isValid) {
+        console.warn('CharacterCreationModal: Validation issues on step', this.currentStep, ':', validation.errors)
+        // Show a brief warning but still proceed
+        const warningMessage = Object.values(validation.errors).join(', ')
+        console.log('CharacterCreationModal: Proceeding despite validation issues:', warningMessage)
+      }
+      
+      // Always mark step as completed and proceed
+      this.completedSteps.add(this.currentStep)
+      this.currentStep = this.steps[currentIndex + 1].id
+      this.render()
+    }
+  }
+
+  public previousStep(): void {
+    const currentIndex = this.steps.findIndex(step => step.id === this.currentStep)
+    if (currentIndex > 0) {
+      this.currentStep = this.steps[currentIndex - 1].id
+      this.render()
+    }
+  }
+
+  public cancel(): void {
+    if (this.onCancel) {
+      this.onCancel()
     }
     this.hide()
   }
+
+  private createCharacter(): void {
+    console.log('CharacterCreationModal: Creating character with data:', this.characterData)
+    
+    // Always create character, even with validation issues
+    // Apply defaults for missing required fields
+    const character = { ...this.characterData } as CharacterData
+    
+    // Ensure required fields have defaults
+    if (!character.name?.trim()) {
+      character.name = 'Unnamed Character'
+      console.warn('CharacterCreationModal: No name provided, using default')
+    }
+    
+    if (!character.race) {
+      character.race = 'human'
+      console.warn('CharacterCreationModal: No race selected, defaulting to human')
+    }
+    
+    if (!character.characterClass) {
+      character.characterClass = 'fighter'
+      console.warn('CharacterCreationModal: No class selected, defaulting to fighter')
+    }
+    
+    // Ensure abilities are properly initialized
+    if (!character.abilities) {
+      character.abilities = {
+        strength: 10,
+        dexterity: 10,
+        constitution: 10,
+        intelligence: 10,
+        wisdom: 10,
+        charisma: 10
+      }
+      console.warn('CharacterCreationModal: No abilities set, using defaults')
+    }
+    
+    // Ensure arrays are initialized
+    character.skills = character.skills || []
+    character.equipment = character.equipment || []
+    character.feats = character.feats || []
+    
+    // Calculate final hit points with error handling
+    try {
+      const characterClass = this.classData.find(c => c.id === character.characterClass)
+      const conModifier = this.getModifier(character.abilities.constitution)
+      const hitDieSize = parseInt(characterClass?.hitDie?.substring(1) || '8')
+      character.hitPoints = Math.max(1, hitDieSize + conModifier) // Ensure at least 1 HP
+      console.log('CharacterCreationModal: Calculated HP:', character.hitPoints)
+    } catch (error) {
+      console.error('CharacterCreationModal: Error calculating HP, using default:', error)
+      character.hitPoints = 8 // Default HP
+    }
+    
+    // Always complete character creation
+    console.log('CharacterCreationModal: Final character data:', character)
+    
+    if (this.onComplete) {
+      try {
+        this.onComplete(character)
+        console.log('CharacterCreationModal: Character creation callback completed successfully')
+      } catch (error) {
+        console.error('CharacterCreationModal: Error in completion callback:', error)
+      }
+    }
+    
+    this.hide()
+    console.log('CharacterCreationModal: Character creation process completed')
+  }
+
+  private validateCurrentStep(): FormValidation {
+    const errors: Record<string, string> = {}
+    
+    switch (this.currentStep) {
+      case 'basics':
+        if (!this.characterData.name?.trim()) {
+          errors.name = 'Character name is required'
+        }
+        break
+      case 'race':
+        if (!this.characterData.race) {
+          errors.race = 'Please select a race'
+        }
+        break
+      case 'class':
+        if (!this.characterData.characterClass) {
+          errors.characterClass = 'Please select a class'
+        }
+        break
+      case 'abilities':
+        const pointBuy = this.calculatePointBuyCost()
+        if (pointBuy.remaining !== 0) {
+          errors.abilities = 'You must spend all ability points'
+        }
+        break
+    }
+    
+    return { isValid: Object.keys(errors).length === 0, errors }
+  }
+
+  private validateAllSteps(): FormValidation {
+    const errors: Record<string, string> = {}
+    
+    if (!this.characterData.name?.trim()) errors.name = 'Name required'
+    if (!this.characterData.race) errors.race = 'Race required'
+    if (!this.characterData.characterClass) errors.characterClass = 'Class required'
+    
+    const pointBuy = this.calculatePointBuyCost()
+    if (pointBuy.remaining !== 0) errors.abilities = 'Ability points must be spent'
+    
+    return { isValid: Object.keys(errors).length === 0, errors }
+  }
+
+  private updateNavigationState(): void {
+    const nextButton = this.modal?.querySelector('#next-button') as HTMLButtonElement
+    if (nextButton) {
+      // Always allow progression - never disable the Next button
+      // This makes character creation more user-friendly and robust
+      nextButton.disabled = false
+      
+      // Optional: Visual indication of validation issues without blocking
+      const validation = this.validateCurrentStep()
+      if (!validation.isValid) {
+        nextButton.style.background = 'linear-gradient(135deg, #dc2626, #b91c1c)'
+        nextButton.title = 'Some fields may need attention, but you can still proceed'
+      } else {
+        nextButton.style.background = 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
+        nextButton.title = 'Continue to next step'
+      }
+    }
+  }
+
+  private calculatePointBuyCost(): { total: number; remaining: number } {
+    const abilities = this.characterData.abilities!
+    const totalCost = Object.values(abilities).reduce((sum, value) => sum + this.getAbilityCost(value), 0)
+    return { total: totalCost, remaining: 27 - totalCost }
+  }
+
+  private getAbilityCost(score: number): number {
+    const costs: Record<number, number> = {
+      8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9
+    }
+    return costs[score] || 0
+  }
+
+  private getModifier(score: number): number {
+    return Math.floor((score - 10) / 2)
+  }
+
+  private capitalizeFirst(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1)
+  }
 }
+
+// Global instance for HTML onclick handlers
+declare global {
+  interface Window {
+    characterCreationModal: CharacterCreationModal
+  }
+}
+
+// Default export for module usage
+export default CharacterCreationModal

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feat Selection Test</title>
+    <link rel="stylesheet" href="src/style.css">
+    <style>
+        body {
+            background: #1a1a2e;
+            color: white;
+            font-family: system-ui;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        #test-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            margin: 0.5rem;
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+        }
+        
+        #output {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Feat Selection Test</h1>
+    <p>Test the enhanced character creation modal with feat selection step.</p>
+    
+    <div id="test-controls">
+        <h3>Test Controls</h3>
+        <button onclick="testCharacterCreation()">Open Character Creator</button>
+        <button onclick="testFeatsStep()">Test Feats Step Only</button>
+        <button onclick="clearOutput()">Clear Output</button>
+    </div>
+    
+    <div id="output"></div>
+    
+    <script type="module">
+        import CharacterCreationModal from './src/ui/characterCreation.ts';
+        import './src/main.ts';
+        
+        let modal;
+        
+        window.testCharacterCreation = function() {
+            log('Creating character creation modal...');
+            
+            if (modal) {
+                modal.hide();
+            }
+            
+            modal = new CharacterCreationModal({
+                onComplete: (character) => {
+                    log('Character created successfully!');
+                    log('Character data: ' + JSON.stringify(character, null, 2));
+                },
+                onCancel: () => {
+                    log('Character creation cancelled');
+                }
+            });
+            
+            modal.show();
+            log('Modal opened');
+        };
+        
+        window.testFeatsStep = function() {
+            log('Testing feat selection step...');
+            
+            if (modal) {
+                modal.hide();
+            }
+            
+            modal = new CharacterCreationModal({
+                onComplete: (character) => {
+                    log('Character created with feats: ' + JSON.stringify(character.feats, null, 2));
+                },
+                onCancel: () => {
+                    log('Cancelled');
+                }
+            });
+            
+            // Skip to feats step
+            modal.currentStep = 'feats';
+            modal.show();
+            log('Opened modal on feats step');
+        };
+        
+        window.clearOutput = function() {
+            document.getElementById('output').textContent = '';
+        };
+        
+        function log(message) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.textContent += `[${timestamp}] ${message}\n`;
+        }
+        
+        // Test on load
+        log('Feat selection test page loaded');
+        log('Click "Open Character Creator" to test the full modal');
+        log('Click "Test Feats Step Only" to jump directly to feat selection');
+    </script>
+</body>
+</html>

@@ -1,4 +1,6 @@
-import type { DamageType } from './combat'
+import { type Character } from './character'
+import { type DamageType } from './combat'
+import { getFeatSpellDCBonus } from './feat-effects'
 
 // Magic schools and descriptors
 export type SpellSchool = 'abjuration' | 'conjuration' | 'divination' | 'enchantment' | 'evocation' | 'illusion' | 'necromancy' | 'transmutation'
@@ -88,14 +90,19 @@ export interface SpellResult {
 }
 
 // Save DC calculation
-export function computeSaveDC(context: CastingContext): number {
+export function computeSaveDC(context: CastingContext, character?: Character): number {
   const baseLevel = context.spellLevel
   const abilityMod = context.keyAbilityMod
   let dc = 10 + baseLevel + abilityMod
   
-  // Spell Focus feat adds +1 to save DCs
-  if (context.feats?.includes('Spell Focus')) dc += 1
-  if (context.feats?.includes('Greater Spell Focus')) dc += 1
+  // Apply feat bonuses using the new feat effects system
+  if (character) {
+    dc += getFeatSpellDCBonus(character)
+  } else {
+    // Legacy compatibility - use the old hardcoded approach if no character provided
+    if (context.feats?.includes('Spell Focus')) dc += 1
+    if (context.feats?.includes('Greater Spell Focus')) dc += 1
+  }
   
   return dc
 }

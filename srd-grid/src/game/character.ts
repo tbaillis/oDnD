@@ -1,5 +1,6 @@
 import type { SizeCategory } from '../engine/components'
 import type { WeaponProperties, ArmorProperties, CharacterProficiencies } from './equipment'
+import { getFeatByName as getFeatFromDatabase } from '../data/feats'
 
 // Basic ability scores
 export interface AbilityScores {
@@ -246,9 +247,8 @@ function getClassRequirements(classType: ClassType): Partial<AbilityScores> {
   return requirements[classType]
 }
 
-function getFeatByName(_name: string): Feat | null {
-  // This would normally look up from a feat database
-  return null
+function getFeatByName(name: string): Feat | null {
+  return getFeatFromDatabase(name)
 }
 
 function checkPrerequisite(character: Character, prereq: FeatPrerequisite): boolean {

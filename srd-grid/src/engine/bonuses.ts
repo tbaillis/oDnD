@@ -12,7 +12,7 @@ export type BonusType =
   | 'sacred'
   | 'profane'
   | 'resistance'
-  | 'armor' | 'shield' | 'natural' | 'size' | 'racial' | 'alchemical'
+  | 'armor' | 'shield' | 'natural' | 'size' | 'racial' | 'alchemical' | 'feat'
 
 export interface Bonus {
   type: BonusType

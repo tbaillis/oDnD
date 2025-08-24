@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DM Chat Panel Test - SRD Grid</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .test-container {
+            text-align: center;
+            max-width: 600px;
+            padding: 40px;
+        }
+
+        .test-container h1 {
+            color: #8b5cf6;
+            margin-bottom: 20px;
+        }
+
+        .test-container p {
+            margin-bottom: 15px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .instructions {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .instructions h3 {
+            color: #8b5cf6;
+            margin-top: 0;
+        }
+
+        .instructions ul {
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        .key-combo {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .feature-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .feature-card h4 {
+            color: #8b5cf6;
+            margin: 0 0 10px 0;
+        }
+
+        .feature-card p {
+            margin: 0;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .status {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 12px;
+            border-left: 3px solid #7ed321;
+            color: #7ed321;
+        }
+    </style>
+</head>
+<body>
+    <div class="status">
+        DM Chat Panel Framework Active
+    </div>
+
+    <div class="test-container">
+        <h1>🎲 Dungeon Master Chat Panel</h1>
+        <p>The DM Chat Panel is now integrated into the SRD Grid system! This sliding panel provides a direct communication channel with an AI Dungeon Master assistant.</p>
+
+        <div class="instructions">
+            <h3>🎮 How to Use</h3>
+            <ul>
+                <li>Press <span class="key-combo">Ctrl + D</span> to toggle the DM chat panel</li>
+                <li>Click the purple "DM" button on the right side of the screen</li>
+                <li>Type your questions or requests in the chat input</li>
+                <li>Press <span class="key-combo">Ctrl + Enter</span> to send messages</li>
+                <li>Press <span class="key-combo">Escape</span> to close all panels</li>
+            </ul>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <h4>🗨️ Interactive Chat</h4>
+                <p>Real-time conversation with an AI Dungeon Master for guidance and assistance</p>
+            </div>
+            <div class="feature-card">
+                <h4>⚔️ Combat Support</h4>
+                <p>Get help with combat mechanics, rules clarification, and encounter management</p>
+            </div>
+            <div class="feature-card">
+                <h4>📜 Story Guidance</h4>
+                <p>Narrative assistance, plot hooks, and world-building support</p>
+            </div>
+            <div class="feature-card">
+                <h4>🎯 MCP Integration</h4>
+                <p>Built-in framework for connecting to Model Context Protocol servers</p>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>🔧 MCP Server Features</h3>
+            <p>The underlying MCP server provides comprehensive D&D session management:</p>
+            <ul>
+                <li><strong>Combat Management:</strong> Initiative, damage, conditions, and turn tracking</li>
+                <li><strong>Environment Control:</strong> Lighting, weather, terrain, and scene descriptions</li>
+                <li><strong>Story Context:</strong> Narrative tracking, goals, and NPC relationships</li>
+                <li><strong>Game Mechanics:</strong> Ability checks, saving throws, and dice rolling</li>
+                <li><strong>Character Management:</strong> Position tracking and status monitoring</li>
+            </ul>
+        </div>
+
+        <p style="margin-top: 40px; font-size: 14px; color: rgba(255, 255, 255, 0.6);">
+            Ready to adventure! The framework is in place for full AI Dungeon Master integration.
+        </p>
+    </div>
+
+    <!-- Import and initialize the DM Chat Panel -->
+    <script type="module">
+        import { DMChatPanel } from './src/ui/dmChat.js';
+        
+        // Initialize the DM chat panel
+        const dmChat = new DMChatPanel();
+        
+        // Add some test messages to demonstrate the interface
+        setTimeout(() => {
+            dmChat.addSystemMessage("Welcome to the test environment! The DM chat panel is now active and ready for integration with AI assistants.");
+        }, 1000);
+
+        setTimeout(() => {
+            dmChat.addSystemMessage("Try opening the chat panel with Ctrl+D or by clicking the purple DM button on the right side.");
+        }, 3000);
+
+        // Make dmChat available globally for testing
+        window.testDMChat = dmChat;
+        
+        console.log('DM Chat Panel test initialized');
+        console.log('Use window.testDMChat to interact with the panel programmatically');
+    </script>
+</body>
+</html>

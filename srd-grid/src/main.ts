@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Sprite, Assets, Texture } from 'pixi.js'
 import { createWorld, updateTime } from './engine/world'
 import { UIManager } from './ui/interface'
+import { DMChatPanel } from './ui/dmChat'
 import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
 import { EffectManager } from './engine/effects'
 import { planPath, planPathAvoidingThreat } from './engine/path'
@@ -8,12 +9,19 @@ import { threatenedSquares } from './engine/threat'
 import { analyzePathMovement } from './engine/movement'
 import { trimPathBySpeed } from './engine/moveExecutor'
 import { createTurnState, startEncounter, endTurn } from './engine/turns'
+import { MONSTER_DATABASE } from './game/monsters/database'
 import { consume } from './engine/actions'
-import { attackRoll, type AttackProfile, type DefenderProfile, rollWeaponDamage, applyDamage, type DamagePacket } from './game/combat'
+import { attackRoll, type AttackProfile, type DefenderProfile, rollWeaponDamage, applyDamage, type DamagePacket, computeAC } from './game/combat'
 import { seededRNG, sessionRNG, type RNG } from './engine/rng'
 import { SaveDataSchema, type SaveData } from './data/schemas'
 import { Provokes, aooPreventedByCoverOrFog } from './engine/provoke'
 import { skills } from './game/skills'
+import { type Character, getAbilityModifier } from './game/character'
+import { monsterSelectionUI } from './game/monsters/ui'
+import { monsterService } from './game/monsters/service'
+
+// Import CSS styles
+import './style.css'
 
 const root = document.getElementById('game-root') as HTMLDivElement | null
 if (!root) throw new Error('#game-root not found')
@@ -32,11 +40,30 @@ app.stage.addChild(world)
 
 // Initialize ECS world and UI
 const game = createWorld()
+
 const uiManager = new UIManager(document.body)
+
+// Expose applyCharacterToPawnA globally so UIManager can access it
+;(window as any).applyCharacterToPawnA = applyCharacterToPawnA
+
+// Debug logging for UIManager initialization
+console.log('UIManager created:', uiManager)
+console.log('characterCreation modal:', uiManager.characterCreation)
+console.log('characterCreation type:', typeof uiManager.characterCreation)
+
+// Debug global window access
+;(window as any).debugUI = uiManager
+;(window as any).toggleMonsterSelectionUI = toggleMonsterSelectionUI
+console.log('UIManager exposed as window.debugUI')
+console.log('Monster selection toggle exposed globally')
 
 // Set initial message
 uiManager.combatLog.addMessage('SRD Grid ready.', 'info')
 uiManager.combatLog.addMessage('Press N for New Character, C for Character Sheet, S for Spells', 'info')
+uiManager.combatLog.addMessage('Press M for Monster Selection, R for Random Monster', 'info')
+uiManager.combatLog.addMessage('Right-click pawns for actions, or press Z (Pawn A) / X (Pawn B)', 'info')
+uiManager.combatLog.addMessage('Press ` (backtick) or Tab to toggle control panel', 'info')
+uiManager.combatLog.addMessage('Note: Keyboard shortcuts are disabled while typing in input fields', 'info')
 
 // Helper function to maintain compatibility with existing code
 function appendLogLine(text: string) {
@@ -93,7 +120,154 @@ function drawCell(g: Graphics, x: number, y: number, color: number) {
 
 // Token state (two pawns)
 let pawnA = { x: 2, y: 2, speed: 30, size: 'medium' as const, hp: 20 }
-let pawnB = { x: 12, y: 8, speed: 30, size: 'large' as const, hp: 25 }
+let pawnB = { x: 12, y: 8, speed: 30, size: 'large' as 'large' | 'medium', hp: 25 }
+let pawnAMaxHP = 20 // Track max HP for pawn A
+let pawnBMaxHP = 25 // Track max HP for pawn B
+
+// Function to apply character stats to Pawn A
+function applyCharacterToPawnA(character: Character) {
+  // Update Pawn A's hit points based on character
+  pawnAMaxHP = character.hitPoints.max
+  pawnA.hp = character.hitPoints.current
+  
+  // Update speed based on character's race and size
+  pawnA.speed = 30 // Default, could be modified by race or equipment
+  
+  // Update size if character is not medium
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnA.size = 'medium' // Keep medium for grid simplicity, but could be 'small'
+  } else if (character.race.toLowerCase().includes('half-giant') || 
+             character.classes.some(c => c.class === 'barbarian')) {
+    // Large-sized races or special cases could make pawn large
+    pawnA.size = 'medium' // Keep medium for now, could be configurable
+  }
+  
+  // Update defender profile based on character stats
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  // Update AC based on character equipment and stats
+  const newAC = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  // Update defenderA profile with character stats
+  defenderA.ac = newAC
+  
+  // Check for reach weapons
+  const hasReachWeapon = character.equipment.weapons.some(weapon => 
+    weapon.properties?.includes('reach') || weapon.name.toLowerCase().includes('reach')
+  )
+  reachA = hasReachWeapon
+  
+  // Log the character application
+  appendLogLine(`Pawn A updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnA.hp}/${pawnAMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnA.speed}ft${reachA ? ', Reach Weapon' : ''}`)
+  
+  // Redraw to reflect changes
+  drawAll()
+}
+
+// Function to apply monster stats to any pawn
+function applyMonsterToPawn(pawnId: 'A' | 'B', monster: import('./game/monsters/types').MonsterData) {
+  const pawn = pawnId === 'A' ? pawnA : pawnB
+  const defender = pawnId === 'A' ? defenderA : defenderB
+  
+  // Update pawn's hit points based on monster
+  const newMaxHP = monster.hitPoints.average
+  if (pawnId === 'A') {
+    pawnAMaxHP = newMaxHP
+    pawnA.hp = newMaxHP
+  } else {
+    pawnBMaxHP = newMaxHP
+    pawnB.hp = newMaxHP
+  }
+  
+  // Update speed based on monster stats
+  pawn.speed = monster.speed.land
+  
+  // Update position and size based on monster size
+  if (monster.size === 'Small' || monster.size === 'Medium') {
+    pawn.size = 'medium' as const
+  } else if (monster.size === 'Large' || monster.size === 'Huge' || monster.size === 'Gargantuan' || monster.size === 'Colossal') {
+    pawn.size = 'large' as const
+  } else {
+    // Fine, Diminutive, Tiny - keep as medium for visibility
+    pawn.size = 'medium' as const
+  }
+  
+  // Update defender profile based on monster stats
+  const dexMod = Math.floor((monster.abilities.DEX - 10) / 2)
+  
+  // Update AC based on monster AC breakdown
+  const newAC = {
+    base: 10,
+    armor: monster.armorClass.armor || 0,
+    shield: monster.armorClass.shield || 0,
+    natural: monster.armorClass.natural || 0,
+    deflection: monster.armorClass.deflection || 0,
+    dodge: dexMod,
+    misc: monster.armorClass.misc || 0
+  }
+  
+  // Update defender profile with monster stats
+  defender.ac = newAC
+  
+  // Add damage reduction if monster has it
+  if (monster.damageReduction) {
+    defender.damageReduction = monster.damageReduction
+  } else {
+    delete defender.damageReduction
+  }
+  
+  // Add energy resistance if monster has it
+  if (monster.energyResistance) {
+    defender.energyResistance = monster.energyResistance
+  } else {
+    defender.energyResistance = {}
+  }
+  
+  // Add vulnerabilities if monster has them - convert to compatible type
+  if (monster.vulnerability) {
+    defender.vulnerability = monster.vulnerability as any[]
+  } else {
+    delete defender.vulnerability
+  }
+  
+  // Check for reach attacks
+  const hasReachAttack = monster.attacks?.some(attack => 
+    attack.reach && attack.reach > 5
+  ) || monster.reach === '10 ft.' || monster.reach === '15 ft.' || monster.reach === '20 ft.'
+  
+  if (pawnId === 'A') {
+    reachA = hasReachAttack
+  } else {
+    reachB = hasReachAttack
+  }
+  
+  // Log the monster application
+  appendLogLine(`Pawn ${pawnId} updated with ${monster.name} (${monster.size} ${monster.type})`)
+  appendLogLine(`HP: ${pawn.hp}/${newMaxHP}, AC: ${monster.armorClass.total}, Speed: ${pawn.speed}ft${hasReachAttack ? ', Reach' : ''}`)
+  if (monster.specialAttacks && monster.specialAttacks.length > 0) {
+    appendLogLine(`Special Attacks: ${monster.specialAttacks.map(sa => sa.name).join(', ')}`)
+  }
+  if (monster.specialQualities && monster.specialQualities.length > 0) {
+    appendLogLine(`Special Qualities: ${monster.specialQualities.map(sq => sq.name).join(', ')}`)
+  }
+  
+  // Redraw to reflect changes
+  drawAll()
+}
+
+// Function to apply monster stats to Pawn B (legacy compatibility)
+function applyMonsterToPawnB(monster: import('./game/monsters/types').MonsterData) {
+  applyMonsterToPawn('B', monster)
+}
 
 // Persistent defender profiles for each pawn (demo stats)
 const baseAC = { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }
@@ -570,12 +744,578 @@ function cycleCoverAt(x: number, y: number) {
   G.set(x,y,{ cover: next })
 }
 
+// Check if a click position is on a pawn
+function getPawnAtPosition(x: number, y: number): 'A' | 'B' | null {
+  if (pawnA.x === x && pawnA.y === y) return 'A'
+  if (pawnB.x === x && pawnB.y === y) return 'B'
+  return null
+}
+
+// Context menu for pawn interactions
+let contextMenu: HTMLElement | null = null
+
+function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
+  // Remove any existing context menu
+  if (contextMenu) {
+    contextMenu.remove()
+    contextMenu = null
+  }
+
+  const menu = document.createElement('div')
+  menu.id = 'pawn-context-menu'
+  menu.style.cssText = `
+    position: fixed;
+    left: ${event.clientX}px;
+    top: ${event.clientY}px;
+    background: rgba(20,25,30,0.95);
+    border: 1px solid #374151;
+    border-radius: 6px;
+    padding: 8px;
+    font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+    font-size: 13px;
+    color: #e5e7eb;
+    z-index: 2500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    min-width: 150px;
+  `
+
+  const pawn = pawnId === 'A' ? pawnA : pawnB
+  const isActivePawn = turns.active?.id === pawnId
+
+  // Menu header
+  const header = document.createElement('div')
+  header.textContent = `Pawn ${pawnId}`
+  header.style.cssText = `
+    font-weight: 600;
+    color: ${pawnId === 'A' ? '#5aa9e6' : '#e65a5a'};
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #374151;
+  `
+  menu.appendChild(header)
+
+  // HP display
+  const hpDisplay = document.createElement('div')
+  const maxHp = pawnId === 'A' ? pawnAMaxHP : pawnBMaxHP
+  hpDisplay.textContent = `HP: ${pawn.hp}/${maxHp}`
+  hpDisplay.style.cssText = `
+    color: #9ca3af;
+    font-size: 12px;
+    margin-bottom: 6px;
+  `
+  menu.appendChild(hpDisplay)
+
+  // Active turn indicator
+  if (isActivePawn) {
+    const activeIndicator = document.createElement('div')
+    activeIndicator.textContent = '● Active Turn'
+    activeIndicator.style.cssText = `
+      color: #10b981;
+      font-size: 12px;
+      margin-bottom: 6px;
+      font-weight: 500;
+    `
+    menu.appendChild(activeIndicator)
+  }
+
+  // Attack Mode Toggle (only for active pawn)
+  if (isActivePawn) {
+    const attackToggle = document.createElement('button')
+    attackToggle.textContent = attackMode ? '❌ Exit Attack Mode' : '⚔️ Enter Attack Mode'
+    attackToggle.style.cssText = `
+      width: 100%;
+      padding: 6px 8px;
+      background: ${attackMode ? '#ef4444' : '#059669'};
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-bottom: 4px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    `
+    attackToggle.addEventListener('mouseenter', () => {
+      attackToggle.style.background = attackMode ? '#dc2626' : '#047857'
+    })
+    attackToggle.addEventListener('mouseleave', () => {
+      attackToggle.style.background = attackMode ? '#ef4444' : '#059669'
+    })
+    attackToggle.addEventListener('click', () => {
+      attackMode = !attackMode
+      appendLogLine(`Pawn ${pawnId}: Attack mode ${attackMode ? 'ON' : 'OFF'}`)
+      hideContextMenu()
+    })
+    menu.appendChild(attackToggle)
+
+    // End Turn (only for active pawn)
+    const endTurnBtn = document.createElement('button')
+    endTurnBtn.textContent = '🛑 End Turn'
+    endTurnBtn.style.cssText = `
+      width: 100%;
+      padding: 6px 8px;
+      background: #f59e0b;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-bottom: 4px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    `
+    endTurnBtn.addEventListener('mouseenter', () => {
+      endTurnBtn.style.background = '#d97706'
+    })
+    endTurnBtn.addEventListener('mouseleave', () => {
+      endTurnBtn.style.background = '#f59e0b'
+    })
+    endTurnBtn.addEventListener('click', () => {
+      ;(turns as any).aooUsed = {}
+      commitEndTurn()
+      appendLogLine(`Pawn ${pawnId}: Turn ended`)
+      hideContextMenu()
+    })
+    menu.appendChild(endTurnBtn)
+
+    // Cast Spell (only for active pawn)
+    const castSpellBtn = document.createElement('button')
+    castSpellBtn.textContent = '🪄 Cast Spell'
+    castSpellBtn.style.cssText = `
+      width: 100%;
+      padding: 6px 8px;
+      background: #8b5cf6;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-bottom: 4px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    `
+    castSpellBtn.addEventListener('mouseenter', () => {
+      castSpellBtn.style.background = '#7c3aed'
+    })
+    castSpellBtn.addEventListener('mouseleave', () => {
+      castSpellBtn.style.background = '#8b5cf6'
+    })
+    castSpellBtn.addEventListener('click', () => {
+      // Trigger the same functionality as the cast button
+      if (!consume(turns.budget!, 'standard')) { 
+        appendLogLine('Standard action already used.'); 
+        hideContextMenu();
+        return 
+      }
+      const attacker = turns.active?.id === 'A' ? pawnA : pawnB
+      const target = turns.active?.id === 'A' ? pawnB : pawnA
+      // Define simple spell data
+      const spellLevel = selectedSpell === 'magic-missile' ? 1 : 2
+      // Casting can provoke unless casting defensively succeeds
+      let provoked = true
+      if (defensiveCast) {
+        const roll = Math.floor(currentRNG()*20)+1
+        const total = roll + concBonus
+        const dc = 15 + spellLevel // 3.5e: casting defensively DC 15 + spell level
+        appendLogLine(`Concentration (defensive) ${roll}+${concBonus}=${total} vs DC ${dc}`)
+        if (total >= dc) provoked = false
+      }
+      if (provoked) {
+        const otherId = turns.active?.id === 'A' ? 'B' : 'A'
+        const used = (turns as any).aooUsed?.[otherId] ?? 0
+        const threat = threatSetFrom(target.x, target.y, target.size, target === pawnB ? reachB : reachA)
+        if (threat.has(`${attacker!.x},${attacker!.y}`) && used < 1 && !flatFootedMode) {
+          // Cover/fog prevention
+          const prevented = aooPreventedByCoverOrFog(G, effects, { x: target.x, y: target.y }, { x: attacker!.x, y: attacker!.y }, [[attacker!.x, attacker!.y]])
+          if (prevented) {
+            appendLogLine(`${otherId}'s AoO prevented by cover.`)
+          } else {
+            const aooAtk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
+            const aooDef: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
+            const aooOutcome = attackRoll(aooAtk, aooDef, currentRNG)
+            appendLogLine(`${otherId} AoO (casting): roll=${aooOutcome.attackRoll} total=${aooOutcome.totalToHit} hit=${aooOutcome.hit}${aooOutcome.critical ? ' CRIT!' : ''}`)
+            if (aooOutcome.hit) {
+              undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+              const base = aooOutcome.critical ? 10 : 5
+              const atkPawn = turns.active?.id === 'A' ? pawnA : pawnB
+              const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
+              const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+              const taken = applied.taken
+              atkPawn.hp = Math.max(0, atkPawn.hp - taken)
+              appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Caster HP ${atkPawn.hp}.`)
+              // Concentration check to avoid losing the spell: DC 10 + damage dealt + spell level
+              const roll2 = Math.floor(currentRNG()*20)+1
+              const total2 = roll2 + concBonus
+              const dc2 = 10 + taken + spellLevel
+              appendLogLine(`Concentration (damage while casting) ${roll2}+${concBonus}=${total2} vs DC ${dc2}`)
+              if (total2 < dc2) {
+                appendLogLine('Spell lost due to damage while casting!')
+                ;(turns as any).aooUsed![otherId] = used + 1
+                updateActionHUD(hudText())
+                hideContextMenu()
+                return
+              }
+            }
+            (turns as any).aooUsed![otherId] = used + 1
+          }
+        }
+      }
+      // Resolve simple spells
+      if (selectedSpell === 'magic-missile') {
+        // Require line of sight; Magic Missile auto-hits if LoS is clear
+        const los = effects.losClearConsideringFog(attacker!.x, attacker!.y, target.x, target.y)
+        if (!los.clear) {
+          appendLogLine('Magic Missile fails: no line of sight to target.')
+        } else {
+          const base = (Math.floor(currentRNG()*4)+1) + 1 // 1d4+1
+          const packet: DamagePacket = { amount: base, types: ['force'] }
+          const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'B' : 'A'), packet)
+          const taken = applied.taken
+          target.hp = Math.max(0, target.hp - taken)
+          appendLogLine(`Magic Missile hits for ${taken}${applied.preventedByER?` (ER)`:''}. Target HP ${target.hp}.`)
+        }
+      } else {
+        // Fog Cloud: 20-ft radius spread (4 squares), lasts 3 rounds
+        const R = 4
+        const DURATION = 3
+        undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+        effects.addFogCloud(attacker!.x, attacker!.y, R, DURATION, turns.round)
+        appendLogLine(`Fog Cloud centered at (${attacker!.x},${attacker!.y}), radius ${R} squares, ${DURATION} rounds.`)
+      }
+      appendLogLine(`Pawn ${pawnId}: Cast ${selectedSpell === 'magic-missile' ? 'Magic Missile' : 'Fog Cloud'}`)
+      updateActionHUD(hudText())
+      hideContextMenu()
+    })
+    menu.appendChild(castSpellBtn)
+  } else {
+    // Show whose turn it is when not the active pawn
+    const turnInfo = document.createElement('div')
+    turnInfo.textContent = `Currently: Pawn ${turns.active?.id}'s turn`
+    turnInfo.style.cssText = `
+      color: #6b7280;
+      font-size: 11px;
+      margin-bottom: 6px;
+      font-style: italic;
+    `
+    menu.appendChild(turnInfo)
+  }
+
+  // Pawn Info
+  const infoBtn = document.createElement('button')
+  infoBtn.textContent = '📋 Pawn Stats'
+  infoBtn.style.cssText = `
+    width: 100%;
+    padding: 6px 8px;
+    background: #6b7280;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  `
+  infoBtn.addEventListener('mouseenter', () => {
+    infoBtn.style.background = '#4b5563'
+  })
+  infoBtn.addEventListener('mouseleave', () => {
+    infoBtn.style.background = '#6b7280'
+  })
+  infoBtn.addEventListener('click', () => {
+    const reach = pawnId === 'A' ? reachA : reachB
+    const defender = defenderFor(pawnId)
+    const ac = computeAC(defender.ac)
+    const threatSquares = threatenedSquares(pawn.x, pawn.y, pawn.size, reach).length
+    
+    const stats = [
+      `=== Pawn ${pawnId} Stats ===`,
+      `HP: ${pawn.hp}/${maxHp} (${Math.round(pawn.hp/maxHp*100)}%)`,
+      `Position: (${pawn.x}, ${pawn.y})`,
+      `Size: ${pawn.size}`,
+      `Speed: ${pawn.speed} ft`,
+      `AC: ${ac}`,
+      `Reach Weapon: ${reach ? 'Yes' : 'No'}`,
+      `Threatens: ${threatSquares} squares`,
+      `Status: ${pawn.hp <= 0 ? 'Defeated' : isActivePawn ? 'Active Turn' : 'Waiting'}`
+    ].join(' | ')
+    
+    appendLogLine(stats)
+    hideContextMenu()
+  })
+  menu.appendChild(infoBtn)
+
+  // Change Monster Button
+  const changeMonsterBtn = document.createElement('button')
+  changeMonsterBtn.textContent = '🐲 Change Monster'
+  changeMonsterBtn.style.cssText = `
+    width: 100%;
+    padding: 6px 8px;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+    margin-top: 4px;
+  `
+  changeMonsterBtn.addEventListener('mouseenter', () => {
+    changeMonsterBtn.style.background = '#6d28d9'
+  })
+  changeMonsterBtn.addEventListener('mouseleave', () => {
+    changeMonsterBtn.style.background = '#7c3aed'
+  })
+  changeMonsterBtn.addEventListener('click', () => {
+    showMonsterSelectionModal(pawnId)
+    hideContextMenu()
+  })
+  menu.appendChild(changeMonsterBtn)
+
+  document.body.appendChild(menu)
+  contextMenu = menu
+
+  // Close menu when clicking outside
+  const closeHandler = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      hideContextMenu()
+      document.removeEventListener('click', closeHandler)
+    }
+  }
+  setTimeout(() => document.addEventListener('click', closeHandler), 10)
+}
+
+function hideContextMenu() {
+  if (contextMenu) {
+    contextMenu.remove()
+    contextMenu = null
+  }
+}
+
+// Monster Selection Modal
+function showMonsterSelectionModal(pawnId: 'A' | 'B') {
+  // Create modal overlay
+  const modalOverlay = document.createElement('div')
+  modalOverlay.id = 'monster-selection-modal'
+  modalOverlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+  `
+
+  // Create modal content
+  const modalContent = document.createElement('div')
+  modalContent.style.cssText = `
+    background: rgba(20, 25, 30, 0.95);
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 20px;
+    width: 80%;
+    max-width: 800px;
+    max-height: 80%;
+    overflow-y: auto;
+    color: #e5e7eb;
+    font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+  `
+
+  // Modal header
+  const header = document.createElement('div')
+  header.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h2 style="margin: 0; color: ${pawnId === 'A' ? '#5aa9e6' : '#e65a5a'};">Change Monster - Pawn ${pawnId}</h2>
+      <button id="close-monster-modal" style="
+        background: #ef4444;
+        border: none;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: bold;
+      ">×</button>
+    </div>
+  `
+
+  // Filter controls
+  const filters = document.createElement('div')
+  filters.innerHTML = `
+    <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+      <input type="text" id="monster-search" placeholder="Search monsters..." style="
+        flex: 1;
+        padding: 8px;
+        border: 1px solid #374151;
+        border-radius: 4px;
+        background: #1f2937;
+        color: #e5e7eb;
+        min-width: 200px;
+      ">
+      <select id="monster-type-filter" style="
+        padding: 8px;
+        border: 1px solid #374151;
+        border-radius: 4px;
+        background: #1f2937;
+        color: #e5e7eb;
+      ">
+        <option value="">All Types</option>
+        <option value="Aberration">Aberration</option>
+        <option value="Animal">Animal</option>
+        <option value="Construct">Construct</option>
+        <option value="Dragon">Dragon</option>
+        <option value="Elemental">Elemental</option>
+        <option value="Fey">Fey</option>
+        <option value="Giant">Giant</option>
+        <option value="Humanoid">Humanoid</option>
+        <option value="Magical Beast">Magical Beast</option>
+        <option value="Monstrous Humanoid">Monstrous Humanoid</option>
+        <option value="Ooze">Ooze</option>
+        <option value="Outsider">Outsider</option>
+        <option value="Plant">Plant</option>
+        <option value="Undead">Undead</option>
+        <option value="Vermin">Vermin</option>
+      </select>
+      <select id="monster-size-filter" style="
+        padding: 8px;
+        border: 1px solid #374151;
+        border-radius: 4px;
+        background: #1f2937;
+        color: #e5e7eb;
+      ">
+        <option value="">All Sizes</option>
+        <option value="Fine">Fine</option>
+        <option value="Diminutive">Diminutive</option>
+        <option value="Tiny">Tiny</option>
+        <option value="Small">Small</option>
+        <option value="Medium">Medium</option>
+        <option value="Large">Large</option>
+        <option value="Huge">Huge</option>
+        <option value="Gargantuan">Gargantuan</option>
+        <option value="Colossal">Colossal</option>
+      </select>
+    </div>
+  `
+
+  // Monster list container
+  const monsterList = document.createElement('div')
+  monsterList.id = 'monster-list'
+  monsterList.style.cssText = `
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #374151;
+    border-radius: 4px;
+    background: #1f2937;
+  `
+
+  // Function to render monster list
+  const renderMonsterList = (monsters: typeof MONSTER_DATABASE) => {
+    monsterList.innerHTML = monsters.slice(0, 50).map(monster => `
+      <div class="monster-item" data-monster-id="${monster.id}" style="
+        padding: 12px;
+        border-bottom: 1px solid #374151;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      " onmouseover="this.style.backgroundColor='rgba(124, 58, 237, 0.2)'" 
+         onmouseout="this.style.backgroundColor='transparent'">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div style="flex: 1;">
+            <div style="font-weight: bold; color: #fff; margin-bottom: 4px;">${monster.name}</div>
+            <div style="color: #9ca3af; font-size: 12px; margin-bottom: 2px;">
+              ${monster.size} ${monster.type} | CR ${monster.challengeRating}
+            </div>
+            <div style="color: #6b7280; font-size: 11px;">
+              HP: ${monster.hitPoints.average} | AC: ${monster.armorClass.total} | Speed: ${monster.speed.land}ft
+            </div>
+          </div>
+          <div style="color: #7c3aed; font-size: 10px; text-align: right;">
+            ${monster.specialAttacks?.slice(0, 2).map(sa => sa.name).join(', ') || 'No special attacks'}
+          </div>
+        </div>
+      </div>
+    `).join('')
+
+    // Add click handlers
+    monsterList.querySelectorAll('.monster-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const monsterId = (item as HTMLElement).dataset.monsterId!
+        const monster = MONSTER_DATABASE.find(m => m.id === monsterId)!
+        applyMonsterToPawn(pawnId, monster)
+        modalOverlay.remove()
+      })
+    })
+  }
+
+  // Filter functionality
+  const applyFilters = () => {
+    const searchTerm = (document.getElementById('monster-search') as HTMLInputElement).value.toLowerCase()
+    const typeFilter = (document.getElementById('monster-type-filter') as HTMLSelectElement).value
+    const sizeFilter = (document.getElementById('monster-size-filter') as HTMLSelectElement).value
+
+    const filteredMonsters = MONSTER_DATABASE.filter(monster => {
+      const matchesSearch = monster.name.toLowerCase().includes(searchTerm) ||
+                           monster.type.toLowerCase().includes(searchTerm)
+      const matchesType = !typeFilter || monster.type === typeFilter
+      const matchesSize = !sizeFilter || monster.size === sizeFilter
+      
+      return matchesSearch && matchesType && matchesSize
+    })
+
+    renderMonsterList(filteredMonsters)
+  }
+
+  // Assemble modal
+  modalContent.appendChild(header)
+  modalContent.appendChild(filters)
+  modalContent.appendChild(monsterList)
+  modalOverlay.appendChild(modalContent)
+
+  // Initial render
+  renderMonsterList(MONSTER_DATABASE)
+
+  // Event listeners
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) modalOverlay.remove()
+  })
+
+  document.getElementById('close-monster-modal')!.addEventListener('click', () => {
+    modalOverlay.remove()
+  })
+
+  const searchInput = document.getElementById('monster-search') as HTMLInputElement
+  const typeFilter = document.getElementById('monster-type-filter') as HTMLSelectElement
+  const sizeFilter = document.getElementById('monster-size-filter') as HTMLSelectElement
+
+  searchInput.addEventListener('input', applyFilters)
+  typeFilter.addEventListener('change', applyFilters)
+  sizeFilter.addEventListener('change', applyFilters)
+
+  document.body.appendChild(modalOverlay)
+
+  // Focus search input
+  setTimeout(() => searchInput.focus(), 100)
+}
+
 // Hover preview
 app.canvas.addEventListener('mousemove', (ev) => {
   const rect = app.canvas.getBoundingClientRect()
   const mx = Math.floor((ev.clientX - rect.left) / CELL)
   const my = Math.floor((ev.clientY - rect.top) / CELL)
+  
   if (editTerrain) return
+  
+  // Check if hovering over a pawn and update cursor
+  const pawnAtPosition = getPawnAtPosition(mx, my)
+  if (pawnAtPosition) {
+    app.canvas.style.cursor = 'pointer'
+  } else {
+    app.canvas.style.cursor = 'default'
+  }
+  
   const { path, trimmed, threatSet } = planFromActiveTo(mx, my)
   overlay.clear()
   drawAll()
@@ -587,7 +1327,7 @@ app.canvas.addEventListener('mousemove', (ev) => {
   overlay.fill(0xffffff)
   // LoS overlay if enabled
   if (showLoS) {
-    const active = turns.active?.id === 'A' ? pawnA : pawnB
+    const active = turns.active?.id === 'A' ? pawnB : pawnB
     const los = effects.losClearConsideringFog(active.x, active.y, mx, my)
     overlay.stroke({ color: los.clear ? 0x66ff66 : 0xff6666, width: 2 }).moveTo(active.x*CELL+CELL/2, active.y*CELL+CELL/2).lineTo(mx*CELL+CELL/2, my*CELL+CELL/2)
   }
@@ -598,15 +1338,21 @@ app.canvas.addEventListener('click', (ev) => {
   const rect = app.canvas.getBoundingClientRect()
   const mx = Math.floor((ev.clientX - rect.left) / CELL)
   const my = Math.floor((ev.clientY - rect.top) / CELL)
+  
   if (editTerrain) {
     if (ev.shiftKey) cycleCoverAt(mx,my); else toggleDifficultAt(mx,my)
     drawAll()
     return
   }
+  
   const { path, trimmed, info, threatSet } = planFromActiveTo(mx, my)
   overlay.clear()
   drawAll()
   drawPreview(path, threatSet, trimmed)
+  
+  // Hide any existing context menu on regular click
+  hideContextMenu()
+  
   if (!attackMode) {
   if (gameOver) return
     const active = turns.active?.id === 'A' ? pawnA : pawnB
@@ -801,13 +1547,75 @@ app.canvas.addEventListener('click', (ev) => {
   }
 })
 
+// Right-click context menu for pawns
+app.canvas.addEventListener('contextmenu', (ev) => {
+  ev.preventDefault() // Prevent default context menu
+  
+  const rect = app.canvas.getBoundingClientRect()
+  const mx = Math.floor((ev.clientX - rect.left) / CELL)
+  const my = Math.floor((ev.clientY - rect.top) / CELL)
+  
+  // Check if right-click is on a pawn
+  const pawnAtPosition = getPawnAtPosition(mx, my)
+  if (pawnAtPosition) {
+    showPawnContextMenu(pawnAtPosition, ev)
+  } else {
+    // Hide any existing context menu when right-clicking elsewhere
+    hideContextMenu()
+  }
+})
+
 // Controls wiring
+// Collapsible panel functionality
+let controlsCollapsed = false
+
+function toggleControlsPanel() {
+  controlsCollapsed = !controlsCollapsed
+  const advancedControls = document.getElementById('advanced-controls')
+  const collapseIcon = document.getElementById('collapse-icon')
+  const collapseText = document.getElementById('collapse-text')
+  
+  if (advancedControls && collapseIcon && collapseText) {
+    if (controlsCollapsed) {
+      advancedControls.style.display = 'none'
+      collapseIcon.textContent = '▶'
+      collapseText.textContent = 'Show More'
+    } else {
+      advancedControls.style.display = 'block'
+      collapseIcon.textContent = '▼'
+      collapseText.textContent = 'Show Less'
+    }
+    
+    // Store state in localStorage
+    localStorage.setItem('controlsCollapsed', controlsCollapsed.toString())
+  }
+}
+
+// Initialize collapse state from localStorage
+document.addEventListener('DOMContentLoaded', () => {
+  const savedState = localStorage.getItem('controlsCollapsed')
+  if (savedState === 'true') {
+    controlsCollapsed = false // Set opposite so toggle works correctly
+    toggleControlsPanel()
+  }
+})
+
+// Add collapse toggle event listener
+document.getElementById('collapse-toggle')?.addEventListener('click', toggleControlsPanel)
+
 // Character management buttons
 document.getElementById('new-character-btn')?.addEventListener('click', () => {
-  uiManager.characterCreation.show((character) => {
-    uiManager.characterSheet.setCharacter(character)
-    uiManager.combatLog.addMessage(`Created new character: ${character.name}`, 'success')
-  })
+  console.log('=== NEW CHARACTER BUTTON CLICKED ===')
+  console.log('uiManager exists:', !!uiManager)
+  console.log('uiManager.characterCreation exists:', !!uiManager.characterCreation)
+  console.log('characterCreation.show type:', typeof uiManager.characterCreation.show)
+  
+  try {
+    uiManager.characterCreation.show()
+    console.log('show() method called successfully')
+  } catch (err) {
+    console.error('Error calling show():', err)
+  }
 })
 document.getElementById('character-sheet-btn')?.addEventListener('click', () => {
   uiManager.characterSheet.toggle()
@@ -1169,9 +1977,134 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
 // Expose for quick dev tools inspection
 Object.assign(window as any, { app, G })
 
-// Optional: quick object hardness test via keyboard (acid/fire/electricity/cold/sonic)
+// Monster selection functions
+function initializeMonsterUI() {
+  monsterSelectionUI.init('monster-selection-panel')
+  monsterSelectionUI.onMonsterSelected((monster) => {
+    applyMonsterToPawnB(monster)
+    toggleMonsterSelectionUI() // Close UI after selection
+  })
+}
+
+function toggleMonsterSelectionUI() {
+  const panel = document.getElementById('monster-selection-panel')
+  let backdrop = document.getElementById('monster-backdrop')
+  
+  if (panel) {
+    const isVisible = panel.style.display !== 'none'
+    if (isVisible) {
+      // Hide monster selection
+      panel.style.display = 'none'
+      if (backdrop) {
+        backdrop.remove()
+      }
+      appendLogLine('Monster selection closed.')
+    } else {
+      // Show monster selection with backdrop
+      if (!backdrop) {
+        backdrop = document.createElement('div')
+        backdrop.id = 'monster-backdrop'
+        backdrop.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(4px);
+          z-index: 1900;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        `
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) {
+            toggleMonsterSelectionUI() // Close when clicking backdrop
+          }
+        })
+        document.body.appendChild(backdrop)
+      }
+      panel.style.display = 'block'
+      appendLogLine('Monster selection opened. Press M to close, or select a monster.')
+    }
+  }
+}
+
+function selectRandomMonster() {
+  const monster = monsterService.selectRandomMonster()
+  applyMonsterToPawnB(monster)
+  appendLogLine(`Random monster selected: ${monster.name}`)
+}
+
+// Initialize monster UI
+initializeMonsterUI()
+
+// Optional: quick object hardness test via keyboard (acid/fire/electricity/cold/sonic) + pawn shortcuts
 document.addEventListener('keydown', (e) => {
+  // Don't execute any shortcuts if the user is typing in any input field
+  if (DMChatPanel.isAnyInputFocused()) {
+    return;
+  }
+
   const key = e.key
+  
+  // Pawn context menu shortcuts
+  if (key === 'z' || key === 'Z') {
+    // Show context menu for pawn A
+    if (pawnA.hp > 0) {
+      const rect = app.canvas.getBoundingClientRect()
+      const fakeEvent = new MouseEvent('contextmenu', {
+        clientX: rect.left + (pawnA.x * CELL) + (CELL / 2),
+        clientY: rect.top + (pawnA.y * CELL) + (CELL / 2),
+        bubbles: true
+      })
+      showPawnContextMenu('A', fakeEvent)
+    }
+    return
+  }
+  
+  if (key === 'x' || key === 'X') {
+    // Show context menu for pawn B
+    if (pawnB.hp > 0) {
+      const rect = app.canvas.getBoundingClientRect()
+      const fakeEvent = new MouseEvent('contextmenu', {
+        clientX: rect.left + (pawnB.x * CELL) + (CELL / 2),
+        clientY: rect.top + (pawnB.y * CELL) + (CELL / 2),
+        bubbles: true
+      })
+      showPawnContextMenu('B', fakeEvent)
+    }
+    return
+  }
+  
+  // Close any open context menu with Escape
+  if (key === 'Escape') {
+    hideContextMenu()
+    return
+  }
+  
+  // Toggle control panel with '`' (backtick) or 'Tab'
+  if (key === '`' || key === 'Tab') {
+    e.preventDefault() // Prevent default tab behavior
+    toggleControlsPanel()
+    return
+  }
+  
+  // Monster selection UI shortcuts
+  if (key === 'm' || key === 'M') {
+    e.preventDefault()
+    toggleMonsterSelectionUI()
+    return
+  }
+  
+  // Random monster shortcut
+  if (key === 'r' || key === 'R') {
+    e.preventDefault()
+    selectRandomMonster()
+    return
+  }
+  
+  // Damage type tests
   const map: Record<string, { label: string, types: DamagePacket['types'], amount: number }> = {
     '1': { label: 'acid', types: ['acid'], amount: 10 },
     '2': { label: 'fire', types: ['fire'], amount: 10 },

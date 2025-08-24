@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ability Generation Test</title>
+    <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+    <h1>Ability Generation Test</h1>
+    <button id="test-modal" class="btn btn-primary">Test Character Creation Modal</button>
+    
+    <script type="module">
+        import { CharacterCreationModal } from './src/ui/characterCreation.js'
+        import { FantasyNameGenerator } from './src/ui/nameGenerator.js'
+        
+        // Make globally available for testing
+        window.CharacterCreationModal = CharacterCreationModal
+        window.FantasyNameGenerator = FantasyNameGenerator
+        
+        document.getElementById('test-modal').addEventListener('click', () => {
+            const modal = new CharacterCreationModal({
+                onComplete: (character) => {
+                    console.log('Character created:', character)
+                    alert('Character created! Check console for details.')
+                },
+                onCancel: () => {
+                    console.log('Character creation cancelled')
+                }
+            })
+            modal.show()
+        })
+        
+        console.log('Test page loaded - click the button to test ability generation methods')
+    </script>
+</body>
+</html>
