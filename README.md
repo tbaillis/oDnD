@@ -1,16 +1,52 @@
-# SRD Grid (3.5e)
+# oDnD - Digital D&D 3.5e Experience
 
-Browser-based 2D grid tactics demo that implements core D&D 3.5e SRD combat movement, attacks, cover/concealment, and attacks of opportunity. Built with Vite + TypeScript and PixiJS.
+A comprehensive browser-based implementation of D&D 3.5e SRD featuring tactical combat, character creation, and AI-powered dungeon mastering. Built with modern web technologies for an immersive tabletop gaming experience.
+
+## Features
+
+### Core Game Systems
+- **D&D 3.5e SRD Implementation**: Complete ruleset including combat, movement, and character mechanics
+- **Tactical Combat Grid**: Interactive 2D battlefield with PixiJS-powered graphics
+- **Character Creation**: Multi-step wizard with three ability generation methods:
+  - **Point Buy System**: 27 points to distribute across abilities
+  - **Elite Array**: Standard array (15, 14, 13, 12, 10, 8) for balanced characters
+  - **4d6 Rolling**: Traditional dice rolling with drop lowest mechanic
+- **Race & Class Selection**: Human, Elf, Dwarf, Halfling races with Fighter, Rogue, Wizard, Cleric classes
+- **Skills & Feats**: Comprehensive skill system and feat selection for character customization
+
+### Combat & Movement
+- **5-10-5 Diagonal Movement**: Authentic D&D 3.5e movement costs
+- **Difficult Terrain**: Dynamic terrain effects that modify movement costs
+- **Cover & Concealment**: Advanced line-of-sight and cover mechanics
+- **Attack Rolls & Damage**: Full combat resolution with modifiers and critical hits
+
+### AI Dungeon Master
+- **4 AI Personalities**: 
+  - Experienced Wise Mentor (patient, educational)
+  - Dramatic Storyteller (theatrical, immersive)
+  - Tactical Strategist (combat-focused, optimization)
+  - Mysterious Guide (enigmatic, discovery-focused)
+- **17 Specialized Tools**: Combat management, environment control, story elements, dice rolling
+- **Real-time Integration**: AI has full access to game state and character data
+- **Sliding Chat Panel**: Accessible interface with keyboard shortcuts
+
+### Technical Features
+- **Save System**: Persistent game state stored in browser localStorage
+- **Responsive Design**: Works on desktop and tablet devices
+- **Modern Architecture**: TypeScript, Vite, and PixiJS for performance and maintainability
+
+## Quick Start
 
 > **Note**: The main application code is located in the `srd-grid/` directory within this repository.
 
-## Prerequisites
+### Prerequisites
 
 - Node.js 18+ (Node 20+ recommended)
-- npm 9+ (comes with Node)
+- npm 9+ (comes with Node)  
 - A modern browser (Chromium/Chrome, Edge, or Firefox)
+- **For AI Features**: OpenAI API key (optional but recommended)
 
-## Install
+### Installation
 
 ```bash
 git clone https://github.com/tbaillis/oDnD.git
@@ -41,12 +77,42 @@ cd srd-grid
 npm run dev
 ```
 
+### Full Development (Client + AI DM Server)
+For AI features, start both the frontend and MCP server:
+
+```bash
+npm run dev:full  # or: cd srd-grid && npm run dev:full
+```
+This starts both:
+- **Frontend**: http://localhost:5173/ (with hot-reload)
+- **AI DM Server**: http://localhost:3001/ (MCP server for AI features)
+
 ## Build & Preview
 
 ```bash
 npm run build  # Build the application
 npm run preview  # Preview the built application
 ```
+
+## AI Setup
+
+### Enable AI Dungeon Master Features
+1. **Get OpenAI API Key**: Visit [OpenAI Platform](https://platform.openai.com/api-keys)
+2. **Create Environment File**:
+   ```bash
+   cd srd-grid
+   cp .env.example .env
+   ```
+3. **Add Your API Key** to `srd-grid/.env`:
+   ```bash
+   OPENAI_API_KEY=sk-your-actual-api-key-here
+   ```
+4. **Start Full Development Server**:
+   ```bash
+   npm run dev:full
+   ```
+
+The AI features are completely optional - the tactical combat system works perfectly without them!
 
 ## Game instructions
 
@@ -96,7 +162,19 @@ Move and attack with the active token to reduce the opponent to 0 HP. The game a
 - **Spell Book**: Press **S** to view available spells and casting information.
 - **Close UI**: Press **Escape** to close any open interface.
 
+### AI Dungeon Master (Optional)
+- **DM Chat Panel**: Click "DM" button (bottom-right) or press **Ctrl+D** to open AI assistant
+- **4 AI Personalities**: Choose from Experienced Mentor, Dramatic Storyteller, Tactical Strategist, or Mysterious Guide
+- **17 Specialized Tools**: AI has access to combat management, environment control, story elements, and game mechanics
+- **Real-time Integration**: AI is aware of your current campaign state and can assist with gameplay
+
+**Status Indicators**:
+- 🟢 **Green**: AI configured and ready
+- 🟡 **Orange**: Initializing connection  
+- 🔴 **Red**: OpenAI API key needed (see [AI Setup](#ai-setup))
+
 See [srd-grid/CHARACTER_CREATION.md](srd-grid/CHARACTER_CREATION.md) for detailed character creation instructions.
+See [srd-grid/AI_DUNGEON_MASTER.md](srd-grid/AI_DUNGEON_MASTER.md) for complete AI setup and usage guide.
 
 ### Visuals
 - Red tinted cells show threatened squares from the red token.
