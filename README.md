@@ -48,6 +48,19 @@ A comprehensive browser-based implementation of D&D 3.5e SRD featuring tactical 
 
 ### Installation
 
+```bash
+git clone https://github.com/tbaillis/oDnD.git
+cd oDnD
+npm install  # This will automatically install dependencies in srd-grid/ with --legacy-peer-deps
+```
+
+Alternatively, if you prefer to work directly in the srd-grid directory:
+
+```bash
+cd srd-grid
+npm install --legacy-peer-deps
+```
+
 ### Development Servers
 
 ```bash
@@ -132,6 +145,42 @@ For AI Dungeon Master features:
 ├── CHARACTER_CREATION.md    # Character creation documentation
 └── README.md                # This file
 ```
+
+## Troubleshooting
+
+### General Issues
+- If the page doesn't load after `npm run dev`, ensure Node 18+ is installed and no other process is bound to port 5173
+- If TypeScript errors occur, run `npm install --legacy-peer-deps` to ensure dependencies are present
+- Clearing the browser's localStorage will remove saved scenarios
+
+### AI Features Issues
+- **"Configuration needed" Error**: Ensure `srd-grid/.env` file exists with valid `OPENAI_API_KEY`, then restart server with `npm run dev:full`
+- **API Connection Issues**: Verify your OpenAI API key is active and has available credits
+- **DM Panel Not Appearing**: Check browser console for JavaScript errors and verify both servers are running
+- **Port Conflicts**: AI server uses port 3001 - ensure it's not in use by another process
+
+### Performance
+- **Grid Rendering Issues**: Try disabling browser hardware acceleration if visual artifacts appear
+- **Memory Usage**: Clear localStorage periodically to prevent excessive save data buildup
+- **Browser Compatibility**: Use Chrome, Edge, or Firefox for best performance; Safari may have WebGL limitations
+
+## Development Notes
+
+- **Movement costs** use the 5–10–5 diagonal rule per D&D 3.5e SRD
+- **Difficult terrain** doubles the entering step cost  
+- **Save data** is stored in the browser's localStorage under `srd-grid-save`
+- **Default URLs**: 
+  - Tactical grid: http://localhost:5173/
+  - AI DM server: http://localhost:3001/
+
+### Testing
+```bash
+cd srd-grid
+npm test        # Run unit tests
+npm run test:e2e # Run end-to-end tests (requires Playwright)
+```
+
+Current test status: 9/10 unit tests passing, 1 E2E test with known issue.
 
 ## Run (Dev)
 
