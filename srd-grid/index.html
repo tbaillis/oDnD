@@ -239,6 +239,7 @@
           <button id="character-sheet-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:60px;">Character (C)</button>
           <button id="spellbook-btn" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:50px;">Spells (S)</button>
           <button id="token-toggle-btn" style="padding:6px 12px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:50px;">Tokens (T)</button>
+          <button id="battlefield-settings-btn" style="padding:6px 12px;background:#8b5cf6;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:65px;">⚔️ Battlefield (B)</button>
         </div>
         
         <!-- Combat & System Actions -->
@@ -557,6 +558,19 @@
           }
         }
 
+        // Battlefield Settings functionality
+        const battlefieldSettingsBtn = document.getElementById('battlefield-settings-btn');
+        if (battlefieldSettingsBtn) {
+          battlefieldSettingsBtn.addEventListener('click', function() {
+            // This will be handled by the main.ts battlefieldSettings instance
+            if (window.battlefieldSettings) {
+              window.battlefieldSettings.showSettingsPanel();
+            } else {
+              console.warn('Battlefield settings not yet initialized');
+            }
+          });
+        }
+
         // Debug logging functionality
         const aiLoggingToggle = document.getElementById('ai-logging-toggle');
         const detailedLoggingToggle = document.getElementById('detailed-logging-toggle');
@@ -615,6 +629,12 @@
           if (e.key === 't' || e.key === 'T') {
             if (tokenToggleBtn) {
               tokenToggleBtn.click();
+            }
+          }
+          if (e.key === 'b' || e.key === 'B') {
+            const battlefieldBtn = document.getElementById('battlefield-settings-btn');
+            if (battlefieldBtn) {
+              battlefieldBtn.click();
             }
           }
         });

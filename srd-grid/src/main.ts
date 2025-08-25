@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Sprite, Assets, Texture } from 'pixi.
 import { createWorld, updateTime } from './engine/world'
 import { UIManager } from './ui/interface'
 import { DMChatPanel } from './ui/dmChat'
+import { BattlefieldSettings } from './ui/battlefieldSettings'
 import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
 import { EffectManager } from './engine/effects'
 import { planPath, planPathAvoidingThreat } from './engine/path'
@@ -82,20 +83,67 @@ function updateActionHUD(text: string) {
   if (hud) hud.textContent = text
 }
 
+// Initialize battlefield settings
+const battlefieldSettings = new BattlefieldSettings()
+
+// Expose battlefield settings globally so UI can access it
+;(window as any).battlefieldSettings = battlefieldSettings
+
+// Background image sprite (for battlefield backgrounds)
+let backgroundSprite: Sprite | null = null
+const backgroundContainer = new Container()
+world.addChild(backgroundContainer)
+
 // Draw a simple checkerboard grid to validate rendering & scaling
 const grid = new Graphics()
-grid.alpha = 0.7
-for (let y = 0; y < HEIGHT; y += CELL) {
-  for (let x = 0; x < WIDTH; x += CELL) {
-    const dark = ((x / CELL + y / CELL) % 2) === 0
-    grid.rect(x, y, CELL, CELL).fill({ color: dark ? 0x2b2f36 : 0x23272e })
+const lines = new Graphics()
+
+// Function to update battlefield graphics
+function updateBattlefield() {
+  const config = battlefieldSettings.getConfig()
+  
+  // Handle background image
+  if (config.backgroundImage && config.backgroundImage !== (backgroundSprite as any)?.lastImageUrl) {
+    if (backgroundSprite) {
+      backgroundContainer.removeChild(backgroundSprite)
+      backgroundSprite = null
+    }
+    
+    // Create new background sprite using Assets.load
+    Assets.load(config.backgroundImage).then((texture: Texture) => {
+      if (backgroundSprite) {
+        backgroundContainer.removeChild(backgroundSprite)
+      }
+      backgroundSprite = new Sprite(texture);
+      (backgroundSprite as any).lastImageUrl = config.backgroundImage
+      backgroundContainer.addChild(backgroundSprite)
+      
+      // Update graphics with the new sprite
+      BattlefieldSettings.updateBattlefieldGraphics(
+        grid, lines, backgroundSprite, config, WIDTH, HEIGHT, CELL
+      )
+    }).catch((error: Error) => {
+      console.warn('Failed to load background image:', error)
+      backgroundSprite = null
+      BattlefieldSettings.updateBattlefieldGraphics(
+        grid, lines, null, config, WIDTH, HEIGHT, CELL
+      )
+    })
+  } else {
+    // Update graphics without changing background sprite
+    BattlefieldSettings.updateBattlefieldGraphics(
+      grid, lines, backgroundSprite, config, WIDTH, HEIGHT, CELL
+    )
   }
 }
-// grid lines
-const lines = new Graphics()
-lines.stroke({ color: 0x3a3f47, width: 1 })
-for (let x = 0; x <= WIDTH; x += CELL) lines.moveTo(x, 0).lineTo(x, HEIGHT)
-for (let y = 0; y <= HEIGHT; y += CELL) lines.moveTo(0, y).lineTo(WIDTH, y)
+
+// Initial battlefield setup
+updateBattlefield()
+
+// Listen for battlefield setting changes
+battlefieldSettings.onSettingsChange(() => {
+  updateBattlefield()
+})
 
 world.addChild(grid, lines)
 
