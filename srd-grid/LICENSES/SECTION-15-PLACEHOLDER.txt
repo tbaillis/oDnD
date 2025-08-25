@@ -1,6 +1,0 @@
-Section 15: Copyright Notice (placeholder)
-
-List all Open Game Content sources and their copyright holders here, as required by the OGL.
-
-Example entries (replace with accurate data for your distribution):
-- System Reference Document v3.5; Copyright 2000–2003, Wizards of the Coast, Inc.; Authors Jonathan Tweet, Monte Cook, Skip Williams, et al.

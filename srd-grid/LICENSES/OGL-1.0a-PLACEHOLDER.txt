@@ -1,7 +1,0 @@
-Open Game License v1.0a (placeholder)
-
-This project implements game mechanics compatible with the D&D 3.5e System Reference Document (SRD).
-
-Action required: Replace this placeholder with the full text of the Open Game License v1.0a and include appropriate copyright notices per Section 15.
-
-Reference: https://d20srd.org/extras/license.htm
