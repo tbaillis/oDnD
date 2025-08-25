@@ -30,6 +30,90 @@
         transition: transform 0.2s ease-in-out;
       }
       
+      /* Pop-out controls styling */
+      #controls {
+        transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out !important;
+      }
+      
+      #controls:hover {
+        transform: translateX(5px) scale(1.02) !important;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.8) !important;
+      }
+      
+      #controls.collapsed {
+        transform: translateX(calc(-100% + 40px)) !important;
+      }
+      
+      #controls.collapsed:hover {
+        transform: translateX(0) scale(1.02) !important;
+      }
+      
+      /* Minimize button for left-anchored controls */
+      #minimize-toggle {
+        position: absolute;
+        right: -30px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 25px;
+        height: 60px;
+        background: rgba(20,25,30,0.95);
+        border: 1px solid #374151;
+        border-radius: 0 6px 6px 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #e5e7eb;
+        font-size: 14px;
+        transition: all 0.2s ease-in-out;
+        z-index: 1099;
+      }
+      
+      #minimize-toggle:hover {
+        background: rgba(40,45,50,0.95);
+        transform: translateY(-50%) translateX(2px);
+      }
+      
+      /* Pin button styling */
+      #pin-toggle:hover {
+        background: rgba(40,45,50,0.95);
+        transform: translateY(0) scale(1.1);
+        color: #f59e0b;
+      }
+      
+      #pin-toggle.pinned {
+        background: rgba(245,158,11,0.2) !important;
+        border-color: #f59e0b !important;
+        color: #f59e0b !important;
+      }
+      
+      #pin-toggle.pinned:hover {
+        background: rgba(245,158,11,0.3) !important;
+      }
+      
+      /* Controls pinned state */
+      #controls.pinned {
+        border-color: #f59e0b !important;
+        box-shadow: 0 4px 12px rgba(245,158,11,0.3) !important;
+      }
+      
+      /* Token button hover effects */
+      .token-btn:hover {
+        opacity: 0.8 !important;
+        transform: translateY(-1px);
+      }
+      
+      #rescan-assets-btn:hover {
+        background: #047857 !important;
+        transform: translateY(-1px);
+      }
+      
+      #rescan-assets-btn:disabled {
+        background: #6b7280 !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+      }
+      
       /* Responsive design for UI elements */
       @media (max-width: 1400px) {
         #controls { max-width: 500px !important; }
@@ -42,21 +126,98 @@
       
       @media (max-width: 900px) {
         #controls { 
-          max-width: 350px !important; 
-          font-size: 11px;
+          max-width: 320px !important; 
+          font-size: 10px;
           left: 4px !important;
           top: 4px !important;
+          padding: 8px 10px !important;
+        }
+        #controls.collapsed {
+          transform: translateX(calc(-100% + 30px)) !important;
+        }
+        #minimize-toggle {
+          width: 20px !important;
+          height: 40px !important;
+          right: -20px !important;
+          font-size: 12px !important;
+        }
+        #pin-toggle {
+          width: 20px !important;
+          height: 20px !important;
+          right: -20px !important;
+          top: 50px !important;
+          font-size: 10px !important;
         }
         #action-hud { 
           right: 4px !important;
           top: 4px !important;
-          font-size: 12px;
+          font-size: 11px;
+          padding: 6px 8px !important;
         }
         #combat-log { 
-          width: 280px !important; 
-          max-height: 120px !important;
-          left: 4px !important;
-          bottom: 4px !important;
+          width: 250px !important; 
+          max-height: 100px !important;
+          right: 4px !important;
+          top: 80px !important;
+          font-size: 10px;
+        }
+        .center { 
+          padding: 0 4px;
+        }
+        #game-root { 
+          max-width: calc(100vw - 8px);
+          max-height: calc(100vh - 8px);
+        }
+      }
+      
+      /* Extra small screens - phones in portrait */
+      @media (max-width: 640px) {
+        #controls { 
+          max-width: 280px !important; 
+          font-size: 9px;
+          padding: 6px 8px !important;
+        }
+        #controls.collapsed {
+          transform: translateX(calc(-100% + 25px)) !important;
+        }
+        #minimize-toggle {
+          width: 18px !important;
+          height: 35px !important;
+          right: -18px !important;
+          font-size: 10px !important;
+        }
+        #pin-toggle {
+          width: 18px !important;
+          height: 18px !important;
+          right: -18px !important;
+          top: 45px !important;
+          font-size: 9px !important;
+        }
+        #controls button { 
+          padding: 3px 6px !important;
+          font-size: 9px !important;
+        }
+        #controls input[type="number"] { 
+          width: 40px !important;
+          padding: 1px 2px !important;
+          font-size: 9px !important;
+        }
+        #action-hud { 
+          font-size: 10px;
+          padding: 4px 6px !important;
+          max-width: 120px;
+        }
+        #combat-log { 
+          width: 200px !important; 
+          max-height: 80px !important;
+          right: 4px !important;
+          top: 70px !important;
+          font-size: 9px;
+        }
+        #monster-selection-panel {
+          width: 95% !important;
+          height: 85% !important;
+          font-size: 12px;
         }
       }
     </style>
@@ -65,18 +226,23 @@
     <div class="center">
       <div id="game-root" aria-label="Game Canvas" role="img"></div>
     </div>
-    <div id="controls" style="position:fixed;top:8px;left:8px;background:rgba(20,25,30,0.95);padding:12px 16px;border-radius:8px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;box-shadow:0 4px 12px rgba(0,0,0,0.6);max-width:600px;z-index:1100;">
+    <div id="controls" style="position:fixed;top:8px;left:8px;background:rgba(20,25,30,0.95);padding:12px 16px;border-radius:8px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;box-shadow:0 4px 12px rgba(0,0,0,0.6);max-width:600px;z-index:1100;backdrop-filter:blur(8px);transform:translateX(0);transition:transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;">
+      <!-- Minimize toggle button -->
+      <div id="minimize-toggle" title="Toggle panel">▶</div>
+      <!-- Pin button -->
+      <div id="pin-toggle" title="Pin panel (disable auto-collapse)" style="position:absolute;right:-30px;top:10px;width:25px;height:25px;background:rgba(20,25,30,0.95);border:1px solid #374151;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;transition:all 0.2s ease-in-out;z-index:1099;">📌</div>
       <!-- Essential Actions (Always Visible) -->
-      <div id="essential-actions" style="margin-bottom:12px;">
+      <div id="essential-actions" style="margin-bottom:10px;">
         <!-- Primary Buttons -->
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
-          <button id="new-character-btn" style="padding:6px 12px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">New Character (N)</button>
-          <button id="character-sheet-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Character (C)</button>
-          <button id="spellbook-btn" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Spells (S)</button>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+          <button id="new-character-btn" style="padding:6px 12px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:70px;">New Character (N)</button>
+          <button id="character-sheet-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:60px;">Character (C)</button>
+          <button id="spellbook-btn" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:50px;">Spells (S)</button>
+          <button id="token-toggle-btn" style="padding:6px 12px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;min-width:50px;">Tokens (T)</button>
         </div>
         
         <!-- Combat & System Actions -->
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
           <button id="end-turn" style="padding:5px 10px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px;">End Turn</button>
           <button id="attack-mode" style="padding:5px 10px;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Attack Mode</button>
           <button id="undo-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Undo</button>
@@ -84,10 +250,10 @@
         </div>
         
         <!-- Collapse Toggle -->
-        <div style="display:flex;align-items:center;justify-content:center;border-top:1px solid #374151;padding-top:8px;">
+        <div style="display:flex;align-items:center;justify-content:center;border-top:1px solid #374151;padding-top:6px;">
           <button id="collapse-toggle" style="padding:4px 12px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;display:flex;align-items:center;gap:4px;">
             <span id="collapse-icon">▼</span>
-            <span id="collapse-text">Show More</span>
+            <span id="collapse-text">More</span>
           </button>
         </div>
       </div>
@@ -95,89 +261,148 @@
       <!-- Advanced Controls (Collapsible) -->
       <div id="advanced-controls" style="display:block;">
         <!-- Combat Options -->
-        <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:13px;">
+        <div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #374151;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;font-size:12px;">
               <input id="avoid-toggle" type="checkbox" checked style="accent-color:#7c3aed;" />
-              Safest path (avoid AoO)
+              Safe path
             </label>
           </div>
         </div>
 
-        <!-- Combat Options -->
-        <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+        <!-- Combat Toggles -->
+        <div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #374151;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
               <input id="ranged-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Ranged
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="precise-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Precise Shot
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
+              <input id="precise-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Precise
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="defensive-cast-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Defensive Cast
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
+              <input id="defensive-cast-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Def.Cast
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
               <input id="tumble-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Tumble
-              <input id="tumble-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+              <input id="tumble-bonus" type="number" value="5" style="width:40px;padding:1px 3px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;font-size:11px;" />
             </label>
           </div>
         </div>
 
-        <!-- Spell Casting -->
-        <div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #374151;">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <select id="spell-select" style="padding:4px 8px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;">
+        <!-- Spell Casting - Compact Layout -->
+        <div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #374151;">
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;font-size:11px;">
+            <select id="spell-select" style="padding:3px 6px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;font-size:11px;">
               <option value="magic-missile">Magic Missile</option>
               <option value="fog-cloud">Fog Cloud</option>
             </select>
-            <button id="cast-btn" style="padding:6px 12px;background:#8b5cf6;color:white;border:none;border-radius:4px;cursor:pointer;">Cast Spell</button>
-            <button id="potion-btn" style="padding:6px 12px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;">Drink Potion</button>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;font-size:13px;">
-              Conc +<input id="conc-bonus" type="number" value="5" style="width:50px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
+            <button id="cast-btn" style="padding:4px 8px;background:#8b5cf6;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;">Cast</button>
+            <button id="potion-btn" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;">Potion</button>
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;font-size:11px;">
+              Conc +<input id="conc-bonus" type="number" value="5" style="width:35px;padding:1px 2px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;font-size:10px;" />
             </label>
+          </div>
+        </div>
+
+        <!-- Token Manager - Collapsible Section -->
+        <div id="token-manager-section" style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #374151;display:none;">
+          <div style="margin-bottom:6px;">
+            <div style="color:#f59e0b;font-weight:600;font-size:12px;margin-bottom:6px;">🎭 Token Manager</div>
+            
+            <!-- Pawn A -->
+            <div style="margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <div style="width:20px;height:20px;background:#3b4aff;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid #4f46e5;">
+                  <span style="color:white;font-size:10px;">⚡</span>
+                </div>
+                <span style="color:#e5e7eb;font-size:11px;font-weight:500;">Pawn A</span>
+              </div>
+              <div style="display:flex;gap:4px;">
+                <button class="token-btn" data-pawn="A" data-file="pawnA.svg" style="padding:4px 8px;background:#0891b2;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnA.svg</button>
+                <button class="token-btn" data-pawn="A" data-file="pawnB.svg" style="padding:4px 8px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnB.svg</button>
+              </div>
+            </div>
+
+            <!-- Pawn B -->
+            <div style="margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <div style="width:20px;height:20px;background:#059669;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid #10b981;">
+                  <span style="color:white;font-size:10px;">🛡️</span>
+                </div>
+                <span style="color:#e5e7eb;font-size:11px;font-weight:500;">Pawn B</span>
+              </div>
+              <div style="display:flex;gap:4px;">
+                <button class="token-btn" data-pawn="B" data-file="pawnA.svg" style="padding:4px 8px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnA.svg</button>
+                <button class="token-btn" data-pawn="B" data-file="pawnB.svg" style="padding:4px 8px;background:#0891b2;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnB.svg</button>
+              </div>
+            </div>
+
+            <!-- Status and Rescan -->
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;">
+              <span style="color:#9ca3af;">2 tokens found</span>
+              <button id="rescan-assets-btn" style="padding:3px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;">Rescan</button>
+            </div>
           </div>
         </div>
 
         <!-- Advanced Options (Nested Collapsible) -->
-        <details style="margin-bottom:8px;">
-          <summary style="cursor:pointer;font-weight:600;color:#d1d5db;margin-bottom:8px;">Advanced Options</summary>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:#d1d5db;">
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="terrain-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Edit Terrain
+        <details style="margin-bottom:6px;">
+          <summary style="cursor:pointer;font-weight:600;color:#d1d5db;margin-bottom:6px;font-size:11px;">Advanced</summary>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:4px;font-size:10px;color:#d1d5db;">
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="terrain-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Terrain
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="touch-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Touch AC
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="touch-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Touch
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="flat-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Flat-Footed
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="flat-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Flat-Ft
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="show-los-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Show LoS
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="show-los-toggle" type="checkbox" style="accent-color:#7c3aed;" /> LoS
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="reachA-toggle" type="checkbox" style="accent-color:#7c3aed;" /> A: Reach
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="reachA-toggle" type="checkbox" style="accent-color:#7c3aed;" /> A:Reach
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="reachB-toggle" type="checkbox" style="accent-color:#7c3aed;" /> B: Reach
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="reachB-toggle" type="checkbox" style="accent-color:#7c3aed;" /> B:Reach
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="corner-cover-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Corner Cover
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="corner-cover-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Corner
             </label>
-            <label style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-              <input id="prefer-easy-toggle" type="checkbox" checked style="accent-color:#7c3aed;" /> Prefer Easy Terrain
+            <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
+              <input id="prefer-easy-toggle" type="checkbox" checked style="accent-color:#7c3aed;" /> Easy
             </label>
           </div>
         </details>
 
-        <!-- System Controls -->
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">
-          <button id="ready-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Ready</button>
-          <button id="delay-btn" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Delay</button>
-          <input id="seed-input" placeholder="Seed" style="width:60px;padding:2px 4px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;" />
-          <button id="apply-seed" style="padding:4px 8px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;">Apply</button>
-          <button id="save-btn" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;">Save</button>
-          <button id="load-btn" style="padding:4px 8px;background:#dc2626;color:white;border:none;border-radius:3px;cursor:pointer;">Load</button>
-          <button id="reset-btn" style="padding:4px 8px;background:#f59e0b;color:white;border:none;border-radius:3px;cursor:pointer;">Reset</button>
+        <!-- System Controls - Compact -->
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;font-size:10px;">
+          <button id="ready-btn" style="padding:3px 6px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Ready</button>
+          <button id="delay-btn" style="padding:3px 6px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Delay</button>
+          <input id="seed-input" placeholder="Seed" style="width:50px;padding:2px 3px;border:1px solid #4b5563;border-radius:3px;background:#1f2937;color:#e5e7eb;font-size:10px;" />
+          <button id="apply-seed" style="padding:3px 6px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Apply</button>
+          <button id="save-btn" style="padding:3px 6px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Save</button>
+          <button id="load-btn" style="padding:3px 6px;background:#dc2626;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Load</button>
+          <button id="reset-btn" style="padding:3px 6px;background:#f59e0b;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Reset</button>
+        </div>
+
+        <!-- Debug Logging Settings -->
+        <div style="margin-top:8px;padding-top:6px;border-top:1px solid #374151;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;margin-bottom:4px;">
+            <span style="color:#8b5cf6;font-weight:600;">🔍 Debug Logging:</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;">
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
+              <input id="ai-logging-toggle" type="checkbox" style="accent-color:#8b5cf6;" /> 
+              <span style="color:#00ff00;">🤖 AI Calls</span>
+            </label>
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
+              <input id="detailed-logging-toggle" type="checkbox" style="accent-color:#8b5cf6;" /> 
+              <span style="color:#00bfff;">🌐 Server & Stack</span>
+            </label>
+            <button id="show-log-panel" style="padding:3px 8px;background:#8b5cf6;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;margin-left:8px;">Show Panel</button>
+          </div>
         </div>
       </div>
     </div>
@@ -194,5 +419,206 @@
 
     <script type="module" src="/src/main.ts"></script>
     <script src="/test-modal.js"></script>
+    
+    <!-- Pop-out controls functionality -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const controls = document.getElementById('controls');
+        const minimizeToggle = document.getElementById('minimize-toggle');
+        const pinToggle = document.getElementById('pin-toggle');
+        const tokenToggleBtn = document.getElementById('token-toggle-btn');
+        const tokenManagerSection = document.getElementById('token-manager-section');
+        
+        // State variables
+        let isPinned = false;
+        let idleTimer;
+        
+        // Controls panel minimize/maximize functionality
+        if (controls && minimizeToggle) {
+          minimizeToggle.addEventListener('click', function() {
+            controls.classList.toggle('collapsed');
+            
+            if (controls.classList.contains('collapsed')) {
+              minimizeToggle.innerHTML = '◀';
+              minimizeToggle.title = 'Expand panel';
+            } else {
+              minimizeToggle.innerHTML = '▶';
+              minimizeToggle.title = 'Collapse panel';
+            }
+          });
+          
+          // Pin/unpin functionality
+          if (pinToggle) {
+            pinToggle.addEventListener('click', function() {
+              isPinned = !isPinned;
+              
+              if (isPinned) {
+                // Pin the panel
+                controls.classList.add('pinned');
+                pinToggle.classList.add('pinned');
+                pinToggle.title = 'Unpin panel (enable auto-collapse)';
+                clearTimeout(idleTimer); // Stop auto-collapse timer
+              } else {
+                // Unpin the panel
+                controls.classList.remove('pinned');
+                pinToggle.classList.remove('pinned');
+                pinToggle.title = 'Pin panel (disable auto-collapse)';
+                resetIdleTimer(); // Restart auto-collapse timer
+              }
+            });
+          }
+          
+          // Auto-collapse timer (only when not pinned)
+          function resetIdleTimer() {
+            if (isPinned) return; // Don't auto-collapse if pinned
+            
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+              if (!controls.matches(':hover') && !isPinned) {
+                controls.classList.add('collapsed');
+                minimizeToggle.innerHTML = '◀';
+                minimizeToggle.title = 'Expand panel';
+              }
+            }, 10000); // Auto-collapse after 10 seconds of inactivity
+          }
+          
+          // Reset timer on any interaction with controls (only when not pinned)
+          controls.addEventListener('mouseenter', () => {
+            if (!isPinned) resetIdleTimer();
+          });
+          controls.addEventListener('mouseleave', () => {
+            if (!isPinned) resetIdleTimer();
+          });
+          controls.addEventListener('click', () => {
+            if (!isPinned) resetIdleTimer();
+          });
+          
+          // Initialize timer
+          resetIdleTimer();
+        }
+
+        // Token Manager toggle functionality
+        if (tokenToggleBtn && tokenManagerSection) {
+          let tokenManagerVisible = false;
+          
+          tokenToggleBtn.addEventListener('click', function() {
+            tokenManagerVisible = !tokenManagerVisible;
+            tokenManagerSection.style.display = tokenManagerVisible ? 'block' : 'none';
+            
+            // Update button appearance
+            if (tokenManagerVisible) {
+              this.style.background = '#dc2626'; // Red when active
+              this.textContent = 'Hide Tokens (T)';
+            } else {
+              this.style.background = '#f59e0b'; // Orange when inactive
+              this.textContent = 'Tokens (T)';
+            }
+          });
+          
+          // Token button functionality
+          const tokenBtns = document.querySelectorAll('.token-btn');
+          tokenBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+              const pawn = this.getAttribute('data-pawn');
+              const file = this.getAttribute('data-file');
+              
+              // Remove active state from all buttons for this pawn
+              const pawnButtons = document.querySelectorAll(`[data-pawn="${pawn}"]`);
+              pawnButtons.forEach(b => {
+                b.style.background = '#4b5563';
+                b.style.color = '#d1d5db';
+              });
+              
+              // Set active state for clicked button
+              this.style.background = '#0891b2';
+              this.style.color = 'white';
+              
+              console.log(`Selected ${file} for Pawn ${pawn}`);
+              // Here you would integrate with your game logic to change the token
+            });
+          });
+          
+          // Rescan Assets functionality
+          const rescanBtn = document.getElementById('rescan-assets-btn');
+          if (rescanBtn) {
+            rescanBtn.addEventListener('click', function() {
+              console.log('Rescanning assets...');
+              // Here you would implement asset rescanning logic
+              // For now, just show a brief feedback
+              const originalText = this.textContent;
+              this.textContent = 'Scanning...';
+              this.disabled = true;
+              
+              setTimeout(() => {
+                this.textContent = originalText;
+                this.disabled = false;
+              }, 1500);
+            });
+          }
+        }
+
+        // Debug logging functionality
+        const aiLoggingToggle = document.getElementById('ai-logging-toggle');
+        const detailedLoggingToggle = document.getElementById('detailed-logging-toggle');
+        const showLogPanelBtn = document.getElementById('show-log-panel');
+        
+        if (aiLoggingToggle && detailedLoggingToggle && showLogPanelBtn) {
+          // Load saved settings
+          const savedAILogging = localStorage.getItem('aiLoggingEnabled') === 'true';
+          const savedDetailedLogging = localStorage.getItem('detailedLoggingEnabled') === 'true';
+          
+          aiLoggingToggle.checked = savedAILogging;
+          detailedLoggingToggle.checked = savedDetailedLogging;
+          
+          // Wait for debug logger to be available
+          function initDebugLogging() {
+            if (window.debugLogger) {
+              // Apply saved settings
+              window.debugLogger.enableAILogging(savedAILogging);
+              window.debugLogger.enableDetailedLogging(savedDetailedLogging);
+              
+              // Event listeners
+              aiLoggingToggle.addEventListener('change', function() {
+                const enabled = this.checked;
+                window.debugLogger.enableAILogging(enabled);
+                localStorage.setItem('aiLoggingEnabled', enabled.toString());
+                console.log('AI Logging:', enabled ? 'enabled' : 'disabled');
+              });
+              
+              detailedLoggingToggle.addEventListener('change', function() {
+                const enabled = this.checked;
+                window.debugLogger.enableDetailedLogging(enabled);
+                localStorage.setItem('detailedLoggingEnabled', enabled.toString());
+                console.log('Detailed Logging:', enabled ? 'enabled' : 'disabled');
+              });
+              
+              showLogPanelBtn.addEventListener('click', function() {
+                window.debugLogger.showPanel();
+              });
+              
+              console.log('🔍 Debug logging system initialized');
+            } else {
+              // Retry in 100ms if debugLogger not available yet
+              setTimeout(initDebugLogging, 100);
+            }
+          }
+          
+          // Initialize when ready
+          initDebugLogging();
+        }
+
+        // Global keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+          // Only handle if not in an input field
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+          
+          if (e.key === 't' || e.key === 'T') {
+            if (tokenToggleBtn) {
+              tokenToggleBtn.click();
+            }
+          }
+        });
+      });
+    </script>
   </body>
 </html>

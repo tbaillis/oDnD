@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monster AI Test Console</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #00ff00; }
+        .status { background: #333; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { color: #00ff00; }
+        .warning { color: #ffaa00; }
+        .error { color: #ff4444; }
+        button { 
+            padding: 10px 20px; 
+            margin: 5px; 
+            background: #444; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+        }
+        button:hover { background: #666; }
+        #output { 
+            background: #000; 
+            padding: 20px; 
+            border-radius: 5px; 
+            min-height: 200px; 
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🐲 Monster AI Test Console</h1>
+    
+    <div class="status">
+        <h2>Quick Actions</h2>
+        <button onclick="checkAIStatus()">Check AI Status</button>
+        <button onclick="enableAI()">Enable AI</button>
+        <button onclick="setMonsterB()">Set B as Monster</button>
+        <button onclick="triggerAITurn()">Test AI Turn</button>
+        <button onclick="clearOutput()">Clear</button>
+    </div>
+    
+    <div class="status">
+        <h2>Game Actions</h2>
+        <button onclick="startGameTest()">Start Game Test</button>
+        <button onclick="resetBudget()">Reset Turn Budget</button>
+        <button onclick="showGameState()">Show Game State</button>
+    </div>
+    
+    <div id="output"></div>
+
+    <script>
+        let output = document.getElementById('output');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            let color = '#00ff00';
+            if (type === 'warning') color = '#ffaa00';
+            if (type === 'error') color = '#ff4444';
+            if (type === 'success') color = '#00ff88';
+            
+            output.innerHTML += `<span style="color: ${color}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function clearOutput() {
+            output.innerHTML = '';
+        }
+        
+        async function checkAIStatus() {
+            log('🔍 Checking Monster AI Status...', 'info');
+            
+            try {
+                if (window.monsterAI) {
+                    log(`✅ MonsterAI found:`, 'success');
+                    log(`   - Enabled: ${window.monsterAI.isEnabled()}`);
+                    log(`   - Ready: ${window.monsterAI.isReady()}`);
+                    log(`   - Personality: ${window.monsterAI.getCurrentPersonality().name}`);
+                } else {
+                    log('❌ MonsterAI not found on window', 'error');
+                }
+                
+                if (window.monsterTurnManager) {
+                    log(`✅ MonsterTurnManager found:`, 'success');
+                    log(`   - Pawn A is Monster: ${window.monsterTurnManager.isMonsterPawn('A')}`);
+                    log(`   - Pawn B is Monster: ${window.monsterTurnManager.isMonsterPawn('B')}`);
+                } else {
+                    log('❌ MonsterTurnManager not found', 'error');
+                }
+                
+                if (window.turns) {
+                    log(`✅ Game turns found:`, 'success');
+                    log(`   - Round: ${window.turns.round}`);
+                    log(`   - Active: ${window.turns.active?.id}`);
+                    log(`   - Budget: ${JSON.stringify(window.turns.budget)}`);
+                } else {
+                    log('❌ Game turns not found', 'error');
+                }
+            } catch (error) {
+                log(`❌ Error checking status: ${error.message}`, 'error');
+            }
+        }
+        
+        function enableAI() {
+            log('🔧 Enabling Monster AI...', 'info');
+            try {
+                if (window.toggleMonsterAI) {
+                    window.toggleMonsterAI();
+                    log('✅ AI toggle executed', 'success');
+                } else if (window.monsterAI) {
+                    window.monsterAI.enable();
+                    log('✅ AI enabled directly', 'success');
+                } else {
+                    log('❌ No AI toggle method found', 'error');
+                }
+            } catch (error) {
+                log(`❌ Error enabling AI: ${error.message}`, 'error');
+            }
+        }
+        
+        function setMonsterB() {
+            log('🔧 Setting Pawn B as Monster...', 'info');
+            try {
+                if (window.setMonsterPawn) {
+                    window.setMonsterPawn('B');
+                    log('✅ Pawn B set as monster', 'success');
+                } else {
+                    log('❌ setMonsterPawn function not found', 'error');
+                }
+            } catch (error) {
+                log(`❌ Error setting monster: ${error.message}`, 'error');
+            }
+        }
+        
+        async function triggerAITurn() {
+            log('🤖 Triggering AI Turn for Pawn B...', 'info');
+            try {
+                if (window.triggerMonsterTurn) {
+                    await window.triggerMonsterTurn('B');
+                    log('✅ AI Turn triggered', 'success');
+                } else {
+                    log('❌ triggerMonsterTurn function not found', 'error');
+                }
+            } catch (error) {
+                log(`❌ Error triggering AI turn: ${error.message}`, 'error');
+            }
+        }
+        
+        function startGameTest() {
+            log('🎮 Starting Game Test Scenario...', 'info');
+            
+            // Position pawns for testing
+            if (window.pawnA && window.pawnB) {
+                window.pawnA.x = 5;
+                window.pawnA.y = 5;
+                window.pawnB.x = 8;
+                window.pawnB.y = 5;
+                log('✅ Pawns positioned: A at (5,5), B at (8,5)', 'success');
+                
+                // Make sure B has HP and is a monster
+                window.pawnB.hp = 50;
+                window.pawnB.maxHp = 50;
+                log('✅ Pawn B HP set to 50/50', 'success');
+                
+                if (window.drawAll) {
+                    window.drawAll();
+                    log('✅ Display updated', 'success');
+                }
+            } else {
+                log('❌ Pawns not found', 'error');
+            }
+        }
+        
+        function resetBudget() {
+            log('🔄 Resetting Turn Budget...', 'info');
+            try {
+                if (window.turns && window.turns.budget) {
+                    window.turns.budget.move = true;
+                    window.turns.budget.standard = true;
+                    window.turns.budget.fiveFootStep = true;
+                    log('✅ Turn budget reset', 'success');
+                } else {
+                    log('❌ Turn budget not found', 'error');
+                }
+            } catch (error) {
+                log(`❌ Error resetting budget: ${error.message}`, 'error');
+            }
+        }
+        
+        function showGameState() {
+            log('📊 Current Game State:', 'info');
+            try {
+                if (window.pawnA) {
+                    log(`   Pawn A: (${window.pawnA.x}, ${window.pawnA.y}) HP: ${window.pawnA.hp}/${window.pawnA.maxHp}`);
+                }
+                if (window.pawnB) {
+                    log(`   Pawn B: (${window.pawnB.x}, ${window.pawnB.y}) HP: ${window.pawnB.hp}/${window.pawnB.maxHp}`);
+                }
+                if (window.turns) {
+                    log(`   Round: ${window.turns.round}, Active: ${window.turns.active?.id}`);
+                    log(`   Budget: ${JSON.stringify(window.turns.budget)}`);
+                }
+            } catch (error) {
+                log(`❌ Error showing game state: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-run initial check
+        setTimeout(checkAIStatus, 1000);
+        
+        log('🐲 Monster AI Test Console Ready', 'success');
+        log('Click buttons above to test Monster AI functionality', 'info');
+    </script>
+</body>
+</html>

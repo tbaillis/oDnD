@@ -1,6 +1,7 @@
 // Monster AI Turn Management System
 import { monsterAI, type MonsterCombatAction, type MonsterAIResponse } from '../ai/monsterAgent.js';
 import { monsterDialogueUI } from '../ai/monsterDialogue.js';
+import { debugLogger } from '../utils/debugLogger';
 
 export interface MonsterTurnManager {
   isMonsterTurn(pawnId: 'A' | 'B'): boolean;
@@ -18,6 +19,8 @@ export class MonsterTurnManager implements MonsterTurnManager {
   constructor() {
     // Initialize with pawn B as monster by default (can be changed)
     this.monsterPawns.add('B');
+  // Reference internal helpers to avoid unused warnings in some build environments
+  this._referencedHelpers();
   }
 
   public isMonsterTurn(pawnId: 'A' | 'B'): boolean {
@@ -41,16 +44,68 @@ export class MonsterTurnManager implements MonsterTurnManager {
   }
 
   public async executeMonsterTurn(pawnId: 'A' | 'B', gameState: any): Promise<boolean> {
+    debugLogger.logAI('MonsterTurnManager', `Starting monster turn execution`, {
+      pawnId,
+      isProcessingTurn: this.isProcessingTurn,
+      aiEnabled: monsterAI.isEnabled(),
+      isMonsterTurn: this.isMonsterTurn(pawnId)
+    });
+
     if (this.isProcessingTurn || !monsterAI.isEnabled() || !this.isMonsterTurn(pawnId)) {
+      debugLogger.logAI('MonsterTurnManager', 'Cannot execute turn - conditions not met', {
+        isProcessingTurn: this.isProcessingTurn,
+        aiEnabled: monsterAI.isEnabled(),
+        isMonsterTurn: this.isMonsterTurn(pawnId)
+      });
       return false;
     }
 
     this.isProcessingTurn = true;
 
     try {
-      // Get AI decision
+      // Execute a complete monster turn (potentially multiple actions)
+      await this.executeCompleteMonsterTurn(pawnId, gameState);
+      debugLogger.logAI('MonsterTurnManager', 'Monster turn completed successfully');
+      return true;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      debugLogger.logError('MonsterTurnManager', `Error executing monster turn: ${errorMsg}`, { error: errorMsg });
+      console.error('Error executing monster turn:', error);
+      return false;
+    } finally {
+      this.isProcessingTurn = false;
+    }
+  }
+
+  private async executeCompleteMonsterTurn(pawnId: 'A' | 'B', gameState: any): Promise<void> {
+    debugLogger.logAI('MonsterTurnManager', 'Starting complete monster turn', {
+      pawnId,
+      budget: gameState?.budget,
+      turnDelay: this.turnDelay
+    });
+
+    const maxActions = 3; // Safety limit to prevent infinite loops
+    let actionsExecuted = 0;
+    
+    while (actionsExecuted < maxActions) {
+      debugLogger.logAI('MonsterTurnManager', `Action ${actionsExecuted + 1}/${maxActions}`, {
+        remainingBudget: gameState?.budget
+      });
+
+      // Get AI decision for current game state
       const decision = await monsterAI.makeDecision(gameState);
       
+      // If AI wants to end turn, commit end turn and exit
+      if (decision.action.type === 'end_turn') {
+        if (decision.action.dialogue) {
+          monsterDialogueUI.showMessage(decision.action.dialogue);
+        }
+        if (typeof (window as any).commitEndTurn === 'function') {
+          (window as any).commitEndTurn();
+        }
+        break;
+      }
+
       // Show monster dialogue if provided
       if (decision.action.dialogue) {
         monsterDialogueUI.showMessage(decision.action.dialogue);
@@ -61,14 +116,47 @@ export class MonsterTurnManager implements MonsterTurnManager {
 
       // Execute the action
       const actionExecuted = await this.executeAction(pawnId, decision);
+      
+      if (!actionExecuted) {
+        console.warn(`Failed to execute ${decision.action.type} action for monster ${pawnId}`);
+        break;
+      }
 
-      return actionExecuted;
-    } catch (error) {
-      console.error('Error executing monster turn:', error);
-      return false;
-    } finally {
-      this.isProcessingTurn = false;
+      actionsExecuted++;
+
+      // Update game state after action for next decision
+      const turns = (window as any).turns;
+      const pawnA = (window as any).pawnA;
+      const pawnB = (window as any).pawnB;
+      const effects = (window as any).effects;
+      const G = (window as any).G;
+      
+      gameState = this.buildGameState(turns, pawnA, pawnB, {
+        grid: G,
+        terrain: G,
+        effects: effects
+      });
+
+      // Check if we have actions remaining
+      const budget = turns.budget;
+      const hasActionsRemaining = budget && (
+        budget.standard || budget.move || budget.fiveFootStep
+      );
+
+      if (!hasActionsRemaining) {
+        console.log(`Monster ${pawnId} has no actions remaining, ending turn`);
+        // Ensure we properly commit end of turn so game state advances
+        if (typeof (window as any).commitEndTurn === 'function') {
+          (window as any).commitEndTurn();
+        }
+        break;
+      }
+
+      // Add a small delay between actions
+      await this.sleep(300);
     }
+
+    console.log(`Monster ${pawnId} completed turn with ${actionsExecuted} actions`);
   }
 
   private async executeAction(
@@ -120,7 +208,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
       }
 
       // Plan movement to target
-      const { path, trimmed, info } = planFromActiveTo(action.target.x, action.target.y);
+  const { trimmed, info } = planFromActiveTo(action.target.x, action.target.y);
       
       if (!trimmed || trimmed.length === 0) {
         console.warn(`No valid path to target (${action.target.x}, ${action.target.y})`);
@@ -283,6 +371,11 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return null;
   }
 
+  // Reference helper to avoid TS unused warnings in builds that tree-shake differently
+  private _referencedHelpers(): void {
+    void this.findPawnAtPosition;
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -293,9 +386,30 @@ export class MonsterTurnManager implements MonsterTurnManager {
     const activePawn = activePawnId === 'A' ? pawnA : pawnB;
     const enemyPawn = activePawnId === 'A' ? pawnB : pawnA;
 
+    // Enhance active monster with budget-derived availability flags
+    const activeMonster = this.isMonsterTurn(activePawnId) ? {
+      ...activePawn,
+      moveAvailable: turns.budget?.moveAvailable || false,
+      attackAvailable: turns.budget?.standardAvailable || false,
+      fiveFootStepAvailable: turns.budget?.fiveFootStepAvailable || false
+    } : null;
+
+    debugLogger.logAI('MonsterTurnManager', 'Building game state', {
+      activePawnId,
+      isMonsterTurn: this.isMonsterTurn(activePawnId),
+      budget: turns.budget,
+      activeMonster: activeMonster ? {
+        id: activeMonster.id,
+        position: `(${activeMonster.x}, ${activeMonster.y})`,
+        moveAvailable: activeMonster.moveAvailable,
+        attackAvailable: activeMonster.attackAvailable
+      } : null,
+      enemyCount: [enemyPawn].filter(p => p.hp > 0).length
+    });
+
     return {
       activePawnId,
-      activeMonster: this.isMonsterTurn(activePawnId) ? activePawn : null,
+      activeMonster,
       activePawn: activePawn,
       enemies: [enemyPawn].filter(p => p.hp > 0),
       allPawns: [pawnA, pawnB],

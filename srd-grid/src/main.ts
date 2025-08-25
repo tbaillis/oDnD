@@ -22,6 +22,7 @@ import { monsterService } from './game/monsters/service'
 import { monsterAI } from './ai/monsterAgent'
 import { monsterDialogueUI } from './ai/monsterDialogue'
 import { monsterTurnManager } from './ai/monsterTurnManager'
+import { debugLogger } from './utils/debugLogger'
 
 // Import CSS styles
 import './style.css'
@@ -57,8 +58,10 @@ console.log('characterCreation type:', typeof uiManager.characterCreation)
 // Debug global window access
 ;(window as any).debugUI = uiManager
 ;(window as any).toggleMonsterSelectionUI = toggleMonsterSelectionUI
+;(window as any).debugLogger = debugLogger
 console.log('UIManager exposed as window.debugUI')
 console.log('Monster selection toggle exposed globally')
+console.log('Debug logger exposed as window.debugLogger')
 
 // Set initial message
 uiManager.combatLog.addMessage('SRD Grid ready.', 'info')
@@ -261,6 +264,20 @@ function applyMonsterToPawn(pawnId: 'A' | 'B', monster: import('./game/monsters/
   }
   if (monster.specialQualities && monster.specialQualities.length > 0) {
     appendLogLine(`Special Qualities: ${monster.specialQualities.map(sq => sq.name).join(', ')}`)
+  }
+  
+  // Auto-enable Monster AI for monster pawns
+  if (pawnId === 'B') {
+    console.log(`🤖 Auto-enabling Monster AI for Pawn ${pawnId} (${monster.name})`)
+    // Make sure Monster AI is enabled
+    if (!monsterAI.isEnabled()) {
+      monsterAI.enable()
+      console.log('✅ Monster AI enabled')
+    }
+    // Set pawn as Monster AI controlled
+    monsterTurnManager.setMonsterPawn(pawnId, true)
+    console.log(`✅ Pawn ${pawnId} set as Monster AI controlled`)
+    appendLogLine(`🤖 Monster AI enabled for ${monster.name}!`)
   }
   
   // Redraw to reflect changes
@@ -539,7 +556,7 @@ if (defA) setPawnTexture('A', defA.url)
 if (defB) setPawnTexture('B', defB.url)
 
 // Build comprehensive token selector interface
-function buildTokenSelectors() {
+export function buildTokenSelectors() {
   const wrap = document.createElement('div')
   wrap.style.cssText = [
     'position:fixed',
@@ -703,7 +720,7 @@ function buildTokenSelectors() {
 
   document.body.appendChild(wrap)
 }
-buildTokenSelectors()
+// buildTokenSelectors() - Disabled: Token Manager now integrated into pop-out panel
 
 
 // Demo defenses helper
@@ -754,15 +771,34 @@ function commitEndTurn() {
   
   // Check if the new active pawn is a monster and AI is enabled
   const newActivePawnId = turns.active?.id as 'A' | 'B'
-  if (newActivePawnId && monsterTurnManager.shouldTakeAutoTurn(newActivePawnId)) {
-    // Schedule monster AI turn after a short delay
-    setTimeout(() => {
-      executeMonsterTurn(newActivePawnId)
-    }, 500) // Brief delay to let UI update
+  console.log(`🔍 Turn ended. New active pawn: ${newActivePawnId}`)
+  
+  if (newActivePawnId) {
+    const isMonster = monsterTurnManager.isMonsterPawn(newActivePawnId)
+    const aiEnabled = monsterAI.isEnabled()
+    const shouldTakeAutoTurn = monsterTurnManager.shouldTakeAutoTurn(newActivePawnId)
+    
+    console.log(`🔍 Monster AI Check for Pawn ${newActivePawnId}:`, {
+      isMonster,
+      aiEnabled,
+      shouldTakeAutoTurn
+    })
+    
+    if (shouldTakeAutoTurn) {
+      console.log(`🤖 Scheduling Monster AI turn for Pawn ${newActivePawnId}`)
+      // Schedule monster AI turn after a short delay
+      setTimeout(() => {
+        executeMonsterTurn(newActivePawnId)
+      }, 500) // Brief delay to let UI update
+    } else {
+      console.log(`⏭️ Pawn ${newActivePawnId} will not take auto turn`)
+    }
   }
 }
 
 async function executeMonsterTurn(pawnId: 'A' | 'B') {
+  console.log(`🤖 Executing Monster AI turn for Pawn ${pawnId}`)
+  
   try {
     // Build game state for AI decision making
     const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnB, {
@@ -770,9 +806,18 @@ async function executeMonsterTurn(pawnId: 'A' | 'B') {
       terrain: G,
       effects: effects
     })
+    
+    console.log(`🤖 Game state built for Pawn ${pawnId}:`, {
+      activePawnId: gameState.activePawnId,
+      activeMonster: !!gameState.activeMonster,
+      enemies: gameState.enemies?.length || 0,
+      budget: gameState.budget
+    })
 
     // Execute monster turn
     const success = await monsterTurnManager.executeMonsterTurn(pawnId, gameState)
+    
+    console.log(`🤖 Monster turn ${pawnId} result: ${success ? 'SUCCESS' : 'FAILED'}`)
     
     if (success) {
       // Update display after monster action
@@ -2247,7 +2292,12 @@ try {
   monsterAI.initialize()
   // Enable the Monster AI by default for demonstration
   monsterAI.enable()
-  console.log('Monster AI initialized successfully')
+  console.log('✅ Monster AI initialized and enabled successfully')
+  console.log('✅ Monster AI Status:', {
+    enabled: monsterAI.isEnabled(),
+    personality: monsterAI.getCurrentPersonality().name,
+    ready: monsterAI.isReady()
+  })
 } catch (error) {
   console.error('Failed to initialize Monster AI:', error)
 }

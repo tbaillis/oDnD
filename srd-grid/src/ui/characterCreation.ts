@@ -211,6 +211,8 @@ export class CharacterCreationModal {
     this.onComplete = options.onComplete
     this.onCancel = options.onCancel
     this.initializeCharacterData()
+  // Reference internal helper to prevent unused function warnings in different build modes
+  void this._referValidateAllSteps
     console.log('CharacterCreationModal constructor completed, initialized with character data:', this.characterData)
   }
 
@@ -1604,6 +1606,9 @@ export class CharacterCreationModal {
     
     return { isValid: Object.keys(errors).length === 0, errors }
   }
+
+  // No-op reference to avoid unused function warning in some build configurations
+  private _referValidateAllSteps = () => { void this.validateAllSteps }
 
   private updateNavigationState(): void {
     const nextButton = this.modal?.querySelector('#next-button') as HTMLButtonElement

@@ -1,5 +1,5 @@
 // Server-side OpenAI integration via API
-import { dmAgentConfig, type AIPersonality, AI_PERSONALITIES } from './config.js';
+import { type AIPersonality, AI_PERSONALITIES } from './config.js';
 
 const DM_API_BASE_URL = 'http://localhost:3001/api/dm';
 

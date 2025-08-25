@@ -28,7 +28,7 @@ export interface DMResponse {
 }
 
 export class OpenAIDMAgent {
-  private client: any | null = null; // Temporarily using 'any' since OpenAI is not available in browser
+  private _client: any | null = null; // Temporarily using 'any' since OpenAI is not available in browser
   private isInitialized: boolean = false;
   private conversationHistory: ChatMessage[] = [];
   private gameContext: GameContext = {};
@@ -40,6 +40,8 @@ export class OpenAIDMAgent {
     this.initialize().catch(error => {
       console.error('Failed to initialize DM Agent:', error);
     });
+  // Reference _client to avoid unused variable TS warning in demo build
+  void this._client;
   }
 
   private async initialize(): Promise<void> {

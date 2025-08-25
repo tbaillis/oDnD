@@ -2142,12 +2142,52 @@ select option {
   border-radius: 16px;
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  position: fixed;
+  top: 60px;
+  right: 8px;
+  width: 350px;
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 1000;
+  font-size: 13px;
+}
+
+/* Responsive adjustments for combat log */
+@media (max-width: 900px) {
+  .combat-log {
+    width: 250px;
+    max-height: 100px;
+    font-size: 11px;
+    right: 4px;
+    top: 80px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .combat-log {
+    width: 200px;
+    max-height: 80px;
+    font-size: 10px;
+    right: 4px;
+    top: 70px;
+    border-radius: 8px;
+  }
 }
 
 .combat-log .log-entry {
   color: rgba(255, 255, 255, 0.9);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.75rem;
+  line-height: 1.3;
+}
+
+/* Responsive padding for log entries */
+@media (max-width: 640px) {
+  .combat-log .log-entry {
+    padding: 0.3rem 0.5rem;
+    line-height: 1.2;
+  }
 }
 
 .combat-log .log-entry.success {

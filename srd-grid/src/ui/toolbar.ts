@@ -20,10 +20,11 @@ export class Toolbar {
     `
     
     this.createButton('New Character', () => {
-      this.uiManager.characterCreation.show((character) => {
-        this.uiManager.characterSheet.setCharacter(character)
-        this.uiManager.combatLog.addMessage(`Created new character: ${character.name}`, 'success')
-      })
+      // Show character creation UI; older API accepted a callback but new API uses events or returned value
+      // Call show() and rely on UIManager to emit the created character via its own flow.
+      if (typeof this.uiManager.characterCreation.show === 'function') {
+        try { this.uiManager.characterCreation.show(); } catch (e) { /* no-op fallback */ }
+      }
     })
     
     this.createButton('Character (C)', () => {

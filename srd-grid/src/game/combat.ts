@@ -1,5 +1,5 @@
 import { d20, sessionRNG, type RNG } from '../engine/rng'
-import type { ACBreakdown } from '../engine/components'
+import type { ACBreakdownShape as ACBreakdown } from '../engine/components'
 import { resolveBonuses, type Bonus } from '../engine/bonuses'
 
 export type DamageType = 'bludgeoning'|'piercing'|'slashing'|'fire'|'cold'|'electricity'|'acid'|'sonic'|'force'|'positive'|'negative'

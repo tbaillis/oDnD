@@ -19,11 +19,12 @@ export class CharacterSheetUI {
       position: fixed;
       top: 50px;
       left: 50px;
-      width: 320px;
-      max-height: 75vh;
+      width: 340px;
+      max-width: calc(100vw - 100px);
+      max-height: calc(100vh - 100px);
       background: rgba(20, 25, 30, 0.95);
       border: 1px solid #444;
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 16px;
       color: #ddd;
       overflow-y: auto;
@@ -31,9 +32,35 @@ export class CharacterSheetUI {
       font-size: 13px;
       display: none;
       z-index: 1200;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
     `
     parent.appendChild(this.container)
+
+    // Add responsive styles for small screens
+    const style = document.createElement('style')
+    style.textContent = `
+      @media (max-width: 640px) {
+        #character-sheet {
+          left: 8px !important;
+          top: 8px !important;
+          width: calc(100vw - 16px) !important;
+          height: calc(100vh - 16px) !important;
+          max-width: none !important;
+          max-height: none !important;
+          font-size: 12px !important;
+        }
+      }
+      @media (max-width: 900px) {
+        #character-sheet {
+          left: 16px !important;
+          top: 16px !important;
+          width: calc(100vw - 32px) !important;
+          max-height: calc(100vh - 32px) !important;
+        }
+      }
+    `
+    document.head.appendChild(style)
   }
 
   setCharacter(character: Character) {
@@ -70,7 +97,7 @@ export class CharacterSheetUI {
         <div><strong>${this.character.race}</strong> ${this.character.classes.map(c => `${c.class} ${c.level}`).join('/')}</div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;" class="ability-grid">
         ${this.renderAbilityScore('STR', this.character.abilityScores.STR)}
         ${this.renderAbilityScore('DEX', this.character.abilityScores.DEX)}
         ${this.renderAbilityScore('CON', this.character.abilityScores.CON)}
@@ -203,10 +230,11 @@ export class SpellBookUI {
       top: 50px;
       right: 50px;
       width: 340px;
-      max-height: 70vh;
+      max-width: calc(100vw - 100px);
+      max-height: calc(100vh - 100px);
       background: rgba(20, 25, 30, 0.95);
       border: 1px solid #444;
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 16px;
       color: #ddd;
       overflow-y: auto;
@@ -214,9 +242,36 @@ export class SpellBookUI {
       font-size: 13px;
       display: none;
       z-index: 1200;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
     `
     parent.appendChild(this.container)
+
+    // Add responsive styles
+    const style = document.createElement('style')
+    style.textContent = `
+      @media (max-width: 640px) {
+        #spell-book {
+          left: 8px !important;
+          right: auto !important;
+          top: 8px !important;
+          width: calc(100vw - 16px) !important;
+          height: calc(100vh - 16px) !important;
+          max-width: none !important;
+          max-height: none !important;
+          font-size: 12px !important;
+        }
+      }
+      @media (max-width: 900px) {
+        #spell-book {
+          right: 16px !important;
+          top: 16px !important;
+          width: calc(100vw - 32px) !important;
+          max-height: calc(100vh - 32px) !important;
+        }
+      }
+    `
+    document.head.appendChild(style)
   }
 
   setSpells(spells: Record<string, Spell>) {
@@ -332,8 +387,8 @@ export class CombatLog {
     log.id = 'combat-log'
     log.style.cssText = `
       position: fixed;
-      bottom: 8px;
-      left: 8px;
+      top: 60px;
+      right: 8px;
       width: 300px;
       max-height: 160px;
       background: rgba(20,25,30,0.95);
@@ -422,6 +477,7 @@ export class UIManager {
     this.dmChat = new DMChatPanel()
     
     this.toolbar = new Toolbar(parent, this)
+    this.toolbar.hide() // Hide toolbar since we have integrated controls in the pop-out panel
     
     this.setupKeyboardShortcuts()
     

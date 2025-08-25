@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monster AI Movement Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+        }
+        #output {
+            white-space: pre-wrap;
+            background: #2d2d30;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #007acc;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        .success {
+            color: #4ec9b0;
+        }
+        .error {
+            color: #f44747;
+        }
+        .warning {
+            color: #ffcc02;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monster AI Movement Logic Test</h1>
+    <p>This test verifies that Monster AI properly moves closer when out of attack range.</p>
+    
+    <button onclick="runTest()">Run Movement Test</button>
+    <button onclick="clearOutput()">Clear Output</button>
+    
+    <div id="output"></div>
+
+    <script type="module">
+        import { monsterAI } from './src/ai/monsterAgent.js'
+
+        function log(message, className = '') {
+            const output = document.getElementById('output')
+            const div = document.createElement('div')
+            div.textContent = message
+            if (className) div.className = className
+            output.appendChild(div)
+            console.log(message)
+        }
+
+        window.clearOutput = function() {
+            document.getElementById('output').innerHTML = ''
+        }
+
+        window.runTest = async function() {
+            clearOutput()
+            
+            log('=== Monster AI Movement Test ===')
+            log('')
+            
+            // Test scenario: Monster is out of attack range but has movement available
+            const testGameState = {
+                activeMonster: {
+                    id: 'goblin1',
+                    x: 1,
+                    y: 1,
+                    hp: 10,
+                    maxHp: 10,
+                    moveAvailable: true,
+                    attackAvailable: true
+                },
+                enemies: [
+                    {
+                        id: 'player1',
+                        x: 4,
+                        y: 1,
+                        hp: 20,
+                        maxHp: 20
+                    }
+                ]
+            }
+
+            // Setup Monster AI with aggressive personality
+            monsterAI.setPersonality('feral_beast')
+
+            log('Test Setup:')
+            log(`Monster at (${testGameState.activeMonster.x}, ${testGameState.activeMonster.y})`)
+            log(`Enemy at (${testGameState.enemies[0].x}, ${testGameState.enemies[0].y})`) 
+            log(`Distance: ${Math.abs(testGameState.activeMonster.x - testGameState.enemies[0].x)}`)
+            log(`Monster moveAvailable: ${testGameState.activeMonster.moveAvailable}`)
+            log(`Monster attackAvailable: ${testGameState.activeMonster.attackAvailable}`)
+            log('')
+
+            try {
+                log('Making AI Decision...')
+                const decision = await monsterAI.makeDecision(testGameState)
+                
+                log('')
+                log('Monster AI Decision:')
+                log(`Action type: ${decision.action.type}`)
+                log(`Target: (${decision.action.target?.x}, ${decision.action.target?.y})`)
+                log(`Reasoning: ${decision.action.reasoning}`)
+                log(`Confidence: ${decision.confidence}`)
+                log(`Personality: ${decision.personality}`)
+                log(`Dialogue: "${decision.action.dialogue}"`)
+                log('')
+                
+                // Verify the expected behavior
+                if (decision.action.type === 'move') {
+                    log('✅ SUCCESS: Monster chose to move closer!', 'success')
+                    log(`Will move from (${testGameState.activeMonster.x},${testGameState.activeMonster.y}) to (${decision.action.target.x},${decision.action.target.y})`)
+                    
+                    // Verify the move brings us closer
+                    const currentDistance = Math.abs(testGameState.activeMonster.x - testGameState.enemies[0].x)
+                    const newDistance = Math.abs(decision.action.target.x - testGameState.enemies[0].x)
+                    
+                    if (newDistance < currentDistance) {
+                        log(`✅ Move reduces distance from ${currentDistance} to ${newDistance}`, 'success')
+                    } else {
+                        log(`❌ Move doesn't reduce distance: ${currentDistance} -> ${newDistance}`, 'error')
+                    }
+                } else if (decision.action.type === 'attack') {
+                    log('⚡ Monster chose to attack (unexpected for distance > 1)', 'warning')
+                } else {
+                    log('❌ ISSUE: Monster ended turn instead of moving closer', 'error')
+                    log('This suggests the movement logic in fallbackDecision needs more work')
+                }
+                
+            } catch (error) {
+                log('')
+                log('❌ Test failed with error: ' + error.message, 'error')
+                log('This likely means there\'s an issue with the AI decision-making process')
+            }
+        }
+    </script>
+</body>
+</html>

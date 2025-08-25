@@ -1,5 +1,5 @@
 import { dmAgent, type DMResponse } from '../ai/dmAgent.js';
-import { dmAgentConfig, checkConfigurationStatus, AI_PERSONALITIES } from '../ai/config.js';
+import { checkConfigurationStatus, AI_PERSONALITIES } from '../ai/config.js';
 
 interface ChatMessage {
   id: string;
@@ -14,11 +14,10 @@ export class DMChatPanel {
   private messageInput!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
   private toggleButton!: HTMLElement;
-  private configPanel!: HTMLElement;
   private statusIndicator!: HTMLElement;
   private isOpen: boolean = false;
   private messages: ChatMessage[] = [];
-  private showConfig: boolean = false;
+  // configPanel: optional modal created on demand
 
   constructor() {
     this.createPanel();
@@ -219,11 +218,10 @@ export class DMChatPanel {
             border: 1px solid #8b5cf6;
             border-radius: 4px;
           ">
-            ${Object.entries(AI_PERSONALITIES).map(([key, personality]) => 
-              `<option value="${key}" ${key === currentPersonality.key ? 'selected' : ''}>
-                ${personality.name} - ${personality.description}
-              </option>`
-            ).join('')}
+            ${Object.entries(AI_PERSONALITIES).map(([key, personality]) => {
+              const selected = personality.name === currentPersonality.name ? 'selected' : '';
+              return `<option value="${key}" ${selected}>${personality.name} - ${personality.description}</option>`;
+            }).join('')}
           </select>
         </div>
 

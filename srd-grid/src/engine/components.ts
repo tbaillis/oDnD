@@ -56,6 +56,17 @@ export const ACBreakdown = defineComponent({
   misc: Types.i8
 })
 
+// Shape/type for AC breakdown when used as a plain JS object (not BitECS component)
+export interface ACBreakdownShape {
+  base: number
+  armor: number
+  shield: number
+  natural: number
+  deflection: number
+  dodge: number
+  misc: number
+}
+
 export const Movement = defineComponent({
   speed: Types.f32,
   encumberedSpeed: Types.f32
