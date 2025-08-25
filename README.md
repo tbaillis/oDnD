@@ -1,9 +1,29 @@
 # oDnD - Digital D&D 3.5e Experience
 
-A comprehensive browser-based implementation of D&D 3.5e SRD featuring tactical combat, character creation, and AI-powered dungeon mastering. Built with modern web technologies for an immersive tabletop gaming experience.
+A comprehensive browser-based implementation of D&D 3.5e SRD featuring tactical combat, character creation, and AI-powered dungeon mastering. Built with modern web technolo### Attacks
+- Click Attack Mode, then click the enemy to attack. Attacking consumes your Standard action.
+- **Reach Distance Enforcement**: Melee attacks are now limited by weapon reach:
+  - Standard weapons: 1 square (5 feet) adjacent only
+  - Reach weapons: 2 squares (10 feet) - can attack at distance but not adjacent
+  - Ranged attacks have unlimited range (with line of sight requirements)
+- Touch toggle: resolves attacks against Touch AC (ignores armor, shield, and natural; keeps deflection and misc).
+- Flat‑Footed toggle: removes dodge from AC and disables making Attacks of Opportunity (for demo/testing).
 
-## Features
+### Cover & Concealment
+- The engine applies cover (+4 or +8) if obstacles lie between attacker and target, and concealment (20%/50%) from terrain flags where applicable.
 
+### Attacks of Opportunity (AoO)
+- Moving out of a threatened square provokes.
+- Making a ranged attack while in a threatened square provokes before the attack resolves.
+- In this demo, each defender can make one AoO per round.
+- If Flat‑Footed is toggled on, creatures cannot make AoOs.mmersive tabletop gaming experience.
+
+## F- Dev server default: http://localhost:5176/
+- Movement costs use the 5–10–5 diagonal rule.
+- Difficult terrain doubles the entering step cost.
+- Save data is stored in the browser's localStorage under `srd-grid-save`.re- If the page doesn't load after `npm run dev`, ensure Node 18+ is installed and no other process is bound to port 5176.
+- If TypeScript errors occur, run `npm install` to ensure dependencies are present.
+- Clearing the browser's localStorage will remove saved scenarios.
 ### Core Game Systems
 - **D&D 3.5e SRD Implementation**: Complete ruleset including combat, movement, and character mechanics
 - **Tactical Combat Grid**: Interactive 2D battlefield with PixiJS-powered graphics
@@ -29,6 +49,14 @@ A comprehensive browser-based implementation of D&D 3.5e SRD featuring tactical 
 - **17 Specialized Tools**: Combat management, environment control, story elements, dice rolling
 - **Real-time Integration**: AI has full access to game state and character data
 - **Sliding Chat Panel**: Accessible interface with keyboard shortcuts
+
+### Monster AI System
+- **Automated Monster Control**: AI can take control of monster pawns during combat
+- **6 Monster Personalities**: Savage Beast, Cunning Predator, Ancient Guardian, Chaotic Trickster, Mindless Construct, Vengeful Spirit
+- **Tactical Decision Making**: AI analyzes battlefield conditions and makes strategic moves
+- **Dynamic Dialogue**: Monsters speak and taunt during combat based on their personality
+- **Toggle Control**: Players can enable/disable AI control with a simple button
+- **Personality-Driven Behavior**: Each monster type has unique combat patterns and dialogue styles
 
 ### Technical Features
 - **Save System**: Persistent game state stored in browser localStorage
@@ -93,7 +121,7 @@ For AI Dungeon Master features:
 ## Usage
 
 ### Basic Combat
-1. Open http://localhost:5173/ in your browser
+1. Open http://localhost:5176/ in your browser
 2. Create characters using the "Create Character" button
 3. Place characters on the grid by clicking
 4. Right-click for movement and attack options
@@ -149,7 +177,7 @@ For AI Dungeon Master features:
 ## Troubleshooting
 
 ### General Issues
-- If the page doesn't load after `npm run dev`, ensure Node 18+ is installed and no other process is bound to port 5173
+- If the page doesn't load after `npm run dev`, ensure Node 18+ is installed and no other process is bound to port 5176
 - If TypeScript errors occur, run `npm install --legacy-peer-deps` to ensure dependencies are present
 - Clearing the browser's localStorage will remove saved scenarios
 
@@ -170,7 +198,7 @@ For AI Dungeon Master features:
 - **Difficult terrain** doubles the entering step cost  
 - **Save data** is stored in the browser's localStorage under `srd-grid-save`
 - **Default URLs**: 
-  - Tactical grid: http://localhost:5173/
+  - Tactical grid: http://localhost:5176/
   - AI DM server: http://localhost:3001/
 
 ### Testing
@@ -235,6 +263,14 @@ Move and attack with the active token to reduce the opponent to 0 HP. The game a
 - **4 AI Personalities**: Choose from Experienced Mentor, Dramatic Storyteller, Tactical Strategist, or Mysterious Guide
 - **17 Specialized Tools**: AI has access to combat management, environment control, story elements, and game mechanics
 - **Real-time Integration**: AI is aware of your current campaign state and can assist with gameplay
+
+### Monster AI System (NEW!)
+- **Automated Combat**: AI can control monster pawns automatically during their turns
+- **Toggle Control**: Enable/disable with the "AI: ON/OFF" button that appears during monster turns
+- **6 Personalities**: Each monster type has unique behavior patterns and combat strategies
+- **Dynamic Dialogue**: Monsters speak during combat with personality-appropriate taunts and thoughts
+- **Smart Tactics**: AI analyzes battlefield conditions and makes strategic decisions
+- **Easy Testing**: Use browser console commands `testMonsterAI()` and `toggleMonsterAI()` for testing
 
 **Status Indicators**:
 - 🟢 **Green**: AI configured and ready

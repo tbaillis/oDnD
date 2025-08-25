@@ -5,7 +5,7 @@ import { DMChatPanel } from './ui/dmChat'
 import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
 import { EffectManager } from './engine/effects'
 import { planPath, planPathAvoidingThreat } from './engine/path'
-import { threatenedSquares } from './engine/threat'
+import { threatenedSquares, reachInSquares } from './engine/threat'
 import { analyzePathMovement } from './engine/movement'
 import { trimPathBySpeed } from './engine/moveExecutor'
 import { createTurnState, startEncounter, endTurn } from './engine/turns'
@@ -19,6 +19,9 @@ import { skills } from './game/skills'
 import { type Character, getAbilityModifier } from './game/character'
 import { monsterSelectionUI } from './game/monsters/ui'
 import { monsterService } from './game/monsters/service'
+import { monsterAI } from './ai/monsterAgent'
+import { monsterDialogueUI } from './ai/monsterDialogue'
+import { monsterTurnManager } from './ai/monsterTurnManager'
 
 // Import CSS styles
 import './style.css'
@@ -384,6 +387,25 @@ function threatSetFrom(x: number, y: number, size: 'medium'|'large', hasReach: b
   return new Set(threatenedSquares(x, y, size, hasReach).map(([sx,sy]) => `${sx},${sy}`))
 }
 
+// Check if an attack is within reach for the attacking pawn
+function isWithinAttackReach(attackerX: number, attackerY: number, targetX: number, targetY: number, attackerSize: 'medium'|'large', hasReach: boolean, isRanged: boolean): { inRange: boolean, distance: number, maxReach: number } {
+  const dx = Math.abs(attackerX - targetX)
+  const dy = Math.abs(attackerY - targetY)
+  const distance = Math.max(dx, dy) // Use Chebyshev distance (grid squares)
+  
+  if (isRanged) {
+    // For ranged attacks, check if there's line of sight (already handled elsewhere)
+    // Ranged attacks have effectively unlimited range in this tactical system
+    return { inRange: true, distance, maxReach: Infinity }
+  }
+  
+  // For melee attacks, use the same calculation as threatened squares
+  const maxReach = reachInSquares(attackerSize, hasReach)
+  const inRange = distance <= maxReach && distance > 0 // Must be adjacent or within reach, but not same square
+  
+  return { inRange, distance, maxReach }
+}
+
 function drawAll() {
   tokens.clear()
   overlay.clear()
@@ -729,6 +751,43 @@ function commitEndTurn() {
   appendLogLine(`End Turn -> Round ${turns.round}, Active=${turns.active?.id}`)
   drawAll()
   updateActionHUD(hudText())
+  
+  // Check if the new active pawn is a monster and AI is enabled
+  const newActivePawnId = turns.active?.id as 'A' | 'B'
+  if (newActivePawnId && monsterTurnManager.shouldTakeAutoTurn(newActivePawnId)) {
+    // Schedule monster AI turn after a short delay
+    setTimeout(() => {
+      executeMonsterTurn(newActivePawnId)
+    }, 500) // Brief delay to let UI update
+  }
+}
+
+async function executeMonsterTurn(pawnId: 'A' | 'B') {
+  try {
+    // Build game state for AI decision making
+    const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnB, {
+      grid: G,
+      terrain: G,
+      effects: effects
+    })
+
+    // Execute monster turn
+    const success = await monsterTurnManager.executeMonsterTurn(pawnId, gameState)
+    
+    if (success) {
+      // Update display after monster action
+      drawAll()
+      updateActionHUD(hudText())
+    } else {
+      // Fallback: just end turn if AI fails
+      appendLogLine(`Monster AI failed for Pawn ${pawnId}, ending turn`)
+      commitEndTurn()
+    }
+  } catch (error) {
+    console.error('Error executing monster turn:', error)
+    // Fallback: end turn on error
+    commitEndTurn()
+  }
 }
 
 function toggleDifficultAt(x: number, y: number) {
@@ -1072,6 +1131,122 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
   })
   menu.appendChild(changeMonsterBtn)
 
+  // Monster AI Controls Section
+  const aiSection = document.createElement('div')
+  aiSection.style.cssText = `
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #374151;
+  `
+
+  // AI Status Header
+  const aiHeader = document.createElement('div')
+  const isAIEnabled = monsterAI.isEnabled() && monsterTurnManager.isMonsterPawn(pawnId)
+  const currentPersonality = isAIEnabled ? monsterAI.getCurrentPersonality() : null
+  
+  aiHeader.textContent = isAIEnabled ? `🤖 AI Active: ${currentPersonality?.name}` : '🤖 Monster AI'
+  aiHeader.style.cssText = `
+    color: ${isAIEnabled ? '#10b981' : '#6b7280'};
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    text-align: center;
+  `
+  aiSection.appendChild(aiHeader)
+
+  // AI Toggle Button
+  const aiToggleBtn = document.createElement('button')
+  aiToggleBtn.textContent = isAIEnabled ? '🔴 Disable AI' : '🟢 Enable AI'
+  aiToggleBtn.style.cssText = `
+    width: 100%;
+    padding: 6px 8px;
+    background: ${isAIEnabled ? '#dc2626' : '#059669'};
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  `
+  aiToggleBtn.addEventListener('mouseenter', () => {
+    aiToggleBtn.style.background = isAIEnabled ? '#b91c1c' : '#047857'
+  })
+  aiToggleBtn.addEventListener('mouseleave', () => {
+    aiToggleBtn.style.background = isAIEnabled ? '#dc2626' : '#059669'
+  })
+  aiToggleBtn.addEventListener('click', () => {
+    if (isAIEnabled) {
+      // Disable AI
+      monsterAI.disable()
+      monsterTurnManager.setMonsterPawn(pawnId, false)
+      appendLogLine(`Monster AI disabled for Pawn ${pawnId}`)
+    } else {
+      // Enable AI for this pawn
+      monsterTurnManager.setMonsterPawn(pawnId, true)
+      monsterAI.enable()
+      const personality = monsterAI.getCurrentPersonality()
+      appendLogLine(`Monster AI enabled for Pawn ${pawnId} as ${personality.name}`)
+    }
+    hideContextMenu()
+  })
+  aiSection.appendChild(aiToggleBtn)
+
+  // AI Test Action Button (only show if AI is enabled for this pawn)
+  if (isAIEnabled) {
+    const aiTestBtn = document.createElement('button')
+    aiTestBtn.textContent = '⚡ Test AI Action'
+    aiTestBtn.style.cssText = `
+      width: 100%;
+      padding: 6px 8px;
+      background: #f59e0b;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+      margin-top: 4px;
+    `
+    aiTestBtn.addEventListener('mouseenter', () => {
+      aiTestBtn.style.background = '#d97706'
+    })
+    aiTestBtn.addEventListener('mouseleave', () => {
+      aiTestBtn.style.background = '#f59e0b'
+    })
+    aiTestBtn.addEventListener('click', async () => {
+      // Force AI to take a test action by building game state and calling executeMonsterTurn
+      appendLogLine(`Testing Monster AI for Pawn ${pawnId}...`)
+      
+      try {
+        const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnB, {
+          pawnId,
+          reachA,
+          reachB,
+          threatenedSquares,
+          attackRoll,
+          appendLogLine
+        })
+        
+        const success = await monsterTurnManager.executeMonsterTurn(pawnId, gameState)
+        if (success) {
+          appendLogLine(`Monster AI test completed for Pawn ${pawnId}`)
+        } else {
+          appendLogLine(`Monster AI test failed for Pawn ${pawnId}`)
+        }
+      } catch (error) {
+        console.error('AI test error:', error)
+        appendLogLine(`Monster AI test error: ${error}`)
+      }
+      
+      hideContextMenu()
+    })
+    aiSection.appendChild(aiTestBtn)
+  }
+
+  menu.appendChild(aiSection)
+
   document.body.appendChild(menu)
   contextMenu = menu
 
@@ -1273,31 +1448,37 @@ function showMonsterSelectionModal(pawnId: 'A' | 'B') {
   modalContent.appendChild(filters)
   modalContent.appendChild(monsterList)
   modalOverlay.appendChild(modalContent)
+  
+  // Add to DOM first
+  document.body.appendChild(modalOverlay)
 
   // Initial render
   renderMonsterList(MONSTER_DATABASE)
 
-  // Event listeners
+  // Event listeners (now that elements are in DOM)
   modalOverlay.addEventListener('click', (e) => {
     if (e.target === modalOverlay) modalOverlay.remove()
   })
 
-  document.getElementById('close-monster-modal')!.addEventListener('click', () => {
-    modalOverlay.remove()
-  })
+  const closeButton = document.getElementById('close-monster-modal')
+  if (closeButton) {
+    closeButton.addEventListener('click', () => {
+      modalOverlay.remove()
+    })
+  }
 
   const searchInput = document.getElementById('monster-search') as HTMLInputElement
   const typeFilter = document.getElementById('monster-type-filter') as HTMLSelectElement
   const sizeFilter = document.getElementById('monster-size-filter') as HTMLSelectElement
 
-  searchInput.addEventListener('input', applyFilters)
-  typeFilter.addEventListener('change', applyFilters)
-  sizeFilter.addEventListener('change', applyFilters)
-
-  document.body.appendChild(modalOverlay)
+  if (searchInput) searchInput.addEventListener('input', applyFilters)
+  if (typeFilter) typeFilter.addEventListener('change', applyFilters)
+  if (sizeFilter) sizeFilter.addEventListener('change', applyFilters)
 
   // Focus search input
-  setTimeout(() => searchInput.focus(), 100)
+  setTimeout(() => {
+    if (searchInput) searchInput.focus()
+  }, 100)
 }
 
 // Hover preview
@@ -1463,9 +1644,31 @@ app.canvas.addEventListener('click', (ev) => {
     if (mx === target.x && my === target.y) {
   if (gameOver) return
   if (!consume(turns.budget!, 'standard')) { appendLogLine('Standard action already used.'); return }
+  
+  const attacker = turns.active?.id === 'A' ? pawnA : pawnB
+  const attackerReach = turns.active?.id === 'A' ? reachA : reachB
+  
+  // Check if attack is within reach
+  const reachCheck = isWithinAttackReach(
+    attacker.x, attacker.y, 
+    target.x, target.y, 
+    attacker.size, 
+    attackerReach, 
+    rangedMode
+  )
+  
+  if (!reachCheck.inRange) {
+    if (rangedMode) {
+      appendLogLine(`Cannot make ranged attack: target not in range.`)
+    } else {
+      const reachText = attackerReach ? ` (reach weapon: ${reachCheck.maxReach} squares)` : ` (${reachCheck.maxReach} square${reachCheck.maxReach === 1 ? '' : 's'})`
+      appendLogLine(`Cannot attack: target is ${reachCheck.distance} squares away, but melee reach is only ${reachCheck.maxReach}${reachText}.`)
+    }
+    return
+  }
+  
   const atk: AttackProfile = rangedMode ? { bab: 2, abilityMod: 3, sizeMod: 0 } : { bab: 2, abilityMod: 3, sizeMod: 0 }
   const def: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
-  const attacker = turns.active?.id === 'A' ? pawnA : pawnB
   // If making a ranged attack while threatened, target gets an AoO first
   if (rangedMode) {
   const threat = threatSetFrom(target.x, target.y, target.size, target === pawnB ? reachB : reachA)
@@ -2036,8 +2239,160 @@ function selectRandomMonster() {
   appendLogLine(`Random monster selected: ${monster.name}`)
 }
 
-// Initialize monster UI
+// Initialize monster UI and AI systems
 initializeMonsterUI()
+
+// Initialize monster AI systems
+try {
+  monsterAI.initialize()
+  // Enable the Monster AI by default for demonstration
+  monsterAI.enable()
+  console.log('Monster AI initialized successfully')
+} catch (error) {
+  console.error('Failed to initialize Monster AI:', error)
+}
+
+try {
+  monsterDialogueUI.initialize()
+  // Connect the dialogue UI to the monster AI
+  monsterDialogueUI.setMonsterAI(monsterAI)
+  console.log('Monster dialogue initialized successfully')
+  
+  // Test monster AI functionality
+  setTimeout(() => {
+    if (monsterAI.isEnabled()) {
+      console.log('✅ Monster AI System Status:')
+      console.log(`   - Current personality: ${monsterAI.getCurrentPersonality().name}`)
+      console.log(`   - AI enabled: ${monsterAI.isEnabled()}`)
+      console.log(`   - Available personalities: ${monsterAI.getAvailablePersonalities().length}`)
+      
+      // Force show the dialogue interface so it's visible immediately
+      monsterDialogueUI.show()
+      monsterDialogueUI.showMessage('Monster AI system is online and ready! Use console commands or the toggle button to control AI.', monsterAI.getCurrentPersonality());
+      
+      // Show helpful console message
+      console.log('🐲 Monster AI Ready! Try these commands:');
+      console.log('   - showMonsterUI() - Show Monster AI interface');
+      console.log('   - setMonsterPawn("A") or setMonsterPawn("B") - Designate monster');
+      console.log('   - testMonsterAI() - Test AI decision making');
+      console.log('   - monsterAIHelp() - Show all commands');
+    } else {
+      // Even if AI is not enabled, show the interface for testing
+      monsterDialogueUI.show()
+      const systemPersonality = {
+        name: 'System',
+        description: 'System notification',
+        systemPrompt: '',
+        temperature: 0,
+        dialogueStyle: 'informative',
+        behaviorTraits: {
+          aggression: 0,
+          intelligence: 1,
+          selfPreservation: 1,
+          targeting: 'tactical' as const
+        }
+      };
+      monsterDialogueUI.showMessage('Monster AI interface loaded. AI may be disconnected - check console for details.', systemPersonality);
+      console.log('⚠️ Monster AI not enabled, but interface is available for testing');
+    }
+  }, 1000);
+
+  // Add global test functions for easy access
+  (window as any).testMonsterAI = async () => {
+    console.log('Testing Monster AI connection...');
+    try {
+      const testGameState = {
+        activeMonster: { x: 5, y: 5, hp: 10, maxHp: 10 },
+        enemies: [{ x: 3, y: 3, hp: 8 }]
+      };
+      const decision = await monsterAI.makeDecision(testGameState);
+      console.log('✅ Monster AI Decision:', decision);
+      monsterDialogueUI.showMessage(decision.action.dialogue || 'Test successful!');
+      return decision;
+    } catch (error) {
+      console.error('❌ Monster AI Test Failed:', error);
+      return null;
+    }
+  };
+
+  (window as any).toggleMonsterAI = () => {
+    if (monsterAI.isEnabled()) {
+      monsterAI.disable();
+      console.log('Monster AI disabled');
+      monsterDialogueUI.showMessage('Monster AI disabled. Manual control active.');
+    } else {
+      monsterAI.enable();
+      console.log('Monster AI enabled');
+      monsterDialogueUI.showMessage('Monster AI enabled! Ready for combat.', monsterAI.getCurrentPersonality());
+    }
+  };
+
+  // Add function to manually show the Monster AI interface
+  (window as any).showMonsterUI = () => {
+    console.log('Showing Monster AI interface...');
+    monsterDialogueUI.showMessage('Monster AI interface activated! Click the toggle to control AI.', monsterAI.getCurrentPersonality());
+  };
+
+  // Add function to designate a pawn as a monster
+  (window as any).setMonsterPawn = (pawnId: 'A' | 'B') => {
+    console.log(`Setting pawn ${pawnId} as monster`);
+    monsterTurnManager.setMonsterPawn(pawnId, true);
+    monsterDialogueUI.showMessage(`Pawn ${pawnId} is now controlled by Monster AI!`, monsterAI.getCurrentPersonality());
+  };
+
+  // Add function to manually trigger a monster turn for testing
+  (window as any).triggerMonsterTurn = async (pawnId?: 'A' | 'B') => {
+    const targetPawn = pawnId || turns.active?.id as 'A' | 'B';
+    if (!targetPawn) {
+      console.error('No pawn specified and no active pawn found');
+      return;
+    }
+    
+    console.log(`Manually triggering Monster AI turn for pawn ${targetPawn}...`);
+    await executeMonsterTurn(targetPawn);
+  };
+
+  // Add comprehensive help function
+  (window as any).monsterAIHelp = () => {
+    console.log(`
+🐲 Monster AI Commands:
+- showMonsterUI() - Show the Monster AI dialogue interface
+- testMonsterAI() - Test AI decision making (no actions)
+- toggleMonsterAI() - Enable/disable Monster AI
+- setMonsterPawn('A') or setMonsterPawn('B') - Designate a pawn as monster
+- triggerMonsterTurn('A'/'B') - Manually execute a full Monster AI turn
+- monsterAIHelp() - Show this help message
+
+Current Status:
+- Monster AI enabled: ${monsterAI.isEnabled()}
+- Current personality: ${monsterAI.getCurrentPersonality().name}
+- Available personalities: ${monsterAI.getAvailablePersonalities().join(', ')}
+- Monster pawns: A=${monsterTurnManager.isMonsterPawn('A')}, B=${monsterTurnManager.isMonsterPawn('B')}
+- Active pawn: ${turns.active?.id}
+    `);
+    monsterDialogueUI.showMessage('Monster AI help displayed in console. Check console for commands.', monsterAI.getCurrentPersonality());
+  };
+
+  // Expose game functions and state for Monster AI action execution
+  (window as any).pawnA = pawnA;
+  (window as any).pawnB = pawnB;
+  (window as any).turns = turns;
+  (window as any).consume = consume;
+  (window as any).planFromActiveTo = planFromActiveTo;
+  (window as any).appendLogLine = appendLogLine;
+  (window as any).drawAll = drawAll;
+  (window as any).commitEndTurn = commitEndTurn;
+  (window as any).attackRoll = attackRoll;
+  (window as any).currentRNG = currentRNG;
+  (window as any).CELL = CELL;
+  (window as any).isWithinAttackReach = isWithinAttackReach;
+  (window as any).reachA = reachA;
+  (window as any).reachB = reachB;
+  (window as any).rangedMode = rangedMode;
+  
+} catch (error) {
+  console.error('Failed to initialize Monster dialogue:', error)
+}
 
 // Optional: quick object hardness test via keyboard (acid/fire/electricity/cold/sonic) + pawn shortcuts
 document.addEventListener('keydown', (e) => {
