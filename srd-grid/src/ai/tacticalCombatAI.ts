@@ -257,60 +257,114 @@ Respond with a JSON object in this exact format:
     }, null as CombatantStats | null);
 
     const target = nearestEnemy || { position: { x: monster.position.x, y: monster.position.y } };
+    const distanceToTarget = nearestEnemy ? 
+      Math.abs(monster.position.x - nearestEnemy.position.x) + Math.abs(monster.position.y - nearestEnemy.position.y) : 
+      0;
 
     switch (type) {
       case 'offensive':
+        const offensiveActions: TacticalAction[] = [];
+        
+        // If not in melee range, add movement first
+        if (distanceToTarget > 1) {
+          offensiveActions.push({
+            type: 'move',
+            target: {
+              x: target.position.x + (target.position.x > monster.position.x ? -1 : target.position.x < monster.position.x ? 1 : 0),
+              y: target.position.y + (target.position.y > monster.position.y ? -1 : target.position.y < monster.position.y ? 1 : 0)
+            },
+            reasoning: 'Move into melee range for attack',
+            order: 1
+          });
+        }
+        
+        // Always add attack action
+        offensiveActions.push({
+          type: 'attack',
+          target: target.position,
+          reasoning: 'Strike the primary threat',
+          order: distanceToTarget > 1 ? 2 : 1
+        });
+
         return {
           type: 'offensive',
           priority: 7,
           name: 'Direct Assault',
-          description: 'Move to engage the nearest enemy in melee combat',
-          actions: [{
-            type: 'attack',
-            target: target.position,
-            reasoning: 'Close distance and attack primary threat',
-            order: 1
-          }],
+          description: distanceToTarget > 1 ? 'Move to engage and attack the nearest enemy' : 'Attack the nearest enemy',
+          actions: offensiveActions,
           reasoning: 'Aggressive approach to eliminate threats quickly',
           riskLevel: 'medium',
           expectedOutcome: 'Potential damage to enemy, exposure to counterattack'
         };
 
       case 'defensive':
+        const defensiveActions: TacticalAction[] = [];
+        
+        // If too close to enemies, move to safer position first
+        if (distanceToTarget <= 2) {
+          defensiveActions.push({
+            type: 'move',
+            target: {
+              x: monster.position.x - Math.sign(target.position.x - monster.position.x),
+              y: monster.position.y - Math.sign(target.position.y - monster.position.y)
+            },
+            reasoning: 'Retreat to safer position',
+            order: 1
+          });
+        }
+        
+        // Then take defensive stance
+        defensiveActions.push({
+          type: 'defend',
+          target: monster.position,
+          reasoning: 'Minimize incoming damage and observe enemy movements',
+          order: defensiveActions.length + 1
+        });
+
         return {
           type: 'defensive',
           priority: 5,
           name: 'Defensive Positioning',
-          description: 'Take a defensive stance and prepare for incoming attacks',
-          actions: [{
-            type: 'defend',
-            target: monster.position,
-            reasoning: 'Minimize incoming damage and observe enemy movements',
-            order: 1
-          }],
+          description: distanceToTarget <= 2 ? 'Retreat and take defensive stance' : 'Take defensive stance',
+          actions: defensiveActions,
           reasoning: 'Conservative approach to preserve health and resources',
           riskLevel: 'low',
           expectedOutcome: 'Reduced damage taken, information gathering'
         };
 
       case 'neutral':
+        const neutralActions: TacticalAction[] = [];
+        
+        // Move to better tactical position
+        neutralActions.push({
+          type: 'move',
+          target: { 
+            x: monster.position.x + Math.sign(target.position.x - monster.position.x), 
+            y: monster.position.y + Math.sign(target.position.y - monster.position.y) 
+          },
+          reasoning: 'Improve battlefield position while maintaining flexibility',
+          order: 1
+        });
+        
+        // If still have actions and in range, consider a cautious attack
+        if (distanceToTarget <= 3) {
+          neutralActions.push({
+            type: 'attack',
+            target: target.position,
+            reasoning: 'Opportunistic strike while maintaining tactical flexibility',
+            order: 2
+          });
+        }
+
         return {
           type: 'neutral',
           priority: 6,
-          name: 'Tactical Repositioning',
-          description: 'Move to a more advantageous position without committing to attack',
-          actions: [{
-            type: 'move',
-            target: { 
-              x: monster.position.x + Math.sign(target.position.x - monster.position.x), 
-              y: monster.position.y + Math.sign(target.position.y - monster.position.y) 
-            },
-            reasoning: 'Improve battlefield position while maintaining flexibility',
-            order: 1
-          }],
+          name: 'Tactical Maneuvering',
+          description: neutralActions.length > 1 ? 'Reposition and strike if opportunity presents' : 'Move to more advantageous position',
+          actions: neutralActions,
           reasoning: 'Balanced approach maintaining tactical options',
           riskLevel: 'low',
-          expectedOutcome: 'Better positioning for future actions'
+          expectedOutcome: neutralActions.length > 1 ? 'Better positioning and potential damage' : 'Better positioning for future actions'
         };
     }
   }

@@ -84,79 +84,41 @@ export class MonsterTurnManager implements MonsterTurnManager {
       turnDelay: this.turnDelay
     });
 
-    const maxActions = 3; // Safety limit to prevent infinite loops
-    let actionsExecuted = 0;
+    // Get AI decision for current game state
+    const decision = await monsterAI.makeDecision(gameState);
     
-    while (actionsExecuted < maxActions) {
-      debugLogger.logAI('MonsterTurnManager', `Action ${actionsExecuted + 1}/${maxActions}`, {
-        remainingBudget: gameState?.budget
-      });
-
-      // Get AI decision for current game state
-      const decision = await monsterAI.makeDecision(gameState);
-      
-      // If AI wants to end turn, commit end turn and exit
-      if (decision.action.type === 'end_turn') {
-        if (decision.action.dialogue) {
-          monsterDialogueUI.showMessage(decision.action.dialogue);
-        }
-        if (typeof (window as any).commitEndTurn === 'function') {
-          (window as any).commitEndTurn();
-        }
-        break;
-      }
-
-      // Show monster dialogue if provided
-      if (decision.action.dialogue) {
-        monsterDialogueUI.showMessage(decision.action.dialogue);
-      }
-
-      // Add small delay for dramatic effect
-      await this.sleep(this.turnDelay);
-
-      // Execute the action
-      const actionExecuted = await this.executeAction(pawnId, decision);
-      
-      if (!actionExecuted) {
-        console.warn(`Failed to execute ${decision.action.type} action for monster ${pawnId}`);
-        break;
-      }
-
-      actionsExecuted++;
-
-      // Update game state after action for next decision
-      const turns = (window as any).turns;
-      const pawnA = (window as any).pawnA;
-      const pawnB = (window as any).pawnB;
-      const effects = (window as any).effects;
-      const G = (window as any).G;
-      
-      gameState = this.buildGameState(turns, pawnA, pawnB, {
-        grid: G,
-        terrain: G,
-        effects: effects
-      });
-
-      // Check if we have actions remaining
-      const budget = turns.budget;
-      const hasActionsRemaining = budget && (
-        budget.standard || budget.move || budget.fiveFootStep
-      );
-
-      if (!hasActionsRemaining) {
-        console.log(`Monster ${pawnId} has no actions remaining, ending turn`);
-        // Ensure we properly commit end of turn so game state advances
-        if (typeof (window as any).commitEndTurn === 'function') {
-          (window as any).commitEndTurn();
-        }
-        break;
-      }
-
-      // Add a small delay between actions
-      await this.sleep(300);
+    debugLogger.logAI('MonsterTurnManager', `AI Decision: ${decision.action.type}`, {
+      reasoning: decision.action.reasoning,
+      hasSequence: decision.action.type === 'multi_action' && decision.action.actionSequence ? decision.action.actionSequence.length : 0
+    });
+    
+    // Show monster dialogue if provided
+    if (decision.action.dialogue) {
+      monsterDialogueUI.showMessage(decision.action.dialogue);
     }
 
-    console.log(`Monster ${pawnId} completed turn with ${actionsExecuted} actions`);
+    // Add small delay for dramatic effect
+    await this.sleep(this.turnDelay);
+
+    // Execute the action (single action or multi-action sequence)
+    const actionExecuted = await this.executeAction(pawnId, decision);
+    
+    if (!actionExecuted) {
+      console.warn(`Failed to execute ${decision.action.type} action for monster ${pawnId}`);
+    }
+
+    // For multi-actions or end_turn, we're done
+    if (decision.action.type === 'multi_action' || decision.action.type === 'end_turn') {
+      console.log(`Monster ${pawnId} completed turn with ${decision.action.type} action`);
+      return;
+    }
+
+    // For single actions, we might have more to do - but let's add a fallback to end turn
+    // to prevent the old infinite loop behavior
+    console.log(`Monster ${pawnId} completed single action, ending turn`);
+    if (typeof (window as any).commitEndTurn === 'function') {
+      (window as any).commitEndTurn();
+    }
   }
 
   private async executeAction(
@@ -177,6 +139,9 @@ export class MonsterTurnManager implements MonsterTurnManager {
       
       case 'end_turn':
         return this.executeEndTurn(pawnId, action);
+      
+      case 'multi_action':
+        return this.executeMultiAction(pawnId, action);
       
       default:
         console.warn('Unknown monster action type:', action.type);
@@ -353,6 +318,68 @@ export class MonsterTurnManager implements MonsterTurnManager {
 
     console.warn(`Monster ${pawnId} failed to end turn`);
     return false;
+  }
+
+  private async executeMultiAction(pawnId: 'A' | 'B', action: MonsterCombatAction): Promise<boolean> {
+    if (!action.actionSequence || action.actionSequence.length === 0) {
+      console.warn(`Monster ${pawnId} multi-action has no action sequence`);
+      return false;
+    }
+
+    console.log(`Monster ${pawnId} executing multi-action sequence: ${action.reasoning}`);
+    
+    // Execute each action in sequence
+    for (let i = 0; i < action.actionSequence.length; i++) {
+      const singleAction = action.actionSequence[i];
+      console.log(`  Action ${i + 1}/${action.actionSequence.length}: ${singleAction.type} - ${singleAction.reasoning}`);
+
+      // Create a temporary MonsterCombatAction for this single action
+      const tempAction: MonsterCombatAction = {
+        type: singleAction.type,
+        target: singleAction.target,
+        reasoning: singleAction.reasoning
+      };
+
+      // Execute the single action
+      let success = false;
+      switch (singleAction.type) {
+        case 'move':
+          success = await this.executeMove(pawnId, tempAction);
+          break;
+        case 'attack':
+          success = await this.executeAttack(pawnId, tempAction);
+          break;
+        case 'special':
+          success = await this.executeSpecialAction(pawnId, tempAction);
+          break;
+        case 'end_turn':
+          success = await this.executeEndTurn(pawnId, tempAction);
+          break;
+        default:
+          console.warn(`Unknown action type in sequence: ${singleAction.type}`);
+          continue;
+      }
+
+      if (!success) {
+        console.warn(`Failed to execute action ${i + 1} in multi-action sequence: ${singleAction.type}`);
+        return false;
+      }
+
+      // Add small delay between actions for dramatic effect
+      if (i < action.actionSequence.length - 1) {
+        await this.sleep(500);
+      }
+    }
+
+    console.log(`Monster ${pawnId} completed multi-action sequence`);
+    
+    // Automatically end turn after completing multi-action sequence
+    console.log(`Monster ${pawnId} ending turn after multi-action completion`);
+    if (typeof (window as any).commitEndTurn === 'function') {
+      (window as any).commitEndTurn();
+    }
+    
+    return true;
   }
 
   private findPawnAtPosition(x: number, y: number): 'A' | 'B' | null {

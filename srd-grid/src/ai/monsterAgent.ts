@@ -172,10 +172,20 @@ Your dialogue should be filled with anguish, hatred, and threats of eternal torm
 };
 
 export interface MonsterCombatAction {
-  type: 'move' | 'attack' | 'special' | 'end_turn';
+  type: 'move' | 'attack' | 'special' | 'end_turn' | 'multi_action';
   target?: { x: number; y: number };
   reasoning: string;
   dialogue?: string;
+  // For multi-action strategies
+  actionSequence?: SingleAction[];
+}
+
+export interface SingleAction {
+  type: 'move' | 'attack' | 'special' | 'end_turn';
+  target?: { x: number; y: number };
+  ability?: string;
+  reasoning: string;
+  order: number;
 }
 
 export interface MonsterAIResponse {
@@ -451,8 +461,7 @@ export class MonsterAIAgent {
   }
 
   private convertStrategyToAction(strategy: any, roleplay: RoleplayResponse): MonsterCombatAction {
-    const primaryAction = strategy.actions[0];
-    if (!primaryAction) {
+    if (!strategy.actions || strategy.actions.length === 0) {
       return {
         type: 'end_turn',
         reasoning: 'No tactical action available',
@@ -460,6 +469,28 @@ export class MonsterAIAgent {
       };
     }
 
+    // If strategy has multiple actions, return a multi-action sequence
+    if (strategy.actions.length > 1) {
+      const actionSequence: SingleAction[] = strategy.actions
+        .sort((a: any, b: any) => a.order - b.order)
+        .map((action: any) => ({
+          type: action.type,
+          target: action.target,
+          ability: action.ability,
+          reasoning: action.reasoning,
+          order: action.order
+        }));
+
+      return {
+        type: 'multi_action',
+        reasoning: `${strategy.name}: ${strategy.description}`,
+        dialogue: roleplay.dialogue,
+        actionSequence
+      };
+    }
+
+    // Single action case
+    const primaryAction = strategy.actions[0];
     return {
       type: primaryAction.type,
       target: primaryAction.target,
