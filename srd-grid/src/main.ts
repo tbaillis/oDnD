@@ -3,6 +3,8 @@ import { createWorld, updateTime } from './engine/world'
 import { UIManager } from './ui/interface'
 import { DMChatPanel } from './ui/dmChat'
 import { BattlefieldSettings } from './ui/battlefieldSettings'
+// Background presets - include the provided Dungeon.png as the default preset
+import DungeonBackground from './assets/Backgrounds/Dungeon.png'
 import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
 import { EffectManager } from './engine/effects'
 import { planPath, planPathAvoidingThreat } from './engine/path'
@@ -37,7 +39,8 @@ const HEIGHT = 600
 const CELL = 50
 
 const app = new Application()
-await app.init({ width: WIDTH, height: HEIGHT, background: '#1b1e22', antialias: true })
+// Make canvas background transparent so the DOM background can show through
+await app.init({ width: WIDTH, height: HEIGHT, background: 'transparent', antialias: true })
 root.appendChild(app.canvas)
 
 // Main stage containers
@@ -84,8 +87,60 @@ function updateActionHUD(text: string) {
   if (hud) hud.textContent = text
 }
 
-// Initialize battlefield settings
-const battlefieldSettings = new BattlefieldSettings()
+// Initialize battlefield settings with presets (Dungeon as default)
+const backgroundPresets: Record<string, string> = {
+  dungeon: DungeonBackground
+}
+const battlefieldSettings = new BattlefieldSettings(backgroundPresets, 'dungeon')
+
+// Ensure the PIXI canvas is transparent so the page background is visible
+if (app.view && (app.view as HTMLCanvasElement).style) {
+  (app.view as HTMLCanvasElement).style.background = 'transparent'
+}
+
+function updateApplicationBackground(config: any) {
+  try {
+    const body = document.body;
+    if (!body) return;
+    if (config && config.backgroundImage) {
+      const val: string = config.backgroundImage;
+      // If it's a CSS gradient string
+      if (val.startsWith('linear-gradient') || val.includes('gradient(')) {
+        body.style.backgroundImage = val;
+        body.style.backgroundSize = 'cover';
+        body.style.backgroundPosition = 'center';
+        body.style.backgroundRepeat = 'no-repeat';
+        body.style.backgroundColor = '';
+      } else if (/^#([0-9a-f]{3}){1,2}$/i.test(val)) {
+        // Hex color
+        body.style.backgroundImage = '';
+        body.style.backgroundColor = val;
+        body.style.backgroundSize = '';
+        body.style.backgroundPosition = '';
+        body.style.backgroundRepeat = '';
+      } else {
+        // Assume it's an image URL or data URI
+        body.style.backgroundImage = `url('${val}')`;
+        body.style.backgroundSize = 'cover';
+        body.style.backgroundPosition = 'center';
+        body.style.backgroundRepeat = 'no-repeat';
+        body.style.backgroundColor = '';
+      }
+    } else {
+      // Fall back to a solid background color on the body
+      body.style.backgroundImage = '';
+      body.style.backgroundColor = '#1b1e22';
+      body.style.backgroundSize = '';
+      body.style.backgroundPosition = '';
+      body.style.backgroundRepeat = '';
+    }
+  } catch (err) {
+    console.warn('Failed to set application background:', err)
+  }
+}
+
+// Apply initial application background from settings
+updateApplicationBackground(battlefieldSettings.getConfig())
 
 // Expose battlefield settings globally so UI can access it
 ;(window as any).battlefieldSettings = battlefieldSettings
@@ -143,7 +198,10 @@ updateBattlefield()
 
 // Listen for battlefield setting changes
 battlefieldSettings.onSettingsChange(() => {
+  const config = battlefieldSettings.getConfig()
   updateBattlefield()
+  // Update the application background to match the selected preset
+  updateApplicationBackground(config)
 })
 
 world.addChild(grid, lines)
@@ -623,11 +681,15 @@ async function setPawnTexture(ref: 'A'|'B'|'C', url: string) {
   }
 }
 
-// Default selection: prefer pawnA.svg/pawnB.svg; else first available if present
-const defA = availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0]
-const defB = availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0]
-// Prefer custom pawnC image if present, else fallback to built-in pawnC.svg
+// Default selection: prefer pawnC (custom or built-in) for Pawn A, and pawnD for Pawn B.
+// This makes A use pawnC.svg and B use pawnD.svg by default as requested.
+const defCForA = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name))
+const defDForB = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnD\./i.test(t.name))
+const defA = defCForA || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0]
+const defB = defDForB || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0]
+// Keep defC as the C slot (custom pawn image) fallback
 const defC = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0]
+
 if (defA) setPawnTexture('A', defA.url)
 if (defB) setPawnTexture('B', defB.url)
 if (defC) setPawnTexture('C', defC.url)
@@ -1920,7 +1982,8 @@ app.canvas.addEventListener('contextmenu', (ev) => {
 
 // Controls wiring
 // Collapsible panel functionality
-let controlsCollapsed = false
+// Start collapsed by default so the controls panel is closed on first load
+let controlsCollapsed = true
 
 function toggleControlsPanel() {
   controlsCollapsed = !controlsCollapsed
@@ -1947,8 +2010,12 @@ function toggleControlsPanel() {
 // Initialize collapse state from localStorage
 document.addEventListener('DOMContentLoaded', () => {
   const savedState = localStorage.getItem('controlsCollapsed')
-  if (savedState === 'true') {
-    controlsCollapsed = false // Set opposite so toggle works correctly
+  // If a saved preference exists, set the internal state to the opposite
+  // so that calling toggleControlsPanel() will result in the desired state.
+  // savedState === 'true' means the user previously collapsed the panel.
+  if (savedState !== null) {
+    const wantCollapsed = savedState === 'true'
+    controlsCollapsed = !wantCollapsed
     toggleControlsPanel()
   }
 })
@@ -1962,13 +2029,6 @@ document.getElementById('new-character-btn')?.addEventListener('click', () => {
   console.log('uiManager exists:', !!uiManager)
   console.log('uiManager.characterCreation exists:', !!uiManager.characterCreation)
   console.log('characterCreation.show type:', typeof uiManager.characterCreation.show)
-  
-  try {
-    uiManager.characterCreation.show()
-    console.log('show() method called successfully')
-  } catch (err) {
-    console.error('Error calling show():', err)
-  }
 })
 document.getElementById('character-sheet-btn')?.addEventListener('click', () => {
   uiManager.characterSheet.toggle()

@@ -226,7 +226,7 @@
     <div class="center">
       <div id="game-root" aria-label="Game Canvas" role="img"></div>
     </div>
-    <div id="controls" style="position:fixed;top:8px;left:8px;background:rgba(20,25,30,0.95);padding:12px 16px;border-radius:8px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;box-shadow:0 4px 12px rgba(0,0,0,0.6);max-width:600px;z-index:1100;backdrop-filter:blur(8px);transform:translateX(0);transition:transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;">
+  <div id="controls" class="collapsed" style="position:fixed;top:8px;left:8px;background:rgba(20,25,30,0.95);padding:12px 16px;border-radius:8px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;box-shadow:0 4px 12px rgba(0,0,0,0.6);max-width:600px;z-index:1100;backdrop-filter:blur(8px);transform:translateX(0);transition:transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;">
       <!-- Minimize toggle button -->
       <div id="minimize-toggle" title="Toggle panel">▶</div>
       <!-- Pin button -->
@@ -422,8 +422,7 @@
       <!-- Monster UI content will be inserted here by the UI class -->
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
-    <script src="/test-modal.js"></script>
+  <script type="module" src="/src/main.ts"></script>
     
     <!-- Pop-out controls functionality -->
     <script>
@@ -584,52 +583,81 @@
           });
         }
 
+        // New Character button: open the character creation modal
+        (function initNewCharacterButton() {
+          const btn = document.getElementById('new-character-btn');
+          if (!btn) return;
+          btn.addEventListener('click', () => {
+            const tryShow = (ui) => {
+              if (ui && ui.characterCreation && typeof ui.characterCreation.show === 'function') {
+                try { ui.characterCreation.show(); } catch (e) { console.error('Failed to show character creation modal', e); }
+                return true;
+              }
+              return false;
+            };
+
+            const ui = window.debugUI || window.uiManager || window.characterCreationModal || null;
+            if (tryShow(ui)) return;
+
+            // Retry for a short period if UI not ready yet
+            let attempts = 0;
+            const t = setInterval(() => {
+              attempts++;
+              const ui2 = window.debugUI || window.uiManager || window.characterCreationModal || null;
+              if (tryShow(ui2)) { clearInterval(t); }
+              else if (attempts > 20) { clearInterval(t); console.warn('Unable to open character creation modal: UI manager not available'); }
+            }, 100);
+          });
+        })();
+
         // Debug logging functionality
         const aiLoggingToggle = document.getElementById('ai-logging-toggle');
         const detailedLoggingToggle = document.getElementById('detailed-logging-toggle');
         const showLogPanelBtn = document.getElementById('show-log-panel');
         
         if (aiLoggingToggle && detailedLoggingToggle && showLogPanelBtn) {
-          // Load saved settings
+          // Load saved settings (but do NOT auto-apply them so the panel stays hidden on startup)
           const savedAILogging = localStorage.getItem('aiLoggingEnabled') === 'true';
           const savedDetailedLogging = localStorage.getItem('detailedLoggingEnabled') === 'true';
-          
-          aiLoggingToggle.checked = savedAILogging;
-          detailedLoggingToggle.checked = savedDetailedLogging;
-          
+
+          // Don't check the toggles automatically on load to avoid opening the panel.
+          // User must explicitly enable logging for the panel to become visible.
+          aiLoggingToggle.checked = false;
+          detailedLoggingToggle.checked = false;
+
           // Wait for debug logger to be available
           function initDebugLogging() {
             if (window.debugLogger) {
-              // Apply saved settings
-              window.debugLogger.enableAILogging(savedAILogging);
-              window.debugLogger.enableDetailedLogging(savedDetailedLogging);
-              
-              // Event listeners
+              // Ensure the panel is hidden at startup regardless of saved preferences
+              try { window.debugLogger.hidePanel(); } catch (e) { /* ignore */ }
+
+              // Event listeners: when user toggles, enable logging and persist choice
               aiLoggingToggle.addEventListener('change', function() {
                 const enabled = this.checked;
                 window.debugLogger.enableAILogging(enabled);
                 localStorage.setItem('aiLoggingEnabled', enabled.toString());
                 console.log('AI Logging:', enabled ? 'enabled' : 'disabled');
               });
-              
+
               detailedLoggingToggle.addEventListener('change', function() {
                 const enabled = this.checked;
                 window.debugLogger.enableDetailedLogging(enabled);
                 localStorage.setItem('detailedLoggingEnabled', enabled.toString());
                 console.log('Detailed Logging:', enabled ? 'enabled' : 'disabled');
               });
-              
+
+              // Show panel button should only reveal the panel (it won't enable logging automatically)
               showLogPanelBtn.addEventListener('click', function() {
                 window.debugLogger.showPanel();
               });
-              
-              console.log('🔍 Debug logging system initialized');
+
+              console.log('🔍 Debug logging system initialized (panel hidden by default)');
             } else {
               // Retry in 100ms if debugLogger not available yet
               setTimeout(initDebugLogging, 100);
             }
           }
-          
+
           // Initialize when ready
           initDebugLogging();
         }

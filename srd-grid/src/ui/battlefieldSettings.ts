@@ -63,10 +63,18 @@ export class BattlefieldSettings {
   private config: BattlefieldConfig;
   private settingsPanel: HTMLElement | null = null;
   private onConfigChange: ((config: BattlefieldConfig) => void) | null = null;
+  private presets: Record<string, string> | null = null;
 
-  constructor() {
+  constructor(presets?: Record<string, string>, defaultPresetKey?: string) {
+    // store presets (may include image URLs or data URIs)
+    this.presets = presets || null;
     // Load saved settings or use defaults
     this.config = this.loadSettings();
+
+    // If no background was saved and a default preset was provided, apply it
+    if (!this.config.backgroundImage && this.presets && defaultPresetKey && this.presets[defaultPresetKey]) {
+      this.setConfig({ backgroundImage: this.presets[defaultPresetKey] });
+    }
   }
 
   private loadSettings(): BattlefieldConfig {
@@ -163,6 +171,44 @@ export class BattlefieldSettings {
   }
 
   private getSettingsPanelHTML(): string {
+    const buildColorDataUri = (hex: string) => {
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='100%' height='100%' fill='${hex}'/></svg>`;
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    };
+
+    // Preset entries for the page background (images, solids, gradients)
+    const pagePresets: Array<{ key: string; label: string; thumb: string; value: string }> = [];
+    // include image presets first
+    if (this.presets) {
+      for (const [k, v] of Object.entries(this.presets)) {
+        pagePresets.push({ key: k, label: k, thumb: v, value: v });
+      }
+    }
+
+    // Solid color presets
+    const colorPresets: Array<{ key:string; label:string; hex:string }> = [
+      { key: 'black', label: 'Black', hex: '#000000' },
+      { key: 'purple', label: 'Purple', hex: '#6b21a8' },
+      { key: 'green', label: 'Green', hex: '#065f46' },
+      { key: 'blue', label: 'Blue', hex: '#1e3a8a' },
+      { key: 'white', label: 'White', hex: '#ffffff' }
+    ];
+    for (const c of colorPresets) {
+      pagePresets.push({ key: `color_${c.key}`, label: c.label, thumb: buildColorDataUri(c.hex), value: c.hex });
+    }
+
+    // Gradient presets (CSS linear-gradient strings)
+    const gradientPresets: Array<{ key:string; label:string; css:string }> = [
+      { key: 'grad_purple', label: 'Purple Gradient', css: 'linear-gradient(135deg, #6b21a8 0%, #8b5cf6 100%)' },
+      { key: 'grad_blue', label: 'Blue Gradient', css: 'linear-gradient(135deg, #1e3a8a 0%, #06b6d4 100%)' },
+      { key: 'grad_green', label: 'Green Gradient', css: 'linear-gradient(135deg, #065f46 0%, #10b981 100%)' }
+    ];
+    for (const g of gradientPresets) {
+      // build a small gradient SVG thumbnail
+      const thumb = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='${g.css.split(',')[0].match(/#\w+/)?.[0]||'#000'}'/><stop offset='1' stop-color='${g.css.split(',').pop()?.match(/#\w+/)?.[0]||'#fff'}'/></linearGradient></defs><rect width='100%' height='100%' fill='url(%23g)'/></svg>` )}`;
+      pagePresets.push({ key: g.key, label: g.label, thumb, value: g.css });
+    }
+
     return `
       <div style="padding: 2rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -204,6 +250,18 @@ export class BattlefieldSettings {
         <!-- Background Image -->
         <div style="margin-bottom: 2rem;">
           <h3 style="color: white; margin: 0 0 1rem 0; font-size: 1.125rem; font-weight: 600;">Background Image</h3>
+          
+          <!-- Preset selector for page background -->
+          <div style="margin-bottom: 1rem;">
+            <label style="display:block; color:white; font-weight:500; margin-bottom:0.5rem;">Page Background Presets:</label>
+            <div id="page-background-presets" style="display:flex; gap:8px; flex-wrap:wrap;">
+              ${pagePresets.map(p => `
+                <button class="page-bg-preset" data-value="${p.value}" title="${p.label}" style="width:64px; height:64px; padding:4px; border-radius:6px; border:2px solid ${this.config.backgroundImage === p.value ? '#8b5cf6' : '#333'}; background:#111; cursor:pointer;">
+                  <img src="${p.thumb}" style="width:100%; height:100%; object-fit:cover; border-radius:4px; display:block;" alt="${p.label}"/>
+                </button>
+              `).join('')}
+            </div>
+          </div>
           
           <div style="margin-bottom: 1rem;">
             <label style="display: block; color: white; font-weight: 500; margin-bottom: 0.5rem;">Upload Background Image:</label>
@@ -319,6 +377,44 @@ export class BattlefieldSettings {
     urlInput?.addEventListener('change', (e) => {
       const url = (e.target as HTMLInputElement).value;
       this.setConfig({ backgroundImage: url || null });
+    });
+
+    // Preset buttons
+    const presetButtons = this.settingsPanel.querySelectorAll('.bg-preset');
+    presetButtons.forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        const target = ev.currentTarget as HTMLElement;
+        const bg = target.getAttribute('data-bg') || null;
+        this.setConfig({ backgroundImage: bg });
+
+        // Update URL input to show selected preset (for display)
+        const urlInput2 = this.settingsPanel?.querySelector('#background-url') as HTMLInputElement;
+        if (urlInput2) urlInput2.value = bg || '';
+      });
+    });
+
+    // Page background preset buttons (images, colors, gradients)
+    const pagePresetButtons = this.settingsPanel.querySelectorAll('.page-bg-preset');
+    pagePresetButtons.forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        const target = ev.currentTarget as HTMLElement;
+        const value = target.getAttribute('data-value') || null;
+        if (!value) return;
+
+        // If value looks like a CSS gradient (starts with 'linear-gradient') store as-is
+        if (value.startsWith('linear-gradient')) {
+          this.setConfig({ backgroundImage: value });
+        } else if (value.startsWith('data:') || value.startsWith('http') || value.startsWith('blob:')) {
+          // Image data URI or URL
+          this.setConfig({ backgroundImage: value });
+        } else if (value.startsWith('#')) {
+          // Solid color hex - store as CSS color value
+          this.setConfig({ backgroundImage: value });
+        } else {
+          // Fallback - store raw value
+          this.setConfig({ backgroundImage: value });
+        }
+      });
     });
 
     // Opacity sliders
