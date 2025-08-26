@@ -3,6 +3,7 @@ import { createWorld, updateTime } from './engine/world'
 import { UIManager } from './ui/interface'
 import { DMChatPanel } from './ui/dmChat'
 import { BattlefieldSettings } from './ui/battlefieldSettings'
+import { GoldBoxAdapter } from './ui/goldBoxAdapter'
 // Background presets - include the provided Dungeon.png as the default preset
 import DungeonBackground from './assets/Backgrounds/Dungeon.png'
 import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
@@ -52,6 +53,11 @@ const game = createWorld()
 
 const uiManager = new UIManager(document.body)
 
+// Initialize Gold Box Interface
+const goldBoxAdapter = new GoldBoxAdapter()
+goldBoxAdapter.integrateWithUIManager(uiManager)
+goldBoxAdapter.syncWithWorld(game)
+
 // Expose applyCharacterToPawnA globally so UIManager can access it
 ;(window as any).applyCharacterToPawnA = applyCharacterToPawnA
 
@@ -62,9 +68,11 @@ console.log('characterCreation type:', typeof uiManager.characterCreation)
 
 // Debug global window access
 ;(window as any).debugUI = uiManager
+;(window as any).goldBoxAdapter = goldBoxAdapter
 ;(window as any).toggleMonsterSelectionUI = toggleMonsterSelectionUI
 ;(window as any).debugLogger = debugLogger
 console.log('UIManager exposed as window.debugUI')
+console.log('Gold Box Adapter exposed as window.goldBoxAdapter')
 console.log('Monster selection toggle exposed globally')
 console.log('Debug logger exposed as window.debugLogger')
 
@@ -74,6 +82,7 @@ uiManager.combatLog.addMessage('Press N for New Character, C for Character Sheet
 uiManager.combatLog.addMessage('Press M for Monster Selection, R for Random Monster', 'info')
 uiManager.combatLog.addMessage('Right-click pawns for actions, or press Z (Pawn A) / X (Pawn B)', 'info')
 uiManager.combatLog.addMessage('Press ` (backtick) or Tab to toggle control panel', 'info')
+uiManager.combatLog.addMessage('Press Ctrl+G to toggle Gold Box Interface', 'info')
 uiManager.combatLog.addMessage('Note: Keyboard shortcuts are disabled while typing in input fields', 'info')
 
 // Helper function to maintain compatibility with existing code
