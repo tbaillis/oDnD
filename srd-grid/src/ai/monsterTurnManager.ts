@@ -2,6 +2,7 @@
 import { monsterAI, type MonsterCombatAction, type MonsterAIResponse } from '../ai/monsterAgent.js';
 import { monsterDialogueUI } from '../ai/monsterDialogue.js';
 import { debugLogger } from '../utils/debugLogger';
+import { showAttackSlash, flashPawnHit, showHitOrMiss } from '../ui/visualEffects'
 
 export interface MonsterTurnManager {
   isMonsterTurn(pawnId: 'A' | 'B'): boolean;
@@ -101,14 +102,23 @@ export class MonsterTurnManager implements MonsterTurnManager {
     await this.sleep(this.turnDelay);
 
     // Execute the action (single action or multi-action sequence)
-    const actionExecuted = await this.executeAction(pawnId, decision);
-    
+    const actionExecuted = await this.executeAction(pawnId, decision, gameState);
+
     if (!actionExecuted) {
       console.warn(`Failed to execute ${decision.action.type} action for monster ${pawnId}`);
     }
 
-    // For multi-actions or end_turn, we're done
+    // For multi-actions or end_turn, we're done. If the multi-action failed to run
+    // ensure we still end the turn to avoid leaving the game stalled.
     if (decision.action.type === 'multi_action' || decision.action.type === 'end_turn') {
+      if (!actionExecuted) {
+        if (typeof (window as any).commitEndTurn === 'function') {
+          debugLogger.logAI('Forcing end-turn after failed multi_action', 'MonsterTurnManager');
+          (window as any).commitEndTurn();
+        } else {
+          console.warn('commitEndTurn not available to force end turn');
+        }
+      }
       console.log(`Monster ${pawnId} completed turn with ${decision.action.type} action`);
       return;
     }
@@ -123,25 +133,46 @@ export class MonsterTurnManager implements MonsterTurnManager {
 
   private async executeAction(
     pawnId: 'A' | 'B', 
-    decision: MonsterAIResponse
+    decision: MonsterAIResponse,
+    gameState?: any
   ): Promise<boolean> {
     const { action } = decision;
 
     switch (action.type) {
       case 'move':
-        return this.executeMove(pawnId, action);
+        {
+          const ok = await this.executeMove(pawnId, action, gameState);
+          debugLogger.logActionResult(pawnId, 'move', ok, { target: action.target, reasoning: action.reasoning });
+          return ok;
+        }
       
       case 'attack':
-        return this.executeAttack(pawnId, action);
+        {
+          const ok = await this.executeAttack(pawnId, action, gameState);
+          debugLogger.logActionResult(pawnId, 'attack', ok, { target: action.target, reasoning: action.reasoning });
+          return ok;
+        }
       
       case 'special':
-        return this.executeSpecialAction(pawnId, action);
+        {
+          const ok = await this.executeSpecialAction(pawnId, action);
+          debugLogger.logActionResult(pawnId, 'special', ok, { reasoning: action.reasoning });
+          return ok;
+        }
       
       case 'end_turn':
-        return this.executeEndTurn(pawnId, action);
+        {
+          const ok = await this.executeEndTurn(pawnId, action);
+          debugLogger.logActionResult(pawnId, 'end_turn', ok, { reasoning: action.reasoning });
+          return ok;
+        }
       
       case 'multi_action':
-        return this.executeMultiAction(pawnId, action);
+        {
+          const ok = await this.executeMultiAction(pawnId, action, gameState);
+          debugLogger.logActionResult(pawnId, 'multi_action', ok, { sequenceLength: action.actionSequence?.length || 0, reasoning: action.reasoning });
+          return ok;
+        }
       
       default:
         console.warn('Unknown monster action type:', action.type);
@@ -149,26 +180,29 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeMove(pawnId: 'A' | 'B', action: MonsterCombatAction): Promise<boolean> {
+  private async executeMove(pawnId: 'A' | 'B', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.target) return false;
 
     try {
-      // Get the current pawn and game state references from main.ts
-      const pawn = pawnId === 'A' ? (window as any).pawnA : (window as any).pawnB;
-      const turns = (window as any).turns;
-      const consume = (window as any).consume;
-      const planFromActiveTo = (window as any).planFromActiveTo;
-      const appendLogLine = (window as any).appendLogLine;
-      const drawAll = (window as any).drawAll;
-      
-      if (!pawn || !turns || !consume || !planFromActiveTo || !appendLogLine) {
-        console.error('Missing required game functions for movement');
+      // Resolve various shapes for game state and helpers (some callers pass top-level budget/activePawnId)
+      const allPawns = gameState?.allPawns ?? (window as any).allPawns ?? [(window as any).pawnA, (window as any).pawnB];
+      const pawn = (allPawns || []).find((p: any) => p && (p.id === pawnId || p.id === String(pawnId))) ?? ((pawnId === 'A') ? (window as any).pawnA : (window as any).pawnB);
+
+      const activeId = gameState?.activePawnId ?? (gameState?.turns?.active?.id) ?? (window as any).turns?.active?.id;
+      const budget = gameState?.budget ?? gameState?.turns?.budget ?? (window as any).turns?.budget;
+      const consume = gameState?.consume ?? (window as any).consume;
+      const planFromActiveTo = gameState?.planFromActiveTo ?? (window as any).planFromActiveTo;
+      const appendLogLine = gameState?.appendLogLine ?? (window as any).appendLogLine;
+      const drawAll = gameState?.drawAll ?? (window as any).drawAll;
+
+      if (!pawn || !consume || !planFromActiveTo || !appendLogLine) {
+        console.error('Missing required game functions or pawn data for movement');
         return false;
       }
 
       // Ensure this is the active pawn's turn
-      if (turns.active?.id !== pawnId) {
-        console.error(`Cannot move pawn ${pawnId} - not their turn`);
+      if (activeId !== pawnId) {
+        console.error(`Cannot move pawn ${pawnId} - not their turn (activeId=${activeId})`);
         return false;
       }
 
@@ -183,13 +217,13 @@ export class MonsterTurnManager implements MonsterTurnManager {
       const last = trimmed[trimmed.length - 1];
       
       // Check if movement is possible with available actions
-      if (info.feet === 5 && info.difficultSquares === 0) {
-        if (!consume(turns.budget!, 'five-foot-step')) {
+      if (info.feet === 5 && (info.difficultSquares || 0) === 0) {
+        if (!budget || !consume(budget, 'five-foot-step')) {
           console.warn('No five-foot step available for Monster AI');
           return false;
         }
       } else {
-        if (!consume(turns.budget!, 'move')) {
+        if (!budget || !consume(budget, 'move')) {
           console.warn('Move action already used for Monster AI');
           return false;
         }
@@ -211,54 +245,55 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeAttack(pawnId: 'A' | 'B', action: MonsterCombatAction): Promise<boolean> {
+  private async executeAttack(pawnId: 'A' | 'B', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.target) return false;
 
     try {
-      // Get required game functions and state
-      const turns = (window as any).turns;
-      const consume = (window as any).consume;
-      const appendLogLine = (window as any).appendLogLine;
-      const drawAll = (window as any).drawAll;
-      const attackRoll = (window as any).attackRoll;
-      const isWithinAttackReach = (window as any).isWithinAttackReach;
-      
-      if (!turns || !consume || !appendLogLine || !attackRoll || !isWithinAttackReach) {
+      // Resolve game helpers and state from possible shapes
+      const activeId = gameState?.activePawnId ?? (gameState?.turns?.active?.id) ?? (window as any).turns?.active?.id;
+      const budget = gameState?.budget ?? gameState?.turns?.budget ?? (window as any).turns?.budget;
+      const consume = gameState?.consume ?? (window as any).consume;
+      const appendLogLine = gameState?.appendLogLine ?? (window as any).appendLogLine;
+      const drawAll = gameState?.drawAll ?? (window as any).drawAll;
+      const attackRoll = gameState?.attackRoll ?? (window as any).attackRoll;
+      const isWithinAttackReach = gameState?.isWithinAttackReach ?? (window as any).isWithinAttackReach;
+
+      if (!consume || !appendLogLine || !attackRoll || !isWithinAttackReach) {
         console.error('Missing required game functions for attack');
         return false;
       }
 
       // Ensure this is the active pawn's turn
-      if (turns.active?.id !== pawnId) {
-        console.error(`Cannot attack with pawn ${pawnId} - not their turn`);
+      if (activeId !== pawnId) {
+        console.error(`Cannot attack with pawn ${pawnId} - not their turn (activeId=${activeId})`);
         return false;
       }
 
       // Check if standard action is available
-      if (!consume(turns.budget!, 'standard')) {
+      if (!budget || !consume(budget, 'standard')) {
         console.warn('Standard action already used for Monster AI attack');
         return false;
       }
 
-      // Get attacker and target pawns
-      const attacker = pawnId === 'A' ? (window as any).pawnA : (window as any).pawnB;
-      const target = pawnId === 'A' ? (window as any).pawnB : (window as any).pawnA;
+      // Get attacker and target pawns - prefer gameState actors if present
+      const attacker = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id === pawnId)) ?? (pawnId === 'A' ? (window as any).pawnA : (window as any).pawnB);
+      const target = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id !== pawnId)) ?? (pawnId === 'A' ? (window as any).pawnB : (window as any).pawnA);
       
       // Verify target is at the expected position
-      if (target.x !== action.target.x || target.y !== action.target.y) {
+      if (!target || target.x !== action.target.x || target.y !== action.target.y) {
         console.warn(`Target not found at expected position (${action.target.x}, ${action.target.y})`);
         return false;
       }
 
       // Check reach distance
-      const attackerReach = pawnId === 'A' ? (window as any).reachA : (window as any).reachB;
-      const rangedMode = (window as any).rangedMode || false;
+  const attackerReach = (gameState && gameState.reach && gameState.reach[pawnId]) ?? (pawnId === 'A' ? (window as any).reachA : (window as any).reachB);
+  const rangedMode = ((gameState && gameState.rangedMode) ?? (window as any).rangedMode) || false;
       
       const reachCheck = isWithinAttackReach(
-        attacker.x, attacker.y, 
-        target.x, target.y, 
-        attacker.size, 
-        attackerReach, 
+        attacker.x, attacker.y,
+        target.x, target.y,
+        attacker.size,
+        attackerReach,
         rangedMode
       );
       
@@ -268,7 +303,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
         return false;
       }
 
-      // Execute attack using game's attack system
+  // Execute attack using game's attack system
       const atk = { bab: 2, abilityMod: 3, sizeMod: 0 };
       const def = { 
         ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, 
@@ -283,6 +318,20 @@ export class MonsterTurnManager implements MonsterTurnManager {
         const damage = outcome.critical ? 10 : 5;
         target.hp = Math.max(0, target.hp - damage);
         appendLogLine(`🤖 ${pawnId} deals ${damage} damage. Target HP ${target.hp}.`);
+        // Visuals: show attack slash and flash target pawn (use gameState overlay if provided)
+        try {
+          const overlay = gameState?.overlay ?? (window as any).overlay
+          const cellSize = gameState?.cellSize ?? (window as any).CELL ?? 50
+          // show slash for 3s, then show hit indicator and flash pawn for 2s
+          showAttackSlash(overlay, attacker.x, attacker.y, target.x, target.y, cellSize, 3000)
+          setTimeout(() => {
+            try { showHitOrMiss(overlay, target.x, target.y, cellSize, true, 2000) } catch (e) {}
+            try {
+              const targetSprite = (target === (window as any).pawnA) ? (window as any).pawnASprite : (window as any).pawnBSprite
+              flashPawnHit(targetSprite, 2000)
+            } catch (e) {}
+          }, 3000)
+        } catch (e) { /* ignore */ }
         
         if (target.hp <= 0) {
           appendLogLine(`${pawnId} wins!`);
@@ -320,7 +369,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return false;
   }
 
-  private async executeMultiAction(pawnId: 'A' | 'B', action: MonsterCombatAction): Promise<boolean> {
+  private async executeMultiAction(pawnId: 'A' | 'B', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.actionSequence || action.actionSequence.length === 0) {
       console.warn(`Monster ${pawnId} multi-action has no action sequence`);
       return false;
@@ -344,10 +393,10 @@ export class MonsterTurnManager implements MonsterTurnManager {
       let success = false;
       switch (singleAction.type) {
         case 'move':
-          success = await this.executeMove(pawnId, tempAction);
+          success = await this.executeMove(pawnId, tempAction, gameState);
           break;
         case 'attack':
-          success = await this.executeAttack(pawnId, tempAction);
+          success = await this.executeAttack(pawnId, tempAction, gameState);
           break;
         case 'special':
           success = await this.executeSpecialAction(pawnId, tempAction);

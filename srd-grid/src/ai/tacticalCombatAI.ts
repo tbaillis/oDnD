@@ -115,8 +115,18 @@ export class TacticalCombatAI {
         throw new Error(`Tactical analysis failed: ${response.status}`);
       }
 
-      const result = await response.json();
-      return this.parseTacticalResponse(result.response, monsterStats, enemyStats);
+  const result = await response.json();
+  // If DM server provided a pre-parsed structured object, use it preferentially
+  if (result.structured) {
+    debugLogger.logAI('Using structured tactical payload from DM server', 'Tactical AI');
+    // stringify so parseTacticalResponse's tryExtractJSON handles it uniformly
+  debugLogger.logParserDiagnostics('TacticalCombatAI', 'server_structured', JSON.stringify(result.content || ''), result.structured);
+  return this.parseTacticalResponse(JSON.stringify(result.structured), monsterStats, enemyStats);
+  }
+
+  // DM server returns { content: string, ... } while some integrations might use 'response'
+  const raw = result.content ?? result.response ?? (typeof result === 'string' ? result : JSON.stringify(result));
+  return this.parseTacticalResponse(raw, monsterStats, enemyStats);
     } catch (error) {
       console.error('Error in tactical analysis:', error);
       debugLogger.logAI('Tactical AI failed, using fallback analysis', 'Tactical AI');
@@ -185,12 +195,14 @@ Respond with a JSON object in this exact format:
 
   private parseTacticalResponse(response: string, monster: CombatantStats, enemies: CombatantStats[]): TacticalAnalysis {
     try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in tactical response');
+      // Attempt robust JSON extraction/parsing with recovery heuristics
+      const extraction = this.tryExtractJSON(response);
+      if (!extraction || !extraction.parsed) {
+        throw new Error('No JSON found in tactical response after extraction attempts');
       }
-
-      const analysis = JSON.parse(jsonMatch[0]);
+      const analysis = extraction.parsed;
+      // Log which heuristic succeeded for UI visibility
+      debugLogger.logParserDiagnostics('TacticalCombatAI', extraction.heuristic || 'unknown', response, analysis);
       
       // Validate and clean up the analysis
       const strategies: TacticalStrategy[] = (analysis.strategies || []).slice(0, 10).map((s: any, i: number) => ({
@@ -245,6 +257,76 @@ Respond with a JSON object in this exact format:
       debugLogger.logAI('Tactical parsing failed, using fallback', 'Tactical AI');
       return this.generateFallbackAnalysis(monster, enemies);
     }
+  }
+
+  // Try several heuristics to extract a JSON object from noisy model output.
+  private tryExtractJSON(text: string): any | null {
+    // 1) Direct parse
+    try {
+      const parsed = JSON.parse(text);
+      debugLogger.logAI('Tactical JSON parsed via direct JSON.parse', 'Tactical AI');
+      return { parsed, heuristic: 'direct' } as any;
+    } catch (e) {
+      // continue
+    }
+
+    // 2) Look for fenced ```json blocks first
+    const fenceMatch = text.match(/```json([\s\S]*?)```/i);
+    if (fenceMatch && fenceMatch[1]) {
+      const inside = fenceMatch[1].trim();
+      try { const p = JSON.parse(inside); debugLogger.logAI('Tactical JSON parsed from ```json fenced block', 'Tactical AI'); return { parsed: p, heuristic: 'fenced_block' } as any; } catch (e) { /* fallthrough */ }
+    }
+
+    // 3) Find all candidate brace substrings and try balanced extraction
+    const candidates: string[] = [];
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') {
+        let depth = 0;
+        for (let j = i; j < text.length; j++) {
+          if (text[j] === '{') depth++;
+          else if (text[j] === '}') depth--;
+          if (depth === 0) {
+            const candidate = text.slice(i, j + 1);
+            candidates.push(candidate);
+            break;
+          }
+        }
+      }
+    }
+
+    // Try parsing candidates as-is
+    for (const c of candidates) {
+      try { const p = JSON.parse(c); debugLogger.logAI('Tactical JSON parsed from balanced-brace candidate', 'Tactical AI'); return { parsed: p, heuristic: 'balanced_candidate' } as any; } catch (e) { /* try cleaning below */ }
+    }
+
+    // 4) Try cleaning strategies: remove trailing commas, ensure quoted keys, convert single quotes, then parse
+    const cleanCandidates = candidates.map(c => {
+      let s = c;
+      // remove trailing commas before } or ]
+      s = s.replace(/,\s*([}\]])/g, '$1');
+      // convert single-quoted strings to double-quoted
+      s = s.replace(/'([^']*)'/g, '"$1"');
+      // ensure unquoted keys are quoted: { key: -> { "key":
+      s = s.replace(/([,{\s])([A-Za-z0-9_\-]+)\s*:/g, '$1"$2":');
+      return s;
+    });
+
+    for (const s of cleanCandidates) {
+      try { const p = JSON.parse(s); debugLogger.logAI('Tactical JSON parsed after cleaning candidate', 'Tactical AI'); return { parsed: p, heuristic: 'cleaned_candidate' } as any; } catch (e) { /* continue */ }
+    }
+
+    // 5) As a last attempt, try to extract the largest {...} block by first '{' and last '}' and clean it
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first >= 0 && last > first) {
+      let block = text.slice(first, last + 1);
+      block = block.replace(/,\s*([}\]])/g, '$1');
+      block = block.replace(/'([^']*)'/g, '"$1"');
+      block = block.replace(/([,{\s])([A-Za-z0-9_\-]+)\s*:/g, '$1"$2":');
+  try { const p = JSON.parse(block); debugLogger.logAI('Tactical JSON parsed from cleaned outer block', 'Tactical AI'); return { parsed: p, heuristic: 'cleaned_outer_block' } as any; } catch (e) { /* give up */ }
+    }
+
+  return null;
   }
 
   private createFallbackStrategy(type: 'offensive' | 'defensive' | 'neutral', monster: CombatantStats, enemies: CombatantStats[]): TacticalStrategy {

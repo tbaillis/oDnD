@@ -279,6 +279,32 @@ export class DebugLogger {
     });
   }
 
+  // Specialized diagnostic entries for AI parsing and action outcomes
+  public logParserDiagnostics(source: string, heuristic: string, rawSample?: string, parsed?: any): void {
+    if (!this.aiLoggingEnabled) return;
+  const data: any = { heuristic, parsedPreview: parsed ? JSON.stringify(parsed).slice(0, 200) : null };
+  if (rawSample) data.rawSample = rawSample.slice(0, 200);
+    this.addLog({
+      timestamp: new Date(),
+      level: 'ai',
+      category: `${source}::parser`,
+      message: `Parser heuristic: ${heuristic}`,
+      data,
+      stackTrace: this.detailedLoggingEnabled ? this.getStackTrace() : undefined
+    });
+  }
+
+  public logActionResult(pawnId: string, actionType: string, success: boolean, details?: any): void {
+    if (!this.aiLoggingEnabled) return;
+    this.addLog({
+      timestamp: new Date(),
+      level: 'ai',
+      category: `Action::${pawnId}`,
+      message: `${actionType} ${success ? 'succeeded' : 'failed'}`,
+      data: details
+    });
+  }
+
   public clearLogs(): void {
     this.logs = [];
     this.updateLogDisplay();

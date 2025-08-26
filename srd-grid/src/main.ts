@@ -23,6 +23,7 @@ import { monsterService } from './game/monsters/service'
 import { monsterAI } from './ai/monsterAgent'
 import { monsterDialogueUI } from './ai/monsterDialogue'
 import { monsterTurnManager } from './ai/monsterTurnManager'
+import { showThinking, hideThinking, showAttackSlash, flashPawnHit, showHitOrMiss } from './ui/visualEffects'
 import { debugLogger } from './utils/debugLogger'
 
 // Import CSS styles
@@ -175,6 +176,9 @@ function drawCell(g: Graphics, x: number, y: number, color: number) {
 // Token state (two pawns)
 let pawnA = { x: 2, y: 2, speed: 30, size: 'medium' as const, hp: 20 }
 let pawnB = { x: 12, y: 8, speed: 30, size: 'large' as 'large' | 'medium', hp: 25 }
+// Optional Pawn C (third token) - start off-screen to avoid interfering
+let pawnC = { x: -5, y: -5, speed: 30, size: 'medium' as const, hp: 20, maxHp: 20 }
+;(window as any).pawnC = pawnC
 let pawnAMaxHP = 20 // Track max HP for pawn A
 let pawnBMaxHP = 25 // Track max HP for pawn B
 
@@ -508,6 +512,16 @@ function drawAll() {
     if (pawnBSprite) pawnBSprite.visible = false
     tokens.circle(center(pawnB.x), center(pawnB.y), CELL*0.4).fill(0xe65a5a)
   }
+  // Pawn C rendering (optional third pawn)
+  if (pawnCSprite && pawnCSprite.texture && pawnCSprite.texture.width > 0 && pawnCSprite.texture.height > 0) {
+    pawnCSprite.x = center((window as any).pawnC?.x ?? 0)
+    pawnCSprite.y = center((window as any).pawnC?.y ?? 0)
+    scaleToCell(pawnCSprite)
+    pawnCSprite.visible = true
+  } else {
+    if (pawnCSprite) pawnCSprite.visible = false
+    if ((window as any).pawnC) tokens.circle(center((window as any).pawnC.x), center((window as any).pawnC.y), CELL*0.35).fill(0x6d28d9)
+  }
   // HP bars
   const barW = CELL*0.7
   const barH = 6
@@ -520,6 +534,7 @@ function drawAll() {
   }
   drawHP(pawnA.x, pawnA.y, pawnA.hp, 20, 0x5aa9e6)
   drawHP(pawnB.x, pawnB.y, pawnB.hp, 25, 0xe65a5a)
+  if ((window as any).pawnC) drawHP((window as any).pawnC.x, (window as any).pawnC.y, (window as any).pawnC.hp, (window as any).pawnC.maxHp || 20, 0x6d28d9)
   if (gameOver) {
     // simple banner rectangle
     tokens.rect(WIDTH/2-160, HEIGHT/2-30, 320, 60).fill(0x111111).stroke({ color: 0xffffff, width: 2 })
@@ -529,32 +544,43 @@ function drawAll() {
 // Initialize sprite variables before drawAll is called
 let pawnASprite: Sprite | null = null
 let pawnBSprite: Sprite | null = null
+let pawnCSprite: Sprite | null = null
 
 drawAll()
 
 // Import SVG assets directly with ?url to ensure they work in both dev and production
 import pawnAUrl from './assets/pawns/pawnA.svg?url'
 import pawnBUrl from './assets/pawns/pawnB.svg?url'
+import pawnCUrl from './assets/pawns/pawnC.svg?url'
+import pawnCCustomUrl from './assets/pawns/pawnC_custom.png?url'
+import pawnDUrl from './assets/pawns/pawnD.svg?url'
 
 // Create available tokens list with the imported URLs
 const availableTokens = [
   { path: './assets/pawns/pawnA.svg', url: pawnAUrl, name: 'pawnA.svg' },
-  { path: './assets/pawns/pawnB.svg', url: pawnBUrl, name: 'pawnB.svg' }
+  { path: './assets/pawns/pawnB.svg', url: pawnBUrl, name: 'pawnB.svg' },
+  { path: './assets/pawns/pawnC.svg', url: pawnCUrl, name: 'pawnC.svg' },
+  { path: './assets/pawns/pawnC_custom.png', url: pawnCCustomUrl, name: 'pawnC_custom.png' },
+  { path: './assets/pawns/pawnD.svg', url: pawnDUrl, name: 'pawnD.svg' }
 ]
 
 console.log('Available tokens:', availableTokens)
 
-function ensureSprite(ref: 'A'|'B') {
-  const cur = ref === 'A' ? pawnASprite : pawnBSprite
+// Expose available tokens and setter so static HTML token buttons can use them
+;(window as any).availableTokens = availableTokens
+;(window as any).setPawnTexture = setPawnTexture
+
+function ensureSprite(ref: 'A'|'B'|'C') {
+  const cur = ref === 'A' ? pawnASprite : (ref === 'B' ? pawnBSprite : pawnCSprite)
   if (cur) return cur
   const s = new Sprite()
   s.anchor.set(0.5)
   pieces.addChild(s)
-  if (ref === 'A') pawnASprite = s; else pawnBSprite = s
+  if (ref === 'A') pawnASprite = s; else if (ref === 'B') pawnBSprite = s; else pawnCSprite = s
   return s
 }
 
-async function setPawnTexture(ref: 'A'|'B', url: string) {
+async function setPawnTexture(ref: 'A'|'B'|'C', url: string) {
   console.log(`Loading texture for ${ref} from:`, url)
   const sp = ensureSprite(ref)
   sp.visible = false
@@ -600,8 +626,11 @@ async function setPawnTexture(ref: 'A'|'B', url: string) {
 // Default selection: prefer pawnA.svg/pawnB.svg; else first available if present
 const defA = availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0]
 const defB = availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0]
+// Prefer custom pawnC image if present, else fallback to built-in pawnC.svg
+const defC = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0]
 if (defA) setPawnTexture('A', defA.url)
 if (defB) setPawnTexture('B', defB.url)
+if (defC) setPawnTexture('C', defC.url)
 
 // Build comprehensive token selector interface
 export function buildTokenSelectors() {
@@ -646,7 +675,7 @@ export function buildTokenSelectors() {
   content.style.cssText = 'display:block;'
 
   // Create token button grid for each pawn
-  const createTokenRow = (label: string, who: 'A'|'B', def?: { url: string, name: string } | undefined) => {
+  const createTokenRow = (label: string, who: 'A'|'B'|'C', def?: { url: string, name: string } | undefined) => {
     const cont = document.createElement('div')
     cont.style.cssText = 'margin-bottom:12px; padding:8px; background:rgba(17,24,39,0.5); border-radius:6px;'
     
@@ -732,8 +761,10 @@ export function buildTokenSelectors() {
 
   const a = createTokenRow('Pawn A', 'A', defA)
   const b = createTokenRow('Pawn B', 'B', defB)
+  const c = createTokenRow('Pawn C', 'C', defC)
   content.appendChild(a.cont)
   content.appendChild(b.cont)
+  content.appendChild(c.cont)
 
   const foot = document.createElement('div')
   foot.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid #374151;'
@@ -862,14 +893,17 @@ async function executeMonsterTurn(pawnId: 'A' | 'B') {
       budget: gameState.budget
     })
 
-    // Execute monster turn
-    const success = await monsterTurnManager.executeMonsterTurn(pawnId, gameState)
+  // Show thinking indicator while AI decides and acts
+  showThinking(pawnId)
+  // Execute monster turn
+  const success = await monsterTurnManager.executeMonsterTurn(pawnId, gameState)
+  hideThinking()
     
     console.log(`🤖 Monster turn ${pawnId} result: ${success ? 'SUCCESS' : 'FAILED'}`)
     
     if (success) {
       // Update display after monster action
-      drawAll()
+  drawAll()
       updateActionHUD(hudText())
     } else {
       // Fallback: just end turn if AI fails
@@ -1581,6 +1615,13 @@ app.canvas.addEventListener('mousemove', (ev) => {
   const my = Math.floor((ev.clientY - rect.top) / CELL)
   
   if (editTerrain) return
+  // If the active pawn is a monster controlled by the AI, disable user preview interactions
+  const activeId = turns.active?.id as 'A'|'B' | undefined
+  if (activeId && monsterTurnManager.isMonsterPawn(activeId) && monsterAI.isEnabled()) {
+    // Show a disabled cursor so the user knows input is blocked during AI turns
+    app.canvas.style.cursor = 'not-allowed'
+    return
+  }
   
   // Check if hovering over a pawn and update cursor
   const pawnAtPosition = getPawnAtPosition(mx, my)
@@ -1616,6 +1657,12 @@ app.canvas.addEventListener('click', (ev) => {
   if (editTerrain) {
     if (ev.shiftKey) cycleCoverAt(mx,my); else toggleDifficultAt(mx,my)
     drawAll()
+    return
+  }
+  // Prevent manual clicks/movement while AI controls the active pawn
+  const activeId = turns.active?.id as 'A'|'B' | undefined
+  if (activeId && monsterTurnManager.isMonsterPawn(activeId) && monsterAI.isEnabled()) {
+    appendLogLine(`Pawn ${activeId} is controlled by AI this turn. Manual movement disabled.`)
     return
   }
   
@@ -1833,8 +1880,18 @@ app.canvas.addEventListener('click', (ev) => {
   const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'B' : 'A'), packet)
         const taken = applied.taken
         targetPawn.hp = Math.max(0, targetPawn.hp - taken)
-        appendLogLine(`${turns.active?.id} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${targetPawn.hp}.`)
-        if (targetPawn.hp <= 0) { gameOver = turns.active?.id === 'A' ? 'A' : 'B'; appendLogLine(`${gameOver} wins!`) }
+  appendLogLine(`${turns.active?.id} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${targetPawn.hp}.`)
+  // Visuals: show slash from attacker to target for 3s, then show hit/miss indicator for 2s and flash the target pawn
+  try {
+    // show the slash for 3s (3000ms)
+    showAttackSlash(overlay, attacker!.x, attacker!.y, target.x, target.y, CELL, 3000)
+    // after the slash duration, show hit/miss indicator for 2s and flash the pawn for 2s
+    setTimeout(() => {
+      try { showHitOrMiss(overlay, target.x, target.y, CELL, true, 2000) } catch (e) {}
+      try { flashPawnHit(target === pawnA ? pawnASprite : pawnBSprite, 2000) } catch (e) {}
+    }, 3000)
+  } catch (e) { }
+  if (targetPawn.hp <= 0) { gameOver = turns.active?.id === 'A' ? 'A' : 'B'; appendLogLine(`${gameOver} wins!`) }
       }
   drawAll()
   updateActionHUD(hudText())

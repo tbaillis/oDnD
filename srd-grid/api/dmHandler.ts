@@ -26,6 +26,8 @@ export interface DMResponse {
     parameters: any;
     reason: string;
   }>;
+  // If the LLM returned a parseable JSON block, `structured` will contain the parsed object
+  structured?: any;
   error?: string;
 }
 
@@ -65,11 +67,25 @@ export async function handleDMRequest(request: DMRequest): Promise<DMResponse> {
     const suggestedActions = extractSuggestedActions(responseContent);
     const mcpToolCalls = parsePotentialToolCalls(responseContent);
 
+    // Try to extract a structured JSON payload if the model included one
+    let structured: any = null;
+    try {
+      // direct parse
+      structured = JSON.parse(responseContent);
+    } catch (e) {
+      // try to extract first {...} block
+      const m = responseContent.match(/\{[\s\S]*\}/);
+      if (m && m[0]) {
+        try { structured = JSON.parse(m[0]); } catch (e2) { structured = null; }
+      }
+    }
+
     return {
       content: responseContent,
       confidence: completion.choices[0]?.finish_reason === 'stop' ? 0.9 : 0.7,
       suggestedActions,
-      mcpToolCalls
+      mcpToolCalls,
+      structured
     };
 
   } catch (error) {

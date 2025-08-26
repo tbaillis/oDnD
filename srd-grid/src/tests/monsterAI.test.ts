@@ -76,19 +76,6 @@ describe('Monster AI Movement Logic', () => {
       Math.random = originalRandom
     }
   })
-    const originalRandom = Math.random
-    Math.random = () => 0.8
-
-    try {
-      const decision = (monsterAI as any)['fallbackDecision'](gameState)
-      
-      expect(decision.action.type).toBe('attack')
-      expect(decision.action.target).toEqual({ x: 1, y: 0 })
-      expect(decision.action.reasoning).toContain('Attacking')
-    } finally {
-      Math.random = originalRandom
-    }
-  })
 
   it('should calculate optimal move position', () => {
     const monster = { x: 0, y: 0 }

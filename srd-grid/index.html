@@ -318,9 +318,11 @@
                 </div>
                 <span style="color:#e5e7eb;font-size:11px;font-weight:500;">Pawn A</span>
               </div>
-              <div style="display:flex;gap:4px;">
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
                 <button class="token-btn" data-pawn="A" data-file="pawnA.svg" style="padding:4px 8px;background:#0891b2;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnA.svg</button>
                 <button class="token-btn" data-pawn="A" data-file="pawnB.svg" style="padding:4px 8px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnB.svg</button>
+                <button class="token-btn" data-pawn="A" data-file="pawnC.svg" style="padding:4px 8px;background:#6d28d9;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnC.svg</button>
+                <button class="token-btn" data-pawn="A" data-file="pawnD.svg" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnD.svg</button>
               </div>
             </div>
 
@@ -332,9 +334,11 @@
                 </div>
                 <span style="color:#e5e7eb;font-size:11px;font-weight:500;">Pawn B</span>
               </div>
-              <div style="display:flex;gap:4px;">
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
                 <button class="token-btn" data-pawn="B" data-file="pawnA.svg" style="padding:4px 8px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnA.svg</button>
                 <button class="token-btn" data-pawn="B" data-file="pawnB.svg" style="padding:4px 8px;background:#0891b2;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnB.svg</button>
+                <button class="token-btn" data-pawn="B" data-file="pawnC.svg" style="padding:4px 8px;background:#6d28d9;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnC.svg</button>
+                <button class="token-btn" data-pawn="B" data-file="pawnD.svg" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnD.svg</button>
               </div>
             </div>
 
@@ -535,7 +539,16 @@
               this.style.color = 'white';
               
               console.log(`Selected ${file} for Pawn ${pawn}`);
-              // Here you would integrate with your game logic to change the token
+              // integrate with game logic: find matching available token URL and apply
+              const tokens = (window.availableTokens || [])
+              // prefer custom pawnC when file === 'pawnC.svg' and pawn==='C'
+              let match = tokens.find(t => t.name === file)
+              if (!match && pawn === 'C') {
+                match = tokens.find(t => /pawnC_custom\./i.test(t.name)) || tokens.find(t => /pawnC\./i.test(t.name))
+              }
+              if (match && typeof (window.setPawnTexture) === 'function') {
+                window.setPawnTexture(pawn, match.url)
+              }
             });
           });
           
