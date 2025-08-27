@@ -5,34 +5,34 @@ import { debugLogger } from '../utils/debugLogger';
 import { showAttackSlash, flashPawnHit, showHitOrMiss } from '../ui/visualEffects'
 
 export interface MonsterTurnManager {
-  isMonsterTurn(pawnId: 'A' | 'B'): boolean;
-  shouldTakeAutoTurn(pawnId: 'A' | 'B'): boolean;
-  executeMonsterTurn(pawnId: 'A' | 'B', gameState: any): Promise<boolean>;
-  setMonsterPawn(pawnId: 'A' | 'B', isMonster: boolean): void;
-  isMonsterPawn(pawnId: 'A' | 'B'): boolean;
+  isMonsterTurn(pawnId: 'A' | 'M1'): boolean;
+  shouldTakeAutoTurn(pawnId: 'A' | 'M1'): boolean;
+  executeMonsterTurn(pawnId: 'A' | 'M1', gameState: any): Promise<boolean>;
+  setMonsterPawn(pawnId: 'A' | 'M1', isMonster: boolean): void;
+  isMonsterPawn(pawnId: 'A' | 'M1'): boolean;
 }
 
 export class MonsterTurnManager implements MonsterTurnManager {
-  private monsterPawns: Set<'A' | 'B'> = new Set();
+  private monsterPawns: Set<'A' | 'M1'> = new Set();
   private isProcessingTurn: boolean = false;
   private turnDelay: number = 1500; // Delay between AI actions in ms
 
   constructor() {
-    // Initialize with pawn B as monster by default (can be changed)
-    this.monsterPawns.add('B');
+    // Initialize with pawn M1 as monster by default (can be changed)
+    this.monsterPawns.add('M1');
   // Reference internal helpers to avoid unused warnings in some build environments
   this._referencedHelpers();
   }
 
-  public isMonsterTurn(pawnId: 'A' | 'B'): boolean {
+  public isMonsterTurn(pawnId: 'A' | 'M1'): boolean {
     return this.monsterPawns.has(pawnId);
   }
 
-  public shouldTakeAutoTurn(pawnId: 'A' | 'B'): boolean {
+  public shouldTakeAutoTurn(pawnId: 'A' | 'M1'): boolean {
     return monsterAI.isEnabled() && this.isMonsterTurn(pawnId) && !this.isProcessingTurn;
   }
 
-  public setMonsterPawn(pawnId: 'A' | 'B', isMonster: boolean): void {
+  public setMonsterPawn(pawnId: 'A' | 'M1', isMonster: boolean): void {
     if (isMonster) {
       this.monsterPawns.add(pawnId);
     } else {
@@ -40,11 +40,11 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  public isMonsterPawn(pawnId: 'A' | 'B'): boolean {
+  public isMonsterPawn(pawnId: 'A' | 'M1'): boolean {
     return this.monsterPawns.has(pawnId);
   }
 
-  public async executeMonsterTurn(pawnId: 'A' | 'B', gameState: any): Promise<boolean> {
+  public async executeMonsterTurn(pawnId: 'A' | 'M1', gameState: any): Promise<boolean> {
     debugLogger.logAI('MonsterTurnManager', `Starting monster turn execution`, {
       pawnId,
       isProcessingTurn: this.isProcessingTurn,
@@ -78,7 +78,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeCompleteMonsterTurn(pawnId: 'A' | 'B', gameState: any): Promise<void> {
+  private async executeCompleteMonsterTurn(pawnId: 'A' | 'M1', gameState: any): Promise<void> {
     debugLogger.logAI('MonsterTurnManager', 'Starting complete monster turn', {
       pawnId,
       budget: gameState?.budget,
@@ -132,7 +132,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
   }
 
   private async executeAction(
-    pawnId: 'A' | 'B', 
+    pawnId: 'A' | 'M1', 
     decision: MonsterAIResponse,
     gameState?: any
   ): Promise<boolean> {
@@ -180,7 +180,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeMove(pawnId: 'A' | 'B', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
+  private async executeMove(pawnId: 'A' | 'M1', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.target) return false;
 
     try {
@@ -245,7 +245,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeAttack(pawnId: 'A' | 'B', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
+  private async executeAttack(pawnId: 'A' | 'M1', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.target) return false;
 
     try {
@@ -349,7 +349,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeSpecialAction(pawnId: 'A' | 'B', action: MonsterCombatAction): Promise<boolean> {
+  private async executeSpecialAction(pawnId: 'A' | 'M1', action: MonsterCombatAction): Promise<boolean> {
     // Placeholder for special abilities like spells, breath weapons, etc.
     console.log(`Monster ${pawnId} uses special ability: ${action.reasoning}`);
     
@@ -357,7 +357,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return this.executeEndTurn(pawnId, action);
   }
 
-  private async executeEndTurn(pawnId: 'A' | 'B', action: MonsterCombatAction): Promise<boolean> {
+  private async executeEndTurn(pawnId: 'A' | 'M1', action: MonsterCombatAction): Promise<boolean> {
     // Use existing end turn functionality
     if (typeof (window as any).commitEndTurn === 'function') {
       (window as any).commitEndTurn();
@@ -369,7 +369,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return false;
   }
 
-  private async executeMultiAction(pawnId: 'A' | 'B', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
+  private async executeMultiAction(pawnId: 'A' | 'M1', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.actionSequence || action.actionSequence.length === 0) {
       console.warn(`Monster ${pawnId} multi-action has no action sequence`);
       return false;
@@ -431,17 +431,17 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return true;
   }
 
-  private findPawnAtPosition(x: number, y: number): 'A' | 'B' | null {
+  private findPawnAtPosition(x: number, y: number): 'A' | 'M1' | null {
     // Check global pawn positions if available
     const pawnA = (window as any).pawnA;
-    const pawnB = (window as any).pawnB;
+    const pawnM1 = (window as any).pawnM1;
 
     if (pawnA && pawnA.x === x && pawnA.y === y) {
       return 'A';
     }
     
-    if (pawnB && pawnB.x === x && pawnB.y === y) {
-      return 'B';
+    if (pawnM1 && pawnM1.x === x && pawnM1.y === y) {
+      return 'M1';
     }
 
     return null;
@@ -457,10 +457,10 @@ export class MonsterTurnManager implements MonsterTurnManager {
   }
 
   // Utility methods for game state analysis
-  public buildGameState(turns: any, pawnA: any, pawnB: any, gameState?: any): any {
+  public buildGameState(turns: any, pawnA: any, pawnM1: any, gameState?: any): any {
     const activePawnId = turns.active?.id;
-    const activePawn = activePawnId === 'A' ? pawnA : pawnB;
-    const enemyPawn = activePawnId === 'A' ? pawnB : pawnA;
+    const activePawn = activePawnId === 'A' ? pawnA : pawnM1;
+    const enemyPawn = activePawnId === 'A' ? pawnM1 : pawnA;
 
     // Enhance active monster with budget-derived availability flags
     const activeMonster = this.isMonsterTurn(activePawnId) ? {
@@ -488,7 +488,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
       activeMonster,
       activePawn: activePawn,
       enemies: [enemyPawn].filter(p => p.hp > 0),
-      allPawns: [pawnA, pawnB],
+      allPawns: [pawnA, pawnM1],
       round: turns.round,
       budget: turns.budget,
       grid: gameState?.grid,

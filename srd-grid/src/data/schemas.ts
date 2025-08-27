@@ -37,7 +37,7 @@ export const SaveDataSchema = z.object({
   version: z.number().int().optional(),
   grid: z.array(z.array(CellFlagSchema)),
   pawnA: z.object({ x: z.number().int(), y: z.number().int(), speed: z.number().int(), size: z.enum(['medium','large']), hp: z.number().int(), reach: z.boolean().optional() }),
-  pawnB: z.object({ x: z.number().int(), y: z.number().int(), speed: z.number().int(), size: z.enum(['medium','large']), hp: z.number().int(), reach: z.boolean().optional() }),
+  pawnM1: z.object({ x: z.number().int(), y: z.number().int(), speed: z.number().int(), size: z.enum(['medium','large']), hp: z.number().int(), reach: z.boolean().optional() }),
   round: z.number().int(),
   initiative: z.object({ order: z.array(z.object({ id: z.string(), initiative: z.number().int(), dexMod: z.number().int() })), index: z.number().int() }),
   aooUsed: z.record(z.string(), z.number().int()).default({}),
@@ -51,7 +51,7 @@ export const SaveDataSchema = z.object({
     defensiveCast: z.boolean().optional(),
     tumble: z.boolean().optional(),
     reachA: z.boolean().optional(),
-    reachB: z.boolean().optional(),
+    reachM1: z.boolean().optional(),
     cornerCover: z.boolean().optional()
   }),
   inputs: z.object({

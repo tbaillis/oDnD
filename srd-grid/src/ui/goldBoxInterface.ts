@@ -97,6 +97,7 @@ export class GoldBoxInterface {
   // Callbacks
   private onCommand: (command: string) => void = () => {}
   private onPromptResponse: (response: string) => void = () => {}
+  private onCharacterClick: (characterId: string) => void = () => {}
 
   constructor() {
     this.createInterface()
@@ -384,6 +385,10 @@ export class GoldBoxInterface {
     return this.isVisible
   }
 
+  public setOnCharacterClick(callback: (characterId: string) => void): void {
+    this.onCharacterClick = callback
+  }
+
   public updateParty(party: CharacterStatus[]): void {
     this.party = [...party]
     this.renderPartyPanel()
@@ -449,7 +454,24 @@ export class GoldBoxInterface {
         padding: 4px;
         border: 1px solid ${character.isActiveTurn ? '#FFFF00' : '#333'};
         background: ${character.isActiveTurn ? 'rgba(255,255,0,0.1)' : 'transparent'};
+        cursor: pointer;
       `
+
+      // Add click handler to open character sheet
+      memberElement.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        this.onCharacterClick(character.id)
+      })
+
+      // Add hover effect
+      memberElement.addEventListener('mouseenter', () => {
+        memberElement.style.background = character.isActiveTurn ? 'rgba(255,255,0,0.2)' : 'rgba(0,255,255,0.1)'
+      })
+
+      memberElement.addEventListener('mouseleave', () => {
+        memberElement.style.background = character.isActiveTurn ? 'rgba(255,255,0,0.1)' : 'transparent'
+      })
 
       // Name and basic stats
       const nameElement = document.createElement('div')

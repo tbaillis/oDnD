@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6-Pawn System Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #333;
+            background: #2a2a2a;
+        }
+        .test-button {
+            background: #333;
+            color: #00ff00;
+            border: 1px solid #555;
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        .test-button:hover {
+            background: #444;
+        }
+        .results {
+            background: #000;
+            border: 1px solid #333;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .success { color: #00ff00; }
+        .error { color: #ff4444; }
+        .info { color: #4444ff; }
+    </style>
+</head>
+<body>
+    <h1>6-Pawn Character Assignment System Test</h1>
+    
+    <div class="test-section">
+        <h2>System Status Check</h2>
+        <button class="test-button" onclick="checkSystemStatus()">Check System Status</button>
+        <div id="systemStatus" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Pawn Status Check</h2>
+        <button class="test-button" onclick="checkAllPawns()">Check All Pawns (A-F)</button>
+        <div id="pawnStatus" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Character Assignment Test</h2>
+        <button class="test-button" onclick="testCharacterAssignment()">Test Auto-Assignment</button>
+        <button class="test-button" onclick="testManualAssignment()">Test Manual Assignment</button>
+        <button class="test-button" onclick="testFindAvailableSlot()">Test Find Available Slot</button>
+        <div id="assignmentResults" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Gold Box Integration</h2>
+        <button class="test-button" onclick="testGoldBoxIntegration()">Test Gold Box Integration</button>
+        <button class="test-button" onclick="openGoldBox()">Open Gold Box Interface</button>
+        <div id="goldBoxResults" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Character Creation Test</h2>
+        <button class="test-button" onclick="testCharacterCreation()">Test Character Creation Event</button>
+        <button class="test-button" onclick="openCharacterCreation()">Open Character Creation</button>
+        <div id="creationResults" class="results"></div>
+    </div>
+
+    <script>
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            element.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            element.scrollTop = element.scrollHeight;
+        }
+
+        function checkSystemStatus() {
+            const statusDiv = document.getElementById('systemStatus');
+            statusDiv.innerHTML = '';
+            
+            try {
+                // Check for main system components
+                const checks = [
+                    { name: 'Main Application', check: () => window.game !== undefined },
+                    { name: 'Gold Box Adapter', check: () => window.goldBoxAdapter !== undefined },
+                    { name: 'Gold Box Interface', check: () => window.goldBox !== undefined },
+                    { name: 'Character Functions', check: () => typeof window.assignCharacterToPawn === 'function' },
+                    { name: 'Find Available Slot', check: () => typeof window.findAvailablePawnSlot === 'function' },
+                    { name: 'Pawn A Functions', check: () => typeof window.applyCharacterToPawnA === 'function' },
+                    { name: 'Pawn B Functions', check: () => typeof window.applyCharacterToPawnB === 'function' },
+                    { name: 'Pawn C Functions', check: () => typeof window.applyCharacterToPawnC === 'function' },
+                    { name: 'Pawn D Functions', check: () => typeof window.applyCharacterToPawnD === 'function' },
+                    { name: 'Pawn E Functions', check: () => typeof window.applyCharacterToPawnE === 'function' },
+                    { name: 'Pawn F Functions', check: () => typeof window.applyCharacterToPawnF === 'function' }
+                ];
+
+                checks.forEach(check => {
+                    try {
+                        const result = check.check();
+                        log('systemStatus', `${check.name}: ${result ? 'OK' : 'MISSING'}`, result ? 'success' : 'error');
+                    } catch (e) {
+                        log('systemStatus', `${check.name}: ERROR - ${e.message}`, 'error');
+                    }
+                });
+
+            } catch (e) {
+                log('systemStatus', `System check failed: ${e.message}`, 'error');
+            }
+        }
+
+        function checkAllPawns() {
+            const pawnDiv = document.getElementById('pawnStatus');
+            pawnDiv.innerHTML = '';
+            
+            const pawnLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+            pawnLetters.forEach(letter => {
+                try {
+                    const pawnObj = window[`pawn${letter}`];
+                    if (pawnObj) {
+                        const hasCharacter = pawnObj.characterData !== null;
+                        const characterName = hasCharacter ? pawnObj.characterData.name : 'No Character';
+                        log('pawnStatus', `Pawn ${letter}: ${characterName} (HP: ${pawnObj.hp}/${pawnObj.maxHP})`, hasCharacter ? 'success' : 'info');
+                    } else {
+                        log('pawnStatus', `Pawn ${letter}: NOT FOUND`, 'error');
+                    }
+                } catch (e) {
+                    log('pawnStatus', `Pawn ${letter}: ERROR - ${e.message}`, 'error');
+                }
+            });
+        }
+
+        function testCharacterAssignment() {
+            const resultsDiv = document.getElementById('assignmentResults');
+            resultsDiv.innerHTML = '';
+            
+            try {
+                // Test finding available slot
+                const availableSlot = window.findAvailablePawnSlot();
+                log('assignmentResults', `Available slot found: ${availableSlot || 'None (all full)'}`, availableSlot ? 'success' : 'info');
+
+                // Create a test character
+                const testCharacter = {
+                    name: 'Test Hero',
+                    hitPoints: { current: 20, maximum: 20 },
+                    attributes: {
+                        strength: 16, dexterity: 14, constitution: 15,
+                        intelligence: 12, wisdom: 13, charisma: 10
+                    },
+                    level: 1,
+                    characterClass: 'Fighter'
+                };
+
+                if (availableSlot) {
+                    window.assignCharacterToPawn(testCharacter, availableSlot);
+                    log('assignmentResults', `Test character assigned to Pawn ${availableSlot}`, 'success');
+                } else {
+                    log('assignmentResults', 'No available slots for assignment', 'info');
+                }
+
+            } catch (e) {
+                log('assignmentResults', `Assignment test failed: ${e.message}`, 'error');
+            }
+        }
+
+        function testManualAssignment() {
+            const resultsDiv = document.getElementById('assignmentResults');
+            
+            try {
+                const testCharacter = {
+                    name: 'Manual Test Hero',
+                    hitPoints: { current: 25, maximum: 25 },
+                    attributes: {
+                        strength: 18, dexterity: 12, constitution: 16,
+                        intelligence: 10, wisdom: 11, charisma: 8
+                    },
+                    level: 1,
+                    characterClass: 'Barbarian'
+                };
+
+                // Test assigning to a specific pawn (F)
+                window.assignCharacterToPawn(testCharacter, 'F');
+                log('assignmentResults', 'Manual assignment to Pawn F completed', 'success');
+
+            } catch (e) {
+                log('assignmentResults', `Manual assignment failed: ${e.message}`, 'error');
+            }
+        }
+
+        function testFindAvailableSlot() {
+            const resultsDiv = document.getElementById('assignmentResults');
+            
+            try {
+                for (let i = 0; i < 7; i++) {
+                    const slot = window.findAvailablePawnSlot();
+                    log('assignmentResults', `Check ${i + 1}: Available slot = ${slot || 'None'}`, slot ? 'success' : 'info');
+                    if (!slot) break;
+                }
+            } catch (e) {
+                log('assignmentResults', `Find slot test failed: ${e.message}`, 'error');
+            }
+        }
+
+        function testGoldBoxIntegration() {
+            const resultsDiv = document.getElementById('goldBoxResults');
+            resultsDiv.innerHTML = '';
+            
+            try {
+                if (window.goldBox) {
+                    log('goldBoxResults', 'Gold Box interface available', 'success');
+                    
+                    // Test getting all characters
+                    const allCharacters = window.goldBoxAdapter.getAllCharacters();
+                    log('goldBoxResults', `Gold Box has ${allCharacters.size} characters`, 'info');
+                    
+                    // List all characters
+                    for (const [id, character] of allCharacters) {
+                        log('goldBoxResults', `Character ${id}: ${character.name} (${character.characterClass})`, 'success');
+                    }
+                } else {
+                    log('goldBoxResults', 'Gold Box interface not available', 'error');
+                }
+            } catch (e) {
+                log('goldBoxResults', `Gold Box test failed: ${e.message}`, 'error');
+            }
+        }
+
+        function openGoldBox() {
+            try {
+                if (window.goldBox) {
+                    window.goldBox.show();
+                    log('goldBoxResults', 'Gold Box interface opened', 'success');
+                } else {
+                    log('goldBoxResults', 'Gold Box interface not available', 'error');
+                }
+            } catch (e) {
+                log('goldBoxResults', `Failed to open Gold Box: ${e.message}`, 'error');
+            }
+        }
+
+        function testCharacterCreation() {
+            const resultsDiv = document.getElementById('creationResults');
+            resultsDiv.innerHTML = '';
+            
+            try {
+                // Simulate character creation event
+                const newCharacter = {
+                    name: 'Event Test Character',
+                    hitPoints: { current: 30, maximum: 30 },
+                    attributes: {
+                        strength: 14, dexterity: 16, constitution: 13,
+                        intelligence: 15, wisdom: 12, charisma: 11
+                    },
+                    level: 1,
+                    characterClass: 'Rogue'
+                };
+
+                const event = new CustomEvent('goldbox-character-created', {
+                    detail: newCharacter
+                });
+
+                document.dispatchEvent(event);
+                log('creationResults', 'Character creation event dispatched', 'success');
+
+            } catch (e) {
+                log('creationResults', `Character creation test failed: ${e.message}`, 'error');
+            }
+        }
+
+        function openCharacterCreation() {
+            try {
+                // Look for the character creation button/function
+                if (typeof window.openCharacterCreation === 'function') {
+                    window.openCharacterCreation();
+                    log('creationResults', 'Character creation opened', 'success');
+                } else if (window.uiManager && typeof window.uiManager.toggleCharacterCreation === 'function') {
+                    window.uiManager.toggleCharacterCreation();
+                    log('creationResults', 'Character creation toggled via UI Manager', 'success');
+                } else {
+                    log('creationResults', 'Character creation function not found - try pressing "n" key', 'info');
+                }
+            } catch (e) {
+                log('creationResults', `Failed to open character creation: ${e.message}`, 'error');
+            }
+        }
+
+        // Auto-run system status check on page load
+        window.addEventListener('load', () => {
+            setTimeout(checkSystemStatus, 1000);
+        });
+    </script>
+</body>
+</html>
