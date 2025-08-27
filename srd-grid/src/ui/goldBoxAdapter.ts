@@ -716,16 +716,30 @@ export class GoldBoxAdapter {
     console.log('Gold Box: updatePartyDisplay called')
     console.log('Gold Box: Current characters:', Array.from(this.characters.entries()).map(([id, char]) => `${id}: ${char.name}`))
     
+    // Get current active turn from the global turns object
+    const turns = (window as any).turns
+    const activeId = turns?.active?.id
+    
     const partyStatus: CharacterStatus[] = Array.from(this.characters.entries()).map(([id, character]) => {
-      const isFirstCharacter = id === 'pawn-a'
-      const isActiveTurn = isFirstCharacter && this.gameState === 'combat'
+      // Map gold box character IDs to pawn IDs for turn tracking
+      const pawnIdMap: Record<string, string> = {
+        'pawn-a': 'A',
+        'pawn-m1': 'M1', 
+        'pawn-c': 'C',
+        'pawn-d': 'D',
+        'pawn-e': 'E',
+        'pawn-f': 'F'
+      }
+      
+      const pawnId = pawnIdMap[id]
+      const isActiveTurn = pawnId === activeId && this.gameState === 'combat'
       
       const status = {
         ...convertCharacterToStatus(character, id, this.getCharacterConditions(id)),
         isActiveTurn
       }
       
-      console.log(`Gold Box: Character ${character.name} (${id}) status:`, status)
+      console.log(`Gold Box: Character ${character.name} (${id} -> ${pawnId}) status:`, status)
       return status
     })
     
@@ -857,8 +871,10 @@ export class GoldBoxAdapter {
   // Expose assignment methods globally
   public exposeGlobalMethods(): void {
     const windowObj = window as any
-    windowObj.assignCharacterToPawn = (character: Character, pawnSlot: 'A' | 'B' | 'C' | 'D' | 'E' | 'F') => {
-      this.assignCharacterToPawn(character, pawnSlot)
+    windowObj.assignCharacterToPawn = (character: Character, pawnSlot: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F' | 'B') => {
+      // Accept legacy 'B' alias and map it to 'M1'
+      const slot = (pawnSlot === 'B') ? 'M1' : pawnSlot
+      this.assignCharacterToPawn(character, slot as any)
     }
     windowObj.findAvailablePawnSlot = () => {
       return this.findAvailablePawnSlot()

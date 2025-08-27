@@ -387,7 +387,7 @@ export class CombatLog {
     log.id = 'combat-log'
     log.style.cssText = `
       position: fixed;
-      top: 60px;
+      bottom: 8px;
       right: 8px;
       width: 300px;
       max-height: 160px;

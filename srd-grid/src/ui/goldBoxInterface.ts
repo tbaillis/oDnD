@@ -473,14 +473,24 @@ export class GoldBoxInterface {
         memberElement.style.background = character.isActiveTurn ? 'rgba(255,255,0,0.1)' : 'transparent'
       })
 
-      // Name and basic stats
+      // Name with pawn ID and basic stats
       const nameElement = document.createElement('div')
       nameElement.style.cssText = `
         color: #00FFFF;
         font-weight: bold;
         margin-bottom: 2px;
       `
-      nameElement.textContent = character.name
+      // Extract pawn ID from character.id (e.g., "pawn-a" -> "A", "pawn-m1" -> "M1") 
+      const pawnIdMap: Record<string, string> = {
+        'pawn-a': 'A',
+        'pawn-m1': 'M1',
+        'pawn-c': 'C', 
+        'pawn-d': 'D',
+        'pawn-e': 'E',
+        'pawn-f': 'F'
+      }
+      const pawnId = pawnIdMap[character.id] || character.id.replace('pawn-', '').toUpperCase()
+      nameElement.textContent = `[${pawnId}] ${character.name}`
 
       const statsElement = document.createElement('div')
       statsElement.style.cssText = `

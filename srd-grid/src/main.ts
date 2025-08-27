@@ -40,6 +40,11 @@ const WIDTH = 800
 const HEIGHT = 600
 const CELL = 50
 
+// Global state variables 
+let flatFootedMode = false
+let reachA = false
+let reachM1 = false
+
 const app = new Application()
 // Make canvas background transparent so the DOM background can show through
 await app.init({ width: WIDTH, height: HEIGHT, background: 'transparent', antialias: true })
@@ -81,6 +86,8 @@ try {
 ;(window as any).applyCharacterToPawnD = applyCharacterToPawnD
 ;(window as any).applyCharacterToPawnE = applyCharacterToPawnE
 ;(window as any).applyCharacterToPawnF = applyCharacterToPawnF
+;(window as any).ensureM1OnBoard = ensureM1OnBoard
+;(window as any).moveM1ToPosition = moveM1ToPosition
 
 // Debug logging for UIManager initialization
 console.log('UIManager created:', uiManager)
@@ -147,6 +154,14 @@ uiManager.combatLog.addMessage('Note: Keyboard shortcuts are disabled while typi
 function appendLogLine(text: string) {
   uiManager.combatLog.addMessage(text, 'info')
 }
+
+// Test function to verify combat log positioning
+function testCombatLogPosition() {
+  uiManager.combatLog.addMessage('🔧 Testing combat log positioning - this should appear at bottom-right!', 'warning')
+}
+
+// Expose test function globally for debugging
+;(window as any).testCombatLogPosition = testCombatLogPosition
 
 function updateActionHUD(text: string) {
   // Update the HUD display - for now we'll use the existing system
@@ -301,18 +316,55 @@ function drawCell(g: Graphics, x: number, y: number, color: number) {
 // Function to generate random position away from party
 function generateRandomPosition(): { x: number, y: number } {
   const partyCenter = { x: 3, y: 2.5 } // Center of party formation
+  const boardWidth = Math.floor(WIDTH/CELL) // 16 squares (0-15)
+  const boardHeight = Math.floor(HEIGHT/CELL) // 12 squares (0-11)
+  
   let x, y, distance
   
   do {
-    // Generate random position within a reasonable range
-    x = Math.floor(Math.random() * 30) - 5  // -5 to 25
-    y = Math.floor(Math.random() * 30) - 5  // -5 to 25
+    // Generate random position within the visible board bounds
+    x = Math.floor(Math.random() * boardWidth)   // 0 to 15
+    y = Math.floor(Math.random() * boardHeight)  // 0 to 11
     
     // Calculate distance from party center
     distance = Math.sqrt(Math.pow(x - partyCenter.x, 2) + Math.pow(y - partyCenter.y, 2))
-  } while (distance < 8) // Ensure at least 8 squares away from party
+  } while (distance < 6) // Ensure at least 6 squares away from party (reduced from 8 to fit on board)
   
   return { x, y }
+}
+
+// Function to ensure pawn M1 is on the visible board
+function ensureM1OnBoard() {
+  const boardWidth = Math.floor(WIDTH/CELL) // 16 squares (0-15)
+  const boardHeight = Math.floor(HEIGHT/CELL) // 12 squares (0-11)
+  
+  if (pawnM1.x < 0 || pawnM1.x >= boardWidth || pawnM1.y < 0 || pawnM1.y >= boardHeight) {
+    console.log(`M1 pawn was off-board at (${pawnM1.x}, ${pawnM1.y}), repositioning...`)
+    const newPosition = generateRandomPosition()
+    pawnM1.x = newPosition.x
+    pawnM1.y = newPosition.y
+    console.log(`M1 pawn repositioned to (${pawnM1.x}, ${pawnM1.y})`)
+    
+    // Log the repositioning
+    appendLogLine(`Pawn M1 repositioned to grid square (${pawnM1.x}, ${pawnM1.y}) to ensure visibility`)
+  }
+}
+
+// Function to manually position M1 at a specific location on the board
+function moveM1ToPosition(x: number, y: number) {
+  const boardWidth = Math.floor(WIDTH/CELL)
+  const boardHeight = Math.floor(HEIGHT/CELL)
+  
+  // Validate coordinates are on board
+  if (x >= 0 && x < boardWidth && y >= 0 && y < boardHeight) {
+    pawnM1.x = x
+    pawnM1.y = y
+    console.log(`M1 pawn moved to (${x}, ${y})`)
+    appendLogLine(`Pawn M1 manually moved to grid square (${x}, ${y})`)
+  } else {
+    console.warn(`Invalid coordinates: (${x}, ${y}). Board size is ${boardWidth}x${boardHeight}`)
+    appendLogLine(`Invalid coordinates for M1: (${x}, ${y}). Board size is ${boardWidth}x${boardHeight}`)
+  }
 }
 
 // Token state (six pawns for full party - positioned adjacently for party formation)
@@ -320,6 +372,13 @@ let pawnA = { x: 2, y: 2, speed: 30, size: 'medium' as const, hp: 20 }
 // M1 is positioned randomly away from the party each time
 const m1Position = generateRandomPosition()
 let pawnM1 = { x: m1Position.x, y: m1Position.y, speed: 30, size: 'large' as 'large' | 'medium', hp: 25 }
+
+// Ensure M1 is on the visible board
+ensureM1OnBoard()
+
+// Log M1 position for debugging
+console.log(`M1 pawn positioned at (${pawnM1.x}, ${pawnM1.y}) on ${Math.floor(WIDTH/CELL)}x${Math.floor(HEIGHT/CELL)} grid`)
+appendLogLine(`Pawn M1 positioned at grid square (${pawnM1.x}, ${pawnM1.y})`)
 // Position all pawns adjacently in a 2x3 formation
 let pawnC = { x: 4, y: 2, speed: 30, size: 'medium' as const, hp: 20, maxHp: 20 }
 // Additional character pawns for full 6-person party
@@ -406,6 +465,9 @@ function applyCharacterToPawnA(character: Character, suppressEvent: boolean = fa
   appendLogLine(`Pawn A updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
   appendLogLine(`HP: ${pawnA.hp}/${pawnAMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnA.speed}ft${reachA ? ', Reach Weapon' : ''}`)
   
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
   // Redraw to reflect changes
   drawAll()
 }
@@ -456,6 +518,9 @@ function applyCharacterToPawnM1(character: Character, suppressEvent: boolean = f
   appendLogLine(`Pawn M1 updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
   appendLogLine(`HP: ${pawnM1.hp}/${pawnM1MaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnM1.speed}ft${reachM1 ? ', Reach Weapon' : ''}`)
   
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
   drawAll()
 }
 
@@ -481,14 +546,8 @@ function applyCharacterToPawnC(character: Character, suppressEvent: boolean = fa
     misc: 0
   }
   
-  // Update each property individually to avoid type issues
-  defenderC.ac.base = newAC.base
-  defenderC.ac.armor = newAC.armor
-  defenderC.ac.shield = newAC.shield
-  defenderC.ac.natural = newAC.natural
-  defenderC.ac.deflection = newAC.deflection
-  defenderC.ac.dodge = newAC.dodge
-  defenderC.ac['misc'] = 0
+  // Update AC using Object.assign to avoid typing/indexing edge-cases
+  Object.assign((defenderC.ac as any), newAC)
 
   (pawnC as any).name = character.name;
   (pawnC as any).characterData = character;
@@ -503,6 +562,9 @@ function applyCharacterToPawnC(character: Character, suppressEvent: boolean = fa
   
   appendLogLine(`Pawn C updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
   appendLogLine(`HP: ${pawnC.hp}/${pawnCMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnC.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
   
   drawAll()
 }
@@ -529,16 +591,8 @@ function applyCharacterToPawnD(character: Character, suppressEvent: boolean = fa
     misc: 0
   }
   
-  // Recreate AC object to avoid type issues
-  defenderD.ac = {
-    base: newAC.base,
-    armor: newAC.armor,
-    shield: newAC.shield,
-    natural: newAC.natural,
-    deflection: newAC.deflection,
-    dodge: newAC.dodge,
-    misc: 0
-  }
+  // Update AC using Object.assign to avoid typing edge-cases
+  Object.assign((defenderD.ac as any), newAC)
 
   (pawnD as any).name = character.name;
   (pawnD as any).characterData = character;
@@ -553,6 +607,9 @@ function applyCharacterToPawnD(character: Character, suppressEvent: boolean = fa
   
   appendLogLine(`Pawn D updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
   appendLogLine(`HP: ${pawnD.hp}/${pawnDMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnD.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
   
   drawAll()
 }
@@ -579,16 +636,8 @@ function applyCharacterToPawnE(character: Character, suppressEvent: boolean = fa
     misc: 0
   }
   
-  // Recreate AC object to avoid type issues
-  defenderE.ac = {
-    base: newAC.base,
-    armor: newAC.armor,
-    shield: newAC.shield,
-    natural: newAC.natural,
-    deflection: newAC.deflection,
-    dodge: newAC.dodge,
-    misc: 0
-  }
+  // Update AC using Object.assign to avoid typing edge-cases
+  Object.assign((defenderE.ac as any), newAC)
 
   (pawnE as any).name = character.name;
   (pawnE as any).characterData = character;
@@ -603,6 +652,9 @@ function applyCharacterToPawnE(character: Character, suppressEvent: boolean = fa
   
   appendLogLine(`Pawn E updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
   appendLogLine(`HP: ${pawnE.hp}/${pawnEMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnE.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
   
   drawAll()
 }
@@ -629,14 +681,8 @@ function applyCharacterToPawnF(character: Character, suppressEvent: boolean = fa
     misc: 0
   }
   
-  // Update each property individually to avoid type issues
-  defenderF.ac.base = newAC.base
-  defenderF.ac.armor = newAC.armor
-  defenderF.ac.shield = newAC.shield
-  defenderF.ac.natural = newAC.natural
-  defenderF.ac.deflection = newAC.deflection
-  defenderF.ac.dodge = newAC.dodge
-  defenderF.ac.misc = newAC.misc
+  // Update AC using Object.assign to avoid typing/indexing edge-cases
+  Object.assign((defenderF.ac as any), newAC)
 
   (pawnF as any).name = character.name;
   (pawnF as any).characterData = character;
@@ -651,6 +697,9 @@ function applyCharacterToPawnF(character: Character, suppressEvent: boolean = fa
   
   appendLogLine(`Pawn F updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
   appendLogLine(`HP: ${pawnF.hp}/${pawnFMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnF.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
   
   drawAll()
 }
@@ -782,14 +831,15 @@ function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters
   const hasReachAttack = monster.attacks?.some(attack => 
     attack.reach && attack.reach > 5
   ) || monster.reach === '10 ft.' || monster.reach === '15 ft.' || monster.reach === '20 ft.'
-  
+
+  // Store monster name on pawn for display purposes
   if (pawnId === 'A') {
     reachA = hasReachAttack
+    ;(pawnA as any).name = monster.name
   } else {
     reachM1 = hasReachAttack
-  }
-  
-  // Log the monster application
+    ;(pawnM1 as any).name = monster.name
+  }  // Log the monster application
   appendLogLine(`Pawn ${pawnId} updated with ${monster.name} (${monster.size} ${monster.type})`)
   appendLogLine(`HP: ${pawn.hp}/${newMaxHP}, AC: ${monster.armorClass.total}, Speed: ${pawn.speed}ft${hasReachAttack ? ', Reach' : ''}`)
   if (monster.specialAttacks && monster.specialAttacks.length > 0) {
@@ -797,6 +847,14 @@ function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters
   }
   if (monster.specialQualities && monster.specialQualities.length > 0) {
     appendLogLine(`Special Qualities: ${monster.specialQualities.map(sq => sq.name).join(', ')}`)
+  }
+  
+  // Update initiative display to show new monster info
+  updateInitiativeDisplay()
+  
+  // Ensure M1 is on the visible board when monster is applied
+  if (pawnId === 'M1') {
+    ensureM1OnBoard()
   }
   
   // Auto-enable Monster AI for monster pawns
@@ -820,6 +878,8 @@ function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters
 // Function to apply monster stats to Pawn M1 (legacy compatibility)
 function applyMonsterToPawnM1(monster: import('./game/monsters/types').MonsterData) {
   applyMonsterToPawn('M1', monster)
+  // Update initiative display after monster assignment
+  updateInitiativeDisplay()
 }
 
 // Persistent defender profiles for each pawn (demo stats)
@@ -833,7 +893,11 @@ const defenderF: DefenderProfile = { ac: { ...baseAC } }
 
 // Turn/initiative setup
 const turns = createTurnState()
-  startEncounter(turns, [
+
+// Initialize default pawn names before starting encounter
+initializeDefaultPawnNames()
+
+startEncounter(turns, [
   { id: 'A', dexMod: 2, initiative: 15 },
   { id: 'M1', dexMod: 0, initiative: 12 },
   { id: 'C', dexMod: 1, initiative: 14 },
@@ -841,12 +905,49 @@ const turns = createTurnState()
   { id: 'E', dexMod: 1, initiative: 13 },
   { id: 'F', dexMod: 2, initiative: 11 },
 ])
-uiManager.combatLog.addMessage(`Encounter start: Round ${turns.round}, Active=${turns.active?.id}`, 'info')
+uiManager.combatLog.addMessage(`Encounter start: Round ${turns.round}, Active=${getPawnName(turns.active?.id || '')} (${turns.active?.id})`, 'info')
+
+// Update gold box display with encounter start
+if ((window as any).goldBoxAdapter) {
+  (window as any).goldBoxAdapter.updatePartyDisplay?.()
+}
 updateInitiativeDisplay()
+
+// Helper function to get character/monster name for a pawn ID
+function getPawnName(pawnId: string): string {
+  switch (pawnId) {
+    case 'A':
+      return (pawnA as any).name || 'Pawn A'
+    case 'M1':
+      return (pawnM1 as any).name || 'Pawn M1'
+    case 'C':
+      return (pawnC as any).name || 'Pawn C'
+    case 'D':
+      return (pawnD as any).name || 'Pawn D'
+    case 'E':
+      return (pawnE as any).name || 'Pawn E'
+    case 'F':
+      return (pawnF as any).name || 'Pawn F'
+    default:
+      return pawnId
+  }
+}
+
+// Initialize default names for pawns that don't have characters/monsters assigned
+function initializeDefaultPawnNames() {
+  if (!(pawnA as any).name) (pawnA as any).name = 'Pawn A'
+  if (!(pawnM1 as any).name) (pawnM1 as any).name = 'Pawn M1'
+  if (!(pawnC as any).name) (pawnC as any).name = 'Pawn C'
+  if (!(pawnD as any).name) (pawnD as any).name = 'Pawn D'
+  if (!(pawnE as any).name) (pawnE as any).name = 'Pawn E'
+  if (!(pawnF as any).name) (pawnF as any).name = 'Pawn F'
+}
 
 function hudText() {
   const b = turns.budget!
-  return `Round ${turns.round} | Turn: ${turns.active?.id ?? '-'} | Std:${b.standardAvailable?'✓':'×'} Move:${b.moveAvailable?'✓':'×'} 5ft:${b.fiveFootStepAvailable?'✓':'×'}`
+  const activeId = turns.active?.id ?? '-'
+  const activeName = activeId !== '-' ? getPawnName(activeId) : '-'
+  return `Round ${turns.round} | Turn: ${activeName} (${activeId}) | Std:${b.standardAvailable?'✓':'×'} Move:${b.moveAvailable?'✓':'×'} 5ft:${b.fiveFootStepAvailable?'✓':'×'}`
 }
 
 function updateInitiativeDisplay() {
@@ -866,25 +967,159 @@ function updateInitiativeDisplay() {
     { id: 'F', initiative: 11 },
   ]
   
-  sortedInitiative.forEach(pawn => {
-    const isActive = turns.active?.id === pawn.id
+  // Helper function to get pawn data
+  function getPawnData(pawnId: string) {
+    switch (pawnId) {
+      case 'A':
+        return { pawn: pawnA, maxHP: pawnAMaxHP, reach: reachA }
+      case 'M1':
+        return { pawn: pawnM1, maxHP: pawnM1MaxHP, reach: reachM1 }
+      case 'C':
+        return { pawn: pawnC, maxHP: pawnCMaxHP, reach: false }
+      case 'D':
+        return { pawn: pawnD, maxHP: pawnDMaxHP, reach: false }
+      case 'E':
+        return { pawn: pawnE, maxHP: pawnEMaxHP, reach: false }
+      case 'F':
+        return { pawn: pawnF, maxHP: pawnFMaxHP, reach: false }
+      default:
+        return { pawn: { hp: 0, speed: 30, size: 'medium' }, maxHP: 0, reach: false }
+    }
+  }
+  
+  // Helper function to get health status color
+  function getHealthColor(hp: number, maxHP: number) {
+    if (maxHP === 0) return '#666'
+    const percent = hp / maxHP
+    if (percent >= 0.75) return '#22c55e'  // Green - healthy
+    if (percent >= 0.50) return '#eab308'  // Yellow - wounded
+    if (percent >= 0.25) return '#f97316'  // Orange - badly wounded  
+    if (percent > 0) return '#ef4444'      // Red - critically wounded
+    return '#7f1d1d'                       // Dark red - dead/unconscious
+  }
+  
+  sortedInitiative.forEach(entry => {
+    const isActive = turns.active?.id === entry.id
+    const pawnData = getPawnData(entry.id)
+    const pawnName = getPawnName(entry.id)
+    const healthColor = getHealthColor(pawnData.pawn.hp || 0, pawnData.maxHP)
+    
     const pawnDiv = document.createElement('div')
     pawnDiv.style.cssText = `
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 2px 4px;
-      border-radius: 3px;
-      background: ${isActive ? 'rgba(245, 158, 11, 0.3)' : 'rgba(55, 65, 81, 0.3)'};
-      border-left: 2px solid ${isActive ? '#f59e0b' : 'transparent'};
+      flex-direction: column;
+      padding: 6px 8px;
+      margin-bottom: 2px;
+      border-radius: 4px;
+      background: ${isActive ? 'rgba(245, 158, 11, 0.2)' : 'rgba(55, 65, 81, 0.3)'};
+      border-left: 3px solid ${isActive ? '#f59e0b' : 'transparent'};
+      border: 1px solid ${isActive ? '#f59e0b' : 'rgba(75, 85, 99, 0.5)'};
       font-weight: ${isActive ? '600' : '400'};
       color: ${isActive ? '#f59e0b' : '#e5e7eb'};
+      font-size: 11px;
+      line-height: 1.2;
     `
     
-    pawnDiv.innerHTML = `
-      <span>Pawn ${pawn.id}</span>
-      <span style="font-size: 10px; opacity: 0.7;">${pawn.initiative}</span>
+    // Main row with name and initiative
+    const headerRow = document.createElement('div')
+    headerRow.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
     `
+    
+    const nameSpan = document.createElement('span')
+    nameSpan.style.cssText = `
+      font-weight: 600;
+      color: ${isActive ? '#f59e0b' : '#f3f4f6'};
+    `
+    nameSpan.textContent = pawnName
+    
+    const initiativeSpan = document.createElement('span')
+    initiativeSpan.style.cssText = `
+      font-size: 10px;
+      opacity: 0.8;
+      background: rgba(0,0,0,0.3);
+      padding: 1px 4px;
+      border-radius: 2px;
+    `
+    initiativeSpan.textContent = entry.initiative.toString()
+    
+    headerRow.appendChild(nameSpan)
+    headerRow.appendChild(initiativeSpan)
+    
+    // Stats row with HP, Speed, Size
+    const statsRow = document.createElement('div')
+    statsRow.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      opacity: 0.9;
+    `
+    
+    const hpSpan = document.createElement('span')
+    hpSpan.style.cssText = `
+      color: ${healthColor};
+      font-weight: 600;
+    `
+    hpSpan.textContent = `HP: ${pawnData.pawn.hp || 0}/${pawnData.maxHP}`
+    
+    const speedSpan = document.createElement('span')
+    speedSpan.style.color = '#94a3b8'
+    speedSpan.textContent = `${pawnData.pawn.speed || 30}ft`
+    
+    const sizeSpan = document.createElement('span')
+    sizeSpan.style.color = '#94a3b8'
+    sizeSpan.textContent = pawnData.pawn.size === 'large' ? 'L' : 'M'
+    
+    statsRow.appendChild(hpSpan)
+    statsRow.appendChild(speedSpan)
+    statsRow.appendChild(sizeSpan)
+    
+    // Status indicators row
+    const statusRow = document.createElement('div')
+    statusRow.style.cssText = `
+      display: flex;
+      gap: 3px;
+      margin-top: 2px;
+      flex-wrap: wrap;
+    `
+    
+    // Add status indicators
+    const indicators: string[] = []
+    
+    // Health status
+    const hpPercent = pawnData.maxHP > 0 ? (pawnData.pawn.hp || 0) / pawnData.maxHP : 0
+    if (hpPercent <= 0) indicators.push('💀')
+    else if (hpPercent <= 0.25) indicators.push('🩸')
+    else if (hpPercent <= 0.50) indicators.push('🤕')
+    
+    // Reach weapon
+    if (pawnData.reach) indicators.push('🗡️')
+    
+    // Active turn indicator
+    if (isActive) indicators.push('⚡')
+    
+    // Add flatfooted if applicable (you can expand this based on actual conditions)
+    if (flatFootedMode && isActive) indicators.push('🛡️❌')
+    
+    if (indicators.length > 0) {
+      const indicatorSpan = document.createElement('span')
+      indicatorSpan.style.cssText = `
+        font-size: 9px;
+        opacity: 0.8;
+      `
+      indicatorSpan.textContent = indicators.join(' ')
+      statusRow.appendChild(indicatorSpan)
+    }
+    
+    pawnDiv.appendChild(headerRow)
+    pawnDiv.appendChild(statsRow)
+    if (indicators.length > 0) {
+      pawnDiv.appendChild(statusRow)
+    }
     
     initiativeList.appendChild(pawnDiv)
   })
@@ -903,11 +1138,8 @@ let editTerrain = false
 let currentRNG: RNG = sessionRNG
 let currentSeed: number | null = null
 let touchMode = false
-let flatFootedMode = false
 let preciseShot = false
 let showLoS = false
-let reachA = false
-let reachM1 = false
 let useCornerCover = false
 let defensiveCast = false
 let tumbleEnabled = false
@@ -1039,11 +1271,21 @@ function drawAll() {
   if (pawnM1Sprite && pawnM1Sprite.texture && pawnM1Sprite.texture.width > 0 && pawnM1Sprite.texture.height > 0) {
     pawnM1Sprite.x = center(pawnM1.x)
     pawnM1Sprite.y = center(pawnM1.y)
-    scaleToCell(pawnM1Sprite)
-    pawnM1Sprite.visible = true
+  scaleToCell(pawnM1Sprite)
+  // Scale M1 width to 170% (x axis only) for better visibility
+  pawnM1Sprite.scale.x = (pawnM1Sprite.scale.x || 1) * 1.7
+  pawnM1Sprite.scale.y = (pawnM1Sprite.scale.y || 1) * 1.7
+  pawnM1Sprite.visible = true
   } else {
     if (pawnM1Sprite) pawnM1Sprite.visible = false
-    tokens.circle(center(pawnM1.x), center(pawnM1.y), CELL*0.4).fill(0xe65a5a)
+  // Fallback: draw a slightly wider ellipse for M1 (170% width)
+  const cx = center(pawnM1.x)
+  const cy = center(pawnM1.y)
+  const ry = CELL * 0.4
+  const rx = ry * 1.7
+  tokens.beginFill(0xe65a5a)
+  tokens.drawEllipse(cx, cy, rx, ry)
+  tokens.endFill()
   }
   // Pawn C rendering (optional third pawn)
   if (pawnCSprite && pawnCSprite.texture && pawnCSprite.texture.width > 0 && pawnCSprite.texture.height > 0) {
@@ -1120,28 +1362,20 @@ let pawnFSprite: Sprite | null = null
 
 drawAll()
 
-// Import SVG assets directly with ?url to ensure they work in both dev and production
-import pawnAUrl from './assets/pawns/pawnA.svg?url'
-import pawnBUrl from './assets/pawns/pawnB.svg?url'
-import pawnCUrl from './assets/pawns/pawnC.svg?url'
-import pawnCCustomUrl from './assets/pawns/pawnC_custom.png?url'
-import pawnDUrl from './assets/pawns/pawnD.svg?url'
-// For now, reuse existing assets for E and F (can be updated with specific assets later)
-import pawnEUrl from './assets/pawns/pawnA.svg?url'
-import pawnFUrl from './assets/pawns/pawnB.svg?url'
+// Dynamically load all token assets from the pawns folder so new files are auto-discovered
+// Uses Vite's import.meta.glob with eager + query to return file URLs at build time
+const tokenModules = import.meta.glob('./assets/pawns/*.{png,jpg,svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 
-// Create available tokens list with the imported URLs
-const availableTokens = [
-  { path: './assets/pawns/pawnA.svg', url: pawnAUrl, name: 'pawnA.svg' },
-  { path: './assets/pawns/pawnB.svg', url: pawnBUrl, name: 'pawnB.svg' },
-  { path: './assets/pawns/pawnC.svg', url: pawnCUrl, name: 'pawnC.svg' },
-  { path: './assets/pawns/pawnC_custom.png', url: pawnCCustomUrl, name: 'pawnC_custom.png' },
-  { path: './assets/pawns/pawnD.svg', url: pawnDUrl, name: 'pawnD.svg' },
-  { path: './assets/pawns/pawnE.svg', url: pawnEUrl, name: 'pawnE.svg' },
-  { path: './assets/pawns/pawnF.svg', url: pawnFUrl, name: 'pawnF.svg' }
-]
+// Build available tokens array sorted by filename
+const availableTokens = Object.entries(tokenModules)
+  .map(([path, url]) => {
+    const rawName = path.split('/').pop()
+    const name = rawName || 'unknown'
+    return { path, url, name }
+  })
+  .sort((a, b) => a.name.localeCompare(b.name))
 
-console.log('Available tokens:', availableTokens)
+console.log('Available tokens (auto-discovered):', availableTokens)
 
 // Expose available tokens and setter so static HTML token buttons can use them
 ;(window as any).availableTokens = availableTokens
@@ -1221,14 +1455,14 @@ async function setPawnTexture(ref: 'A'|'M1'|'C'|'D'|'E'|'F', url: string) {
 // This makes A use pawnC.svg and M1 use pawnD.svg by default as requested.
 const defCForA = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name))
 const defDForM1 = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnD\./i.test(t.name))
-const defA = defCForA || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0]
-const defM1 = defDForM1 || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0]
+const defA = defCForA || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0] || { url: '', name: 'unknown' }
+const defM1 = defDForM1 || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || { url: '', name: 'unknown' }
 // Keep defC as the C slot (custom pawn image) fallback
-const defC = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0]
+const defC = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || { url: '', name: 'unknown' }
 // Add defaults for D, E, F pawns
-const defD = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0]
-const defE = availableTokens.find(t => /pawnE\./i.test(t.name)) || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0]
-const defF = availableTokens.find(t => /pawnF\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0]
+const defD = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0] || { url: '', name: 'unknown' }
+const defE = availableTokens.find(t => /pawnE\./i.test(t.name)) || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || { url: '', name: 'unknown' }
+const defF = availableTokens.find(t => /pawnF\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || { url: '', name: 'unknown' }
 
 if (defA) setPawnTexture('A', defA.url)
 if (defM1) setPawnTexture('M1', defM1.url)
@@ -1596,10 +1830,15 @@ function commitEndTurn() {
     if (ap.hp > 0) break
     endTurn(turns)
   }
-  appendLogLine(`End Turn -> Round ${turns.round}, Active=${turns.active?.id}`)
+  appendLogLine(`End Turn -> Round ${turns.round}, Active=${getPawnName(turns.active?.id || '')} (${turns.active?.id})`)
   drawAll()
   updateActionHUD(hudText())
   updateInitiativeDisplay()
+  
+  // Update gold box display with new active turn
+  if ((window as any).goldBoxAdapter) {
+    (window as any).goldBoxAdapter.updatePartyDisplay?.()
+  }
   
   // Check if the new active pawn is a monster and AI is enabled
   const newActivePawnId = turns.active?.id as 'A' | 'M1'
@@ -1864,7 +2103,10 @@ function showPawnContextMenu(pawnId: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', event: 
         if (total >= dc) provoked = false
       }
       if (provoked) {
-        const otherId = turns.active?.id === 'A' ? 'B' : 'A'
+  // Normalize legacy pawn id 'B' to 'M1' when used in runtime logic
+  const activeId = turns.active?.id
+  const otherIdRaw = activeId === 'A' ? 'B' : 'A'
+  const otherId = (otherIdRaw === 'B') ? 'M1' : otherIdRaw
         const used = (turns as any).aooUsed?.[otherId] ?? 0
         const threat = threatSetFrom(target.x, target.y, target.size, target === pawnM1 ? reachM1 : reachA)
         if (threat.has(`${attacker!.x},${attacker!.y}`) && used < 1 && !flatFootedMode) {
@@ -2905,7 +3147,7 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
       // Cover/fog prevention
       const prevented = aooPreventedByCoverOrFog(G, effects, { x: target.x, y: target.y }, { x: attacker!.x, y: attacker!.y }, [[attacker!.x, attacker!.y]])
       if (prevented) {
-        appendLogLine(`${otherId}'s AoO prevented by cover.`)
+  appendLogLine(`${otherId}'s AoO prevented by cover.`)
       } else {
       const aooAtk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
       const aooDef: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
