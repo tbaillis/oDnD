@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { srdSpells } from '../data/srdSpells'
 import { 
   computeSaveDC, 
   concentrationCheck, 
   arcaneSpellFailure,
-  sampleSpells,
+
   type CastingContext 
 } from '../game/magic'
 
@@ -42,7 +43,7 @@ describe('Magic System', () => {
   })
 
   it('should calculate arcane spell failure', () => {
-    const spellWithSomatic = sampleSpells['magic-missile']
+  const spellWithSomatic = srdSpells['magic-missile']
     expect(arcaneSpellFailure(spellWithSomatic, 10)).toBe(10) // 10% ASF from armor
     
     const spellWithoutSomatic = {
@@ -53,14 +54,14 @@ describe('Magic System', () => {
   })
 
   it('should have properly defined sample spells', () => {
-    const fireball = sampleSpells['fireball']
+  const fireball = srdSpells['fireball']
     expect(fireball).toBeDefined()
     expect(fireball.school).toBe('evocation')
     expect(fireball.descriptors).toContain('fire')
     expect(fireball.level.sorcerer).toBe(3)
     expect(fireball.level.wizard).toBe(3)
     
-    const magicMissile = sampleSpells['magic-missile']
+  const magicMissile = srdSpells['magic-missile']
     expect(magicMissile).toBeDefined()
     expect(magicMissile.spellResistance).toBe(true)
     expect(magicMissile.save.type).toBe('none')

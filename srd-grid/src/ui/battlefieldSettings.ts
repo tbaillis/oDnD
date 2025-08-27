@@ -14,6 +14,10 @@ export interface BattlefieldConfig {
   backgroundImage: string | null;
   backgroundOpacity: number;
   gridOpacity: number;
+  // Border settings for the visible battle mat
+  borderEnabled: boolean;
+  borderColor: string; // CSS hex string, e.g. '#8b5cf6'
+  borderThickness: number; // in pixels
 }
 
 // Predefined battlefield color themes
@@ -86,7 +90,10 @@ export class BattlefieldSettings {
           theme: parsed.theme || 'classic_gray',
           backgroundImage: parsed.backgroundImage || null,
           backgroundOpacity: typeof parsed.backgroundOpacity === 'number' ? parsed.backgroundOpacity : 0.5,
-          gridOpacity: typeof parsed.gridOpacity === 'number' ? parsed.gridOpacity : 0.7
+          gridOpacity: typeof parsed.gridOpacity === 'number' ? parsed.gridOpacity : 0.7,
+          borderEnabled: typeof parsed.borderEnabled === 'boolean' ? parsed.borderEnabled : false,
+          borderColor: typeof parsed.borderColor === 'string' ? parsed.borderColor : '#8b5cf6',
+          borderThickness: typeof parsed.borderThickness === 'number' ? parsed.borderThickness : 4
         };
       }
     } catch (error) {
@@ -97,7 +104,10 @@ export class BattlefieldSettings {
       theme: 'classic_gray',
       backgroundImage: null,
       backgroundOpacity: 0.5,
-      gridOpacity: 0.7
+  gridOpacity: 0.7,
+  borderEnabled: false,
+  borderColor: '#8b5cf6',
+  borderThickness: 4
     };
   }
 
@@ -296,13 +306,30 @@ export class BattlefieldSettings {
               </div>
             </div>
             
-            <div style="flex: 1;">
+              <div style="flex: 1;">
               <label style="display: block; color: white; font-weight: 500; margin-bottom: 0.5rem;">Grid Opacity:</label>
               <input type="range" id="grid-opacity" min="0" max="1" step="0.1" 
                      value="${this.config.gridOpacity}"
                      style="width: 100%; accent-color: #8b5cf6;">
               <div style="color: #bbb; font-size: 0.75rem; text-align: center; margin-top: 0.25rem;">
                 ${Math.round(this.config.gridOpacity * 100)}%
+              </div>
+            </div>
+          </div>
+
+          <!-- Border settings -->
+          <div style="margin-bottom: 1rem;">
+            <h3 style="color: white; margin: 0 0 0.5rem 0; font-size: 1.0rem; font-weight: 600;">Battle Mat Border</h3>
+            <label style="display: flex; align-items: center; gap: 0.5rem; color: #ddd;">
+              <input type="checkbox" id="border-enabled" ${this.config.borderEnabled ? 'checked' : ''} />
+              <span>Show border around battle mat</span>
+            </label>
+
+            <div style="display:flex; gap:8px; align-items:center; margin-top:0.5rem;">
+              <input type="color" id="border-color" value="${this.config.borderColor}" style="width:48px; height:32px; border-radius:6px; border:1px solid #333; background:#fff;" />
+              <div style="flex:1; display:flex; gap:8px; align-items:center;">
+                <input type="range" id="border-thickness" min="1" max="16" step="1" value="${this.config.borderThickness}" style="width:100%; accent-color: #8b5cf6;" />
+                <div id="border-thickness-label" style="width:48px; color:#bbb; text-align:center;">${this.config.borderThickness}px</div>
               </div>
             </div>
           </div>
@@ -430,6 +457,26 @@ export class BattlefieldSettings {
       this.setConfig({ gridOpacity: opacity });
     });
 
+    // Border controls
+    const borderEnabled = this.settingsPanel.querySelector('#border-enabled') as HTMLInputElement | null;
+    const borderColor = this.settingsPanel.querySelector('#border-color') as HTMLInputElement | null;
+    const borderThickness = this.settingsPanel.querySelector('#border-thickness') as HTMLInputElement | null;
+    const borderThicknessLabel = this.settingsPanel.querySelector('#border-thickness-label') as HTMLElement | null;
+
+    borderEnabled?.addEventListener('change', (e) => {
+      this.setConfig({ borderEnabled: (e.target as HTMLInputElement).checked });
+    });
+
+    borderColor?.addEventListener('input', (e) => {
+      this.setConfig({ borderColor: (e.target as HTMLInputElement).value });
+    });
+
+    borderThickness?.addEventListener('input', (e) => {
+      const v = parseInt((e.target as HTMLInputElement).value, 10) || 1;
+      this.setConfig({ borderThickness: v });
+      if (borderThicknessLabel) borderThicknessLabel.textContent = `${v}px`;
+    });
+
     // Clear background
     const clearBtn = this.settingsPanel.querySelector('#clear-background');
     clearBtn?.addEventListener('click', () => {
@@ -495,6 +542,27 @@ export class BattlefieldSettings {
     lines.stroke({ color: theme.gridLines, width: 1 });
     for (let x = 0; x <= WIDTH; x += CELL) lines.moveTo(x, 0).lineTo(x, HEIGHT);
     for (let y = 0; y <= HEIGHT; y += CELL) lines.moveTo(0, y).lineTo(WIDTH, y);
+
+    // Draw optional outer border around the battlefield
+    if (config.borderEnabled) {
+      const thickness = Math.max(1, Math.floor(config.borderThickness));
+      try {
+        // Convert '#rrggbb' -> numeric value
+        const hex = (config.borderColor || '#8b5cf6').replace('#', '');
+        const colorNum = parseInt(hex, 16);
+        if (Number.isNaN(colorNum)) throw new Error('Invalid color');
+
+        // Use a separate stroke so we don't disturb the grid line stroke
+        lines.lineStyle(thickness, colorNum, 1);
+        // Draw a rectangle inset by half the thickness so the stroke is fully visible
+        const half = thickness / 2;
+        lines.drawRect(half, half, WIDTH - thickness, HEIGHT - thickness);
+      } catch (err) {
+        // If color parse fails, fall back to theme color
+        lines.lineStyle(4, theme.gridLines, 1);
+        lines.drawRect(2, 2, WIDTH - 4, HEIGHT - 4);
+      }
+    }
 
     // Handle background image
     if (config.backgroundImage && backgroundSprite) {

@@ -227,6 +227,12 @@ updateApplicationBackground(battlefieldSettings.getConfig())
 // Expose battlefield settings globally so UI can access it
 ;(window as any).battlefieldSettings = battlefieldSettings
 
+// Convenience helper to toggle border from console
+;(window as any).toggleBattlefieldBorder = (enabled?: boolean) => {
+  const cfg = battlefieldSettings.getConfig();
+  battlefieldSettings.setConfig({ borderEnabled: typeof enabled === 'boolean' ? enabled : !cfg.borderEnabled });
+}
+
 // Background image sprite (for battlefield backgrounds)
 let backgroundSprite: Sprite | null = null
 const backgroundContainer = new Container()

@@ -1,6 +1,7 @@
 import { type Character } from './character'
 import { type DamageType } from './combat'
 import { getFeatSpellDCBonus } from './feat-effects'
+import { srdSpells } from '../data/srdSpells'
 
 // Magic schools and descriptors
 export type SpellSchool = 'abjuration' | 'conjuration' | 'divination' | 'enchantment' | 'evocation' | 'illusion' | 'necromancy' | 'transmutation'
@@ -127,113 +128,5 @@ export function arcaneSpellFailure(
   return Math.max(0, Math.min(100, asf))
 }
 
-// Sample spells for MVP
-export const sampleSpells: Record<string, Spell> = {
-  'magic-missile': {
-    name: 'Magic Missile',
-    school: 'evocation',
-    descriptors: ['force'],
-    level: { 'sorcerer': 1, 'wizard': 1 },
-    components: { verbal: true, somatic: true },
-    castingTime: '1 standard action',
-    target: { 
-      type: 'creature',
-      range: '100 ft + 10 ft/level',
-      targets: 'Up to five creatures, no two of which can be more than 15 ft apart'
-    },
-    duration: { type: 'instantaneous' },
-    save: { type: 'none', effect: 'negates' },
-    spellResistance: true,
-    description: 'A missile of magical energy darts forth and unerringly strikes its target.'
-  },
-  'cure-light-wounds': {
-    name: 'Cure Light Wounds',
-    school: 'conjuration',
-    subschool: 'healing',
-    descriptors: [],
-    level: { 'cleric': 1, 'druid': 1, 'ranger': 2 },
-    components: { verbal: true, somatic: true },
-    castingTime: '1 standard action',
-    target: { 
-      type: 'creature',
-      range: 'touch',
-      targets: 'Creature touched'
-    },
-    duration: { type: 'instantaneous' },
-    save: { type: 'Will', effect: 'half', description: 'harmless; see text' },
-    spellResistance: true,
-    description: 'Heals 1d8+1 points of damage (max +5).'
-  },
-  'fireball': {
-    name: 'Fireball',
-    school: 'evocation',
-    descriptors: ['fire'],
-    level: { 'sorcerer': 3, 'wizard': 3 },
-    components: { verbal: true, somatic: true, material: 'A tiny ball of bat guano and sulfur' },
-    castingTime: '1 standard action',
-    target: { 
-      type: 'area',
-      range: '400 ft + 40 ft/level',
-      area: { type: 'spread', size: '20-ft radius' }
-    },
-    duration: { type: 'instantaneous' },
-    save: { type: 'Reflex', effect: 'half' },
-    spellResistance: true,
-    description: 'Deals 1d6 fire damage per caster level (max 10d6) to all creatures in area.'
-  },
-  'invisibility': {
-    name: 'Invisibility',
-    school: 'illusion',
-    subschool: 'glamer',
-    descriptors: [],
-    level: { 'sorcerer': 2, 'wizard': 2, 'bard': 2 },
-    components: { verbal: true, somatic: true, material: 'An eyelash encased in gum arabic' },
-    castingTime: '1 standard action',
-    target: { 
-      type: 'creature',
-      range: 'touch',
-      targets: 'You or creature touched'
-    },
-    duration: { type: 'timed', value: '1 min/level', dismissible: true },
-    save: { type: 'Will', effect: 'negates', description: 'harmless' },
-    spellResistance: true,
-    description: 'Subject is invisible for 1 min/level or until it attacks.'
-  },
-  'fog-cloud': {
-    name: 'Fog Cloud',
-    school: 'conjuration',
-    subschool: 'creation',
-    descriptors: [],
-    level: { 'sorcerer': 2, 'wizard': 2, 'druid': 2 },
-    components: { verbal: true, somatic: true },
-    castingTime: '1 standard action',
-    target: { 
-      type: 'area',
-      range: '100 ft + 10 ft/level',
-      area: { type: 'spread', size: '20-ft radius' }
-    },
-    duration: { type: 'timed', value: '10 min/level' },
-    save: { type: 'none', effect: 'negates' },
-    spellResistance: false,
-    description: 'Fog obscures all sight, including darkvision, beyond 5 feet.'
-  },
-  'protection-from-evil': {
-    name: 'Protection from Evil',
-    school: 'abjuration',
-    descriptors: ['good'],
-    level: { 'cleric': 1, 'paladin': 1, 'sorcerer': 1, 'wizard': 1 },
-    components: { verbal: true, somatic: true, material: 'A little powdered silver' },
-    castingTime: '1 standard action',
-    target: { 
-      type: 'creature',
-      range: 'touch',
-      targets: 'Creature touched'
-    },
-    duration: { type: 'timed', value: '1 min/level', dismissible: true },
-    save: { type: 'Will', effect: 'negates', description: 'harmless' },
-    spellResistance: false,
-    description: '+2 AC and saves vs evil creatures, blocks mental control and summoned creatures.'
-  }
-}
-
-export const magic = { version: 2, spells: sampleSpells }
+// All SRD spells are now loaded from srdSpells
+export const magic = { version: 2, spells: srdSpells }
