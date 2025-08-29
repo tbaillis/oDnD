@@ -158,7 +158,8 @@
           width: 250px !important; 
           max-height: 100px !important;
           right: 4px !important;
-          top: 80px !important;
+          bottom: 4px !important;
+          top: auto !important;
           font-size: 10px;
         }
         .center { 
@@ -207,11 +208,19 @@
           padding: 4px 6px !important;
           max-width: 120px;
         }
+        #initiative-panel {
+          font-size: 10px !important;
+          padding: 4px 6px !important;
+          min-width: 100px !important;
+          max-width: 120px !important;
+          top: 50px !important;
+        }
         #combat-log { 
           width: 200px !important; 
           max-height: 80px !important;
           right: 4px !important;
-          top: 70px !important;
+          bottom: 4px !important;
+          top: auto !important;
           font-size: 9px;
         }
         #monster-selection-panel {
@@ -307,46 +316,8 @@
 
         <!-- Token Manager - Collapsible Section -->
         <div id="token-manager-section" style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #374151;display:none;">
-          <div style="margin-bottom:6px;">
-            <div style="color:#f59e0b;font-weight:600;font-size:12px;margin-bottom:6px;">🎭 Token Manager</div>
-            
-            <!-- Pawn A -->
-            <div style="margin-bottom:8px;">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                <div style="width:20px;height:20px;background:#3b4aff;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid #4f46e5;">
-                  <span style="color:white;font-size:10px;">⚡</span>
-                </div>
-                <span style="color:#e5e7eb;font-size:11px;font-weight:500;">Pawn A</span>
-              </div>
-              <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                <button class="token-btn" data-pawn="A" data-file="pawnA.svg" style="padding:4px 8px;background:#0891b2;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnA.svg</button>
-                <button class="token-btn" data-pawn="A" data-file="pawnB.svg" style="padding:4px 8px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnB.svg</button>
-                <button class="token-btn" data-pawn="A" data-file="pawnC.svg" style="padding:4px 8px;background:#6d28d9;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnC.svg</button>
-                <button class="token-btn" data-pawn="A" data-file="pawnD.svg" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnD.svg</button>
-              </div>
-            </div>
-
-            <!-- Pawn B -->
-            <div style="margin-bottom:8px;">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                <div style="width:20px;height:20px;background:#059669;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid #10b981;">
-                  <span style="color:white;font-size:10px;">🛡️</span>
-                </div>
-                <span style="color:#e5e7eb;font-size:11px;font-weight:500;">Pawn B</span>
-              </div>
-              <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                <button class="token-btn" data-pawn="B" data-file="pawnA.svg" style="padding:4px 8px;background:#4b5563;color:#d1d5db;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnA.svg</button>
-                <button class="token-btn" data-pawn="B" data-file="pawnB.svg" style="padding:4px 8px;background:#0891b2;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnB.svg</button>
-                <button class="token-btn" data-pawn="B" data-file="pawnC.svg" style="padding:4px 8px;background:#6d28d9;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnC.svg</button>
-                <button class="token-btn" data-pawn="B" data-file="pawnD.svg" style="padding:4px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;flex:1;">pawnD.svg</button>
-              </div>
-            </div>
-
-            <!-- Status and Rescan -->
-            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;">
-              <span style="color:#9ca3af;">2 tokens found</span>
-              <button id="rescan-assets-btn" style="padding:3px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;">Rescan</button>
-            </div>
+          <div id="token-manager-content" style="margin-bottom:6px;">
+            <!-- Token manager content will be dynamically generated by JavaScript -->
           </div>
         </div>
 
@@ -370,7 +341,7 @@
               <input id="reachA-toggle" type="checkbox" style="accent-color:#7c3aed;" /> A:Reach
             </label>
             <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
-              <input id="reachB-toggle" type="checkbox" style="accent-color:#7c3aed;" /> B:Reach
+              <input id="reachM1-toggle" type="checkbox" style="accent-color:#7c3aed;" /> M1:Reach
             </label>
             <label style="display:flex;gap:2px;align-items:center;cursor:pointer;">
               <input id="corner-cover-toggle" type="checkbox" style="accent-color:#7c3aed;" /> Corner
@@ -389,6 +360,9 @@
           <button id="apply-seed" style="padding:3px 6px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Apply</button>
           <button id="save-btn" style="padding:3px 6px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Save</button>
           <button id="load-btn" style="padding:3px 6px;background:#dc2626;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Load</button>
+          <button id="export-btn" style="padding:3px 6px;background:#2563eb;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Export</button>
+          <button id="import-btn" style="padding:3px 6px;background:#10b981;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Import</button>
+          <input id="import-file" type="file" accept=".json,application/json" style="display:none" />
           <button id="reset-btn" style="padding:3px 6px;background:#f59e0b;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Reset</button>
         </div>
 
@@ -406,6 +380,10 @@
               <input id="detailed-logging-toggle" type="checkbox" style="accent-color:#8b5cf6;" /> 
               <span style="color:#00bfff;">🌐 Server & Stack</span>
             </label>
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
+              <input id="party-debug-toggle" type="checkbox" style="accent-color:#8b5cf6;" /> 
+              <span style="color:#ffaa00;">🎭 Party State</span>
+            </label>
             <button id="show-log-panel" style="padding:3px 8px;background:#8b5cf6;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;margin-left:8px;">Show Panel</button>
           </div>
         </div>
@@ -415,6 +393,14 @@
     <!-- Action HUD -->
     <div id="action-hud" style="position:fixed;top:8px;right:8px;background:rgba(20,25,30,0.95);padding:8px 12px;border-radius:6px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;font-weight:600;font-size:14px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,0.6);">
       Actions: —
+    </div>
+
+    <!-- Initiative Order Panel -->
+    <div id="initiative-panel" style="position:fixed;top:60px;right:8px;background:rgba(20,25,30,0.95);padding:8px 12px;border-radius:6px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;font-size:12px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,0.6);min-width:150px;cursor:move;">
+      <div id="initiative-header" style="font-weight:600;color:#f59e0b;margin-bottom:6px;text-align:center;cursor:move;user-select:none;">Initiative Order</div>
+      <div id="initiative-list" style="display:flex;flex-direction:column;gap:2px;">
+        <!-- Initiative list will be populated by JavaScript -->
+      </div>
     </div>
 
     <!-- Monster Selection UI (initially hidden) -->
@@ -520,54 +506,9 @@
           });
           
           // Token button functionality
-          const tokenBtns = document.querySelectorAll('.token-btn');
-          tokenBtns.forEach(btn => {
-            btn.addEventListener('click', function() {
-              const pawn = this.getAttribute('data-pawn');
-              const file = this.getAttribute('data-file');
-              
-              // Remove active state from all buttons for this pawn
-              const pawnButtons = document.querySelectorAll(`[data-pawn="${pawn}"]`);
-              pawnButtons.forEach(b => {
-                b.style.background = '#4b5563';
-                b.style.color = '#d1d5db';
-              });
-              
-              // Set active state for clicked button
-              this.style.background = '#0891b2';
-              this.style.color = 'white';
-              
-              console.log(`Selected ${file} for Pawn ${pawn}`);
-              // integrate with game logic: find matching available token URL and apply
-              const tokens = (window.availableTokens || [])
-              // prefer custom pawnC when file === 'pawnC.svg' and pawn==='C'
-              let match = tokens.find(t => t.name === file)
-              if (!match && pawn === 'C') {
-                match = tokens.find(t => /pawnC_custom\./i.test(t.name)) || tokens.find(t => /pawnC\./i.test(t.name))
-              }
-              if (match && typeof (window.setPawnTexture) === 'function') {
-                window.setPawnTexture(pawn, match.url)
-              }
-            });
-          });
+          // Static token button handlers removed - now handled dynamically by buildCompactTokenManager()
           
-          // Rescan Assets functionality
-          const rescanBtn = document.getElementById('rescan-assets-btn');
-          if (rescanBtn) {
-            rescanBtn.addEventListener('click', function() {
-              console.log('Rescanning assets...');
-              // Here you would implement asset rescanning logic
-              // For now, just show a brief feedback
-              const originalText = this.textContent;
-              this.textContent = 'Scanning...';
-              this.disabled = true;
-              
-              setTimeout(() => {
-                this.textContent = originalText;
-                this.disabled = false;
-              }, 1500);
-            });
-          }
+          // Rescan Assets functionality is now handled by buildCompactTokenManager()
         }
 
         // Battlefield Settings functionality
@@ -613,17 +554,20 @@
         // Debug logging functionality
         const aiLoggingToggle = document.getElementById('ai-logging-toggle');
         const detailedLoggingToggle = document.getElementById('detailed-logging-toggle');
+        const partyDebugToggle = document.getElementById('party-debug-toggle');
         const showLogPanelBtn = document.getElementById('show-log-panel');
         
-        if (aiLoggingToggle && detailedLoggingToggle && showLogPanelBtn) {
+        if (aiLoggingToggle && detailedLoggingToggle && partyDebugToggle && showLogPanelBtn) {
           // Load saved settings (but do NOT auto-apply them so the panel stays hidden on startup)
           const savedAILogging = localStorage.getItem('aiLoggingEnabled') === 'true';
           const savedDetailedLogging = localStorage.getItem('detailedLoggingEnabled') === 'true';
+          const savedPartyDebug = localStorage.getItem('partyDebugEnabled') === 'true';
 
           // Don't check the toggles automatically on load to avoid opening the panel.
           // User must explicitly enable logging for the panel to become visible.
           aiLoggingToggle.checked = false;
           detailedLoggingToggle.checked = false;
+          partyDebugToggle.checked = savedPartyDebug;
 
           // Wait for debug logger to be available
           function initDebugLogging() {
@@ -646,12 +590,38 @@
                 console.log('Detailed Logging:', enabled ? 'enabled' : 'disabled');
               });
 
+              // Party debug panel toggle
+              partyDebugToggle.addEventListener('change', function() {
+                const enabled = this.checked;
+                localStorage.setItem('partyDebugEnabled', enabled.toString());
+                
+                // Find and toggle the debug panel visibility
+                const debugPanels = document.querySelectorAll('[style*="position: fixed"][style*="top: 10px"][style*="right: 10px"]');
+                debugPanels.forEach(panel => {
+                  if (panel.innerHTML && panel.innerHTML.includes('Debug Panel')) {
+                    panel.style.display = enabled ? 'block' : 'none';
+                  }
+                });
+                
+                console.log('Party Debug Panel:', enabled ? 'shown' : 'hidden');
+              });
+
               // Show panel button should only reveal the panel (it won't enable logging automatically)
               showLogPanelBtn.addEventListener('click', function() {
                 window.debugLogger.showPanel();
               });
 
               console.log('🔍 Debug logging system initialized (panel hidden by default)');
+              
+              // Initialize party debug panel visibility based on saved setting
+              setTimeout(() => {
+                const debugPanels = document.querySelectorAll('[style*="position: fixed"][style*="top: 10px"][style*="right: 10px"]');
+                debugPanels.forEach(panel => {
+                  if (panel.innerHTML && panel.innerHTML.includes('Debug Panel')) {
+                    panel.style.display = savedPartyDebug ? 'block' : 'none';
+                  }
+                });
+              }, 500); // Give time for the debug panel to be created
             } else {
               // Retry in 100ms if debugLogger not available yet
               setTimeout(initDebugLogging, 100);
@@ -660,6 +630,73 @@
 
           // Initialize when ready
           initDebugLogging();
+        }
+
+        // Initiative panel dragging functionality
+        const initiativePanel = document.getElementById('initiative-panel');
+        const initiativeHeader = document.getElementById('initiative-header');
+        
+        if (initiativePanel && initiativeHeader) {
+          let isDragging = false;
+          let startX, startY, initialX, initialY;
+          
+          // Load saved position
+          const savedPos = localStorage.getItem('initiativePanelPosition');
+          if (savedPos) {
+            const { x, y } = JSON.parse(savedPos);
+            initiativePanel.style.left = x + 'px';
+            initiativePanel.style.top = y + 'px';
+            initiativePanel.style.right = 'auto'; // Remove right positioning
+          }
+          
+          initiativeHeader.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            const rect = initiativePanel.getBoundingClientRect();
+            initialX = rect.left;
+            initialY = rect.top;
+            
+            // Remove right positioning to use left/top instead
+            initiativePanel.style.right = 'auto';
+            initiativePanel.style.left = initialX + 'px';
+            initiativePanel.style.top = initialY + 'px';
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            
+            e.preventDefault();
+          });
+          
+          function onMouseMove(e) {
+            if (!isDragging) return;
+            
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            const newX = Math.max(0, Math.min(window.innerWidth - initiativePanel.offsetWidth, initialX + dx));
+            const newY = Math.max(0, Math.min(window.innerHeight - initiativePanel.offsetHeight, initialY + dy));
+            
+            initiativePanel.style.left = newX + 'px';
+            initiativePanel.style.top = newY + 'px';
+          }
+          
+          function onMouseUp(e) {
+            if (isDragging) {
+              isDragging = false;
+              
+              // Save position
+              const rect = initiativePanel.getBoundingClientRect();
+              localStorage.setItem('initiativePanelPosition', JSON.stringify({
+                x: rect.left,
+                y: rect.top
+              }));
+              
+              document.removeEventListener('mousemove', onMouseMove);
+              document.removeEventListener('mouseup', onMouseUp);
+            }
+          }
         }
 
         // Global keyboard shortcuts

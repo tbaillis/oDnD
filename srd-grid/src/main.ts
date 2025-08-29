@@ -3,6 +3,8 @@ import { createWorld, updateTime } from './engine/world'
 import { UIManager } from './ui/interface'
 import { DMChatPanel } from './ui/dmChat'
 import { BattlefieldSettings } from './ui/battlefieldSettings'
+import { GoldBoxAdapter } from './ui/goldBoxAdapter'
+import type { ACBreakdownShape } from './engine/components'
 // Background presets - include the provided Dungeon.png as the default preset
 import DungeonBackground from './assets/Backgrounds/Dungeon.png'
 import { Grid, coverBetweenSquares, concealmentAtTarget, coverBetweenSquaresCorner } from './engine/grid'
@@ -38,6 +40,11 @@ const WIDTH = 800
 const HEIGHT = 600
 const CELL = 50
 
+// Global state variables 
+let flatFootedMode = false
+let reachA = false
+let reachM1 = false
+
 const app = new Application()
 // Make canvas background transparent so the DOM background can show through
 await app.init({ width: WIDTH, height: HEIGHT, background: 'transparent', antialias: true })
@@ -52,8 +59,98 @@ const game = createWorld()
 
 const uiManager = new UIManager(document.body)
 
-// Expose applyCharacterToPawnA globally so UIManager can access it
+// Initialize Gold Box Interface
+console.log('Main: About to create Gold Box Adapter...')
+let goldBoxAdapter: GoldBoxAdapter
+try {
+  goldBoxAdapter = new GoldBoxAdapter()
+  console.log('Main: Gold Box Adapter created successfully')
+  
+  // Expose debug methods globally
+  ;(window as any).debugPartyState = () => goldBoxAdapter.debugPartyState()
+  ;(window as any).goldBoxAdapter = goldBoxAdapter
+  
+  // Test function to simulate clicking on different characters
+  // Test function to simulate clicking on different characters (excluding M pawns)
+  ;(window as any).testCharacterClicks = () => {
+    console.log('=== TESTING CHARACTER CLICKS ===')
+    const pawnIds = ['A', 'B', 'C', 'D', 'E', 'F']
+    pawnIds.forEach(id => {
+      console.log(`--- Testing pawn ${id} ---`)
+      const pawn = (window as any)[`pawn${id}`]
+      if (pawn) {
+        console.log(`goldBoxId: ${(pawn as any).goldBoxId}`)
+        console.log(`characterData: ${(pawn as any).characterData ? (pawn as any).characterData.name : 'None'}`)
+        
+        if ((pawn as any).characterData) {
+          const characterId = (pawn as any).goldBoxId || `pawn-${id.toLowerCase()}`
+          console.log(`Would show character sheet for: ${characterId}`)
+        }
+      }
+    })
+  }
+
+  // Add debug panel to the page
+  const debugPanel = document.createElement('div')
+  debugPanel.style.cssText = `
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    z-index: 1000;
+    max-width: 300px;
+  `
+  debugPanel.innerHTML = `
+    <div style="margin-bottom: 10px;"><strong>Debug Panel</strong></div>
+    <button onclick="debugPartyState()" style="margin: 2px; padding: 4px 8px;">Show Party State</button>
+    <button onclick="testCharacterClicks()" style="margin: 2px; padding: 4px 8px;">Test Character Mapping</button>
+    <div id="debug-output" style="margin-top: 10px; max-height: 200px; overflow-y: auto;"></div>
+  `
+  document.body.appendChild(debugPanel)
+  
+  // Override console.log to also show in debug panel
+  const originalConsoleLog = console.log
+  ;(window as any).originalConsoleLog = originalConsoleLog
+  console.log = (...args) => {
+    originalConsoleLog(...args)
+    const output = document.getElementById('debug-output')
+    if (output && args.some(arg => typeof arg === 'string' && (arg.includes('===') || arg.includes('Gold Box')))) {
+      const div = document.createElement('div')
+      div.textContent = args.join(' ')
+      div.style.fontSize = '10px'
+      div.style.margin = '1px 0'
+      output.appendChild(div)
+      output.scrollTop = output.scrollHeight
+    }
+  }
+  
+  console.log('Main: Integrating with UI Manager...')
+  goldBoxAdapter.integrateWithUIManager(uiManager)
+  console.log('Main: UI Manager integration complete')
+  
+  console.log('Main: Syncing with world...')
+  goldBoxAdapter.syncWithWorld(game)
+  console.log('Main: World sync complete')
+} catch (error) {
+  console.error('Main: Error initializing Gold Box Adapter:', error)
+  // Create a minimal fallback
+  goldBoxAdapter = null as any
+}
+
+// Expose applyCharacterToPawn functions globally so UIManager and Gold Box can access them (excluding M pawns)
 ;(window as any).applyCharacterToPawnA = applyCharacterToPawnA
+;(window as any).applyCharacterToPawnB = applyCharacterToPawnB
+;(window as any).applyCharacterToPawnC = applyCharacterToPawnC
+;(window as any).applyCharacterToPawnD = applyCharacterToPawnD
+;(window as any).applyCharacterToPawnE = applyCharacterToPawnE
+;(window as any).applyCharacterToPawnF = applyCharacterToPawnF
+;(window as any).ensureM1OnBoard = ensureM1OnBoard
+;(window as any).moveM1ToPosition = moveM1ToPosition
 
 // Debug logging for UIManager initialization
 console.log('UIManager created:', uiManager)
@@ -62,11 +159,50 @@ console.log('characterCreation type:', typeof uiManager.characterCreation)
 
 // Debug global window access
 ;(window as any).debugUI = uiManager
+if (goldBoxAdapter) {
+  ;(window as any).goldBoxAdapter = goldBoxAdapter
+  console.log('Gold Box Adapter exposed as window.goldBoxAdapter')
+} else {
+  console.warn('Gold Box Adapter not available - initialization failed')
+}
 ;(window as any).toggleMonsterSelectionUI = toggleMonsterSelectionUI
 ;(window as any).debugLogger = debugLogger
 console.log('UIManager exposed as window.debugUI')
 console.log('Monster selection toggle exposed globally')
 console.log('Debug logger exposed as window.debugLogger')
+
+// Also expose gold box interface directly for easier access
+if (goldBoxAdapter) {
+  ;(window as any).goldBox = goldBoxAdapter.getInterface()
+  console.log('Gold Box Interface exposed as window.goldBox')
+
+  // Expose character update utilities
+  ;(window as any).updateCharacterHP = (characterId: string, newHP: number, source: string = 'combat') => {
+    goldBoxAdapter.updateCharacterHP(characterId, newHP, source)
+  }
+
+  ;(window as any).notifyCharacterChanged = (characterId: string, character: Character, source: string = 'external') => {
+    goldBoxAdapter.notifyCharacterChanged(characterId, character, source)
+  }
+
+  ;(window as any).getGoldBoxCharacter = (characterId: string) => {
+    return goldBoxAdapter.getCharacter(characterId)
+  }
+
+  // Expose pawn synchronization utilities
+  ;(window as any).syncPawnToGoldBox = syncPawnToGoldBox
+  ;(window as any).applyDamageToPawn = applyDamageToPawn
+  ;(window as any).healPawn = healPawn
+
+  // Expose new pawn assignment methods
+  goldBoxAdapter.exposeGlobalMethods()
+
+  console.log('Character update utilities exposed globally')
+  console.log('Pawn synchronization utilities exposed globally')
+  console.log('Pawn assignment utilities exposed globally')
+} else {
+  console.warn('Gold Box Interface not available')
+}
 
 // Set initial message
 uiManager.combatLog.addMessage('SRD Grid ready.', 'info')
@@ -74,12 +210,21 @@ uiManager.combatLog.addMessage('Press N for New Character, C for Character Sheet
 uiManager.combatLog.addMessage('Press M for Monster Selection, R for Random Monster', 'info')
 uiManager.combatLog.addMessage('Right-click pawns for actions, or press Z (Pawn A) / X (Pawn B)', 'info')
 uiManager.combatLog.addMessage('Press ` (backtick) or Tab to toggle control panel', 'info')
+uiManager.combatLog.addMessage('Press Ctrl+G to toggle Gold Box Interface', 'info')
 uiManager.combatLog.addMessage('Note: Keyboard shortcuts are disabled while typing in input fields', 'info')
 
 // Helper function to maintain compatibility with existing code
 function appendLogLine(text: string) {
   uiManager.combatLog.addMessage(text, 'info')
 }
+
+// Test function to verify combat log positioning
+function testCombatLogPosition() {
+  uiManager.combatLog.addMessage('🔧 Testing combat log positioning - this should appear at bottom-right!', 'warning')
+}
+
+// Expose test function globally for debugging
+;(window as any).testCombatLogPosition = testCombatLogPosition
 
 function updateActionHUD(text: string) {
   // Update the HUD display - for now we'll use the existing system
@@ -144,6 +289,12 @@ updateApplicationBackground(battlefieldSettings.getConfig())
 
 // Expose battlefield settings globally so UI can access it
 ;(window as any).battlefieldSettings = battlefieldSettings
+
+// Convenience helper to toggle border from console
+;(window as any).toggleBattlefieldBorder = (enabled?: boolean) => {
+  const cfg = battlefieldSettings.getConfig();
+  battlefieldSettings.setConfig({ borderEnabled: typeof enabled === 'boolean' ? enabled : !cfg.borderEnabled });
+}
 
 // Background image sprite (for battlefield backgrounds)
 let backgroundSprite: Sprite | null = null
@@ -231,17 +382,100 @@ function drawCell(g: Graphics, x: number, y: number, color: number) {
   g.rect(x*CELL, y*CELL, CELL, CELL).fill({ color, alpha: 0.35 })
 }
 
-// Token state (two pawns)
+// Function to generate random position away from party
+function generateRandomPosition(): { x: number, y: number } {
+  const partyCenter = { x: 3, y: 2.5 } // Center of party formation
+  const boardWidth = Math.floor(WIDTH/CELL) // 16 squares (0-15)
+  const boardHeight = Math.floor(HEIGHT/CELL) // 12 squares (0-11)
+  
+  let x, y, distance
+  
+  do {
+    // Generate random position within the visible board bounds
+    x = Math.floor(Math.random() * boardWidth)   // 0 to 15
+    y = Math.floor(Math.random() * boardHeight)  // 0 to 11
+    
+    // Calculate distance from party center
+    distance = Math.sqrt(Math.pow(x - partyCenter.x, 2) + Math.pow(y - partyCenter.y, 2))
+  } while (distance < 6) // Ensure at least 6 squares away from party (reduced from 8 to fit on board)
+  
+  return { x, y }
+}
+
+// Function to ensure pawn M1 is on the visible board
+function ensureM1OnBoard() {
+  const boardWidth = Math.floor(WIDTH/CELL) // 16 squares (0-15)
+  const boardHeight = Math.floor(HEIGHT/CELL) // 12 squares (0-11)
+  
+  if (pawnM1.x < 0 || pawnM1.x >= boardWidth || pawnM1.y < 0 || pawnM1.y >= boardHeight) {
+    console.log(`M1 pawn was off-board at (${pawnM1.x}, ${pawnM1.y}), repositioning...`)
+    const newPosition = generateRandomPosition()
+    pawnM1.x = newPosition.x
+    pawnM1.y = newPosition.y
+    console.log(`M1 pawn repositioned to (${pawnM1.x}, ${pawnM1.y})`)
+    
+    // Log the repositioning
+    appendLogLine(`Pawn M1 repositioned to grid square (${pawnM1.x}, ${pawnM1.y}) to ensure visibility`)
+  }
+}
+
+// Function to manually position M1 at a specific location on the board
+function moveM1ToPosition(x: number, y: number) {
+  const boardWidth = Math.floor(WIDTH/CELL)
+  const boardHeight = Math.floor(HEIGHT/CELL)
+  
+  // Validate coordinates are on board
+  if (x >= 0 && x < boardWidth && y >= 0 && y < boardHeight) {
+    pawnM1.x = x
+    pawnM1.y = y
+    console.log(`M1 pawn moved to (${x}, ${y})`)
+    appendLogLine(`Pawn M1 manually moved to grid square (${x}, ${y})`)
+  } else {
+    console.warn(`Invalid coordinates: (${x}, ${y}). Board size is ${boardWidth}x${boardHeight}`)
+    appendLogLine(`Invalid coordinates for M1: (${x}, ${y}). Board size is ${boardWidth}x${boardHeight}`)
+  }
+}
+
+// Token state (six pawns for full party - positioned adjacently for party formation)
 let pawnA = { x: 2, y: 2, speed: 30, size: 'medium' as const, hp: 20 }
-let pawnB = { x: 12, y: 8, speed: 30, size: 'large' as 'large' | 'medium', hp: 25 }
-// Optional Pawn C (third token) - start off-screen to avoid interfering
-let pawnC = { x: -5, y: -5, speed: 30, size: 'medium' as const, hp: 20, maxHp: 20 }
+;(pawnA as any).goldBoxId = 'pawn-a'
+// M1 is positioned randomly away from the party each time
+const m1Position = generateRandomPosition()
+let pawnM1 = { x: m1Position.x, y: m1Position.y, speed: 30, size: 'large' as 'large' | 'medium', hp: 25 }
+
+// Ensure M1 is on the visible board
+ensureM1OnBoard()
+
+// Log M1 position for debugging
+console.log(`M1 pawn positioned at (${pawnM1.x}, ${pawnM1.y}) on ${Math.floor(WIDTH/CELL)}x${Math.floor(HEIGHT/CELL)} grid`)
+appendLogLine(`Pawn M1 positioned at grid square (${pawnM1.x}, ${pawnM1.y})`)
+// Position all pawns adjacently in a 2x3 formation
+let pawnC = { x: 4, y: 2, speed: 30, size: 'medium' as const, hp: 20, maxHp: 20 }
+// Additional character pawns for full 6-person party
+let pawnD = { x: 2, y: 3, speed: 30, size: 'medium' as const, hp: 18, maxHp: 18 }
+let pawnE = { x: 3, y: 3, speed: 30, size: 'medium' as const, hp: 22, maxHp: 22 }
+let pawnF = { x: 4, y: 3, speed: 30, size: 'medium' as const, hp: 16, maxHp: 16 }
+let pawnB = { x: 1, y: 3, speed: 30, size: 'medium' as const, hp: 24, maxHp: 24 }
+
+// Expose pawns globally
+;(window as any).pawnA = pawnA
+;(window as any).pawnM1 = pawnM1
 ;(window as any).pawnC = pawnC
+;(window as any).pawnD = pawnD
+;(window as any).pawnE = pawnE
+;(window as any).pawnF = pawnF
+;(window as any).pawnB = pawnB
+
 let pawnAMaxHP = 20 // Track max HP for pawn A
-let pawnBMaxHP = 25 // Track max HP for pawn B
+let pawnM1MaxHP = 25 // Track max HP for pawn M1
+let pawnCMaxHP = 20 // Track max HP for pawn C
+let pawnDMaxHP = 18 // Track max HP for pawn D
+let pawnEMaxHP = 22 // Track max HP for pawn E
+let pawnFMaxHP = 16 // Track max HP for pawn F
+let pawnBMaxHP = 24 // Track max HP for pawn B
 
 // Function to apply character stats to Pawn A
-function applyCharacterToPawnA(character: Character) {
+function applyCharacterToPawnA(character: Character, suppressEvent: boolean = false) {
   // Update Pawn A's hit points based on character
   pawnAMaxHP = character.hitPoints.max
   pawnA.hp = character.hitPoints.current
@@ -278,21 +512,379 @@ function applyCharacterToPawnA(character: Character) {
   // Check for reach weapons
   const hasReachWeapon = character.equipment.weapons.some(weapon => 
     weapon.properties?.includes('reach') || weapon.name.toLowerCase().includes('reach')
-  )
-  reachA = hasReachWeapon
+  );
+  reachA = hasReachWeapon;
+  
+  // Store character name on pawn for Gold Box sync  
+  (pawnA as any).name = character.name;
+  
+  // NOTE: characterData will be set by GoldBoxAdapter to ensure object reference consistency
+  // Don't set it here to avoid reference conflicts with the character sheet system
+  
+  // Only dispatch event if not suppressed (to prevent infinite loops)
+  if (!suppressEvent) {
+    console.log('Main: Dispatching goldbox-character-created event for:', character.name);
+    
+    // Notify Gold Box interface of character update
+    const goldBoxEvent = new CustomEvent('goldbox-character-created', { 
+      detail: character 
+    });
+    document.dispatchEvent(goldBoxEvent);
+    
+    console.log('Main: Event dispatched successfully');
+  } else {
+    console.log('Main: Event dispatch suppressed to prevent loop for:', character.name);
+  }
   
   // Log the character application
   appendLogLine(`Pawn A updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
   appendLogLine(`HP: ${pawnA.hp}/${pawnAMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnA.speed}ft${reachA ? ', Reach Weapon' : ''}`)
   
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
   // Redraw to reflect changes
   drawAll()
 }
 
+// Functions to apply character stats to all pawns
+function applyCharacterToPawnM1(character: Character, suppressEvent: boolean = false) {
+  pawnM1MaxHP = character.hitPoints.max
+  pawnM1.hp = character.hitPoints.current
+  pawnM1.speed = 30
+
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnM1.size = 'medium'
+  } else if (character.race.toLowerCase().includes('half-giant') || 
+             character.classes.some(c => c.class === 'barbarian')) {
+    pawnM1.size = 'medium'
+  }
+
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  const newAC = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  defenderM1.ac = newAC
+  
+  const hasReachWeapon = character.equipment.weapons.some(weapon => 
+    weapon.properties?.includes('reach') || weapon.name.toLowerCase().includes('reach')
+  );
+  reachM1 = hasReachWeapon;
+  
+  (pawnM1 as any).name = character.name;
+  (pawnM1 as any).characterData = character;
+  (pawnM1 as any).goldBoxId = 'pawn-m1';
+  
+  if (!suppressEvent) {
+    const goldBoxEvent = new CustomEvent('goldbox-character-created', { 
+      detail: character 
+    });
+    document.dispatchEvent(goldBoxEvent);
+  }
+  
+  appendLogLine(`Pawn M1 updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnM1.hp}/${pawnM1MaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnM1.speed}ft${reachM1 ? ', Reach Weapon' : ''}`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
+  drawAll()
+}
+
+function applyCharacterToPawnC(character: Character, suppressEvent: boolean = false) {
+  pawnCMaxHP = character.hitPoints.max
+  pawnC.hp = character.hitPoints.current
+  pawnC.maxHp = character.hitPoints.max
+  pawnC.speed = 30
+
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnC.size = 'medium'
+  }
+
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  const newAC: ACBreakdownShape = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  // Update AC using Object.assign to avoid typing/indexing edge-cases
+  Object.assign((defenderC.ac as any), newAC)
+
+  (pawnC as any).name = character.name;
+  (pawnC as any).characterData = character;
+  (pawnC as any).goldBoxId = 'pawn-c';
+  
+  if (!suppressEvent) {
+    const goldBoxEvent = new CustomEvent('goldbox-character-created', { 
+      detail: character 
+    });
+    document.dispatchEvent(goldBoxEvent);
+  }
+  
+  appendLogLine(`Pawn C updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnC.hp}/${pawnCMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnC.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
+  drawAll()
+}
+
+function applyCharacterToPawnD(character: Character, suppressEvent: boolean = false) {
+  pawnDMaxHP = character.hitPoints.max
+  pawnD.hp = character.hitPoints.current
+  pawnD.maxHp = character.hitPoints.max
+  pawnD.speed = 30
+
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnD.size = 'medium'
+  }
+
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  const newAC: ACBreakdownShape = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  // Update AC using Object.assign to avoid typing edge-cases
+  Object.assign((defenderD.ac as any), newAC)
+
+  (pawnD as any).name = character.name;
+  (pawnD as any).characterData = character;
+  (pawnD as any).goldBoxId = 'pawn-d';
+  
+  if (!suppressEvent) {
+    const goldBoxEvent = new CustomEvent('goldbox-character-created', { 
+      detail: character 
+    });
+    document.dispatchEvent(goldBoxEvent);
+  }
+  
+  appendLogLine(`Pawn D updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnD.hp}/${pawnDMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnD.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
+  drawAll()
+}
+
+function applyCharacterToPawnE(character: Character, suppressEvent: boolean = false) {
+  pawnEMaxHP = character.hitPoints.max
+  pawnE.hp = character.hitPoints.current
+  pawnE.maxHp = character.hitPoints.max
+  pawnE.speed = 30
+
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnE.size = 'medium'
+  }
+
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  const newAC: ACBreakdownShape = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  // Update AC using Object.assign to avoid typing edge-cases
+  Object.assign((defenderE.ac as any), newAC)
+
+  (pawnE as any).name = character.name;
+  (pawnE as any).characterData = character;
+  (pawnE as any).goldBoxId = 'pawn-e';
+  
+  if (!suppressEvent) {
+    const goldBoxEvent = new CustomEvent('goldbox-character-created', { 
+      detail: character 
+    });
+    document.dispatchEvent(goldBoxEvent);
+  }
+  
+  appendLogLine(`Pawn E updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnE.hp}/${pawnEMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnE.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
+  drawAll()
+}
+
+function applyCharacterToPawnF(character: Character, suppressEvent: boolean = false) {
+  pawnFMaxHP = character.hitPoints.max
+  pawnF.hp = character.hitPoints.current
+  pawnF.maxHp = character.hitPoints.max
+  pawnF.speed = 30
+
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnF.size = 'medium'
+  }
+
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  const newAC: ACBreakdownShape = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  // Update AC using Object.assign to avoid typing/indexing edge-cases
+  Object.assign((defenderF.ac as any), newAC)
+
+  (pawnF as any).name = character.name;
+  (pawnF as any).characterData = character;
+  (pawnF as any).goldBoxId = 'pawn-f';
+  
+  if (!suppressEvent) {
+    const goldBoxEvent = new CustomEvent('goldbox-character-created', { 
+      detail: character 
+    });
+    document.dispatchEvent(goldBoxEvent);
+  }
+  
+  appendLogLine(`Pawn F updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnF.hp}/${pawnFMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnF.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
+  drawAll()
+}
+
+// Apply character stats to Pawn B
+function applyCharacterToPawnB(character: Character, suppressEvent: boolean = false) {
+  // Update Pawn B's hit points based on character
+  pawnBMaxHP = character.hitPoints.max
+  pawnB.hp = character.hitPoints.current
+  
+  // Update speed based on character's race and size
+  pawnB.speed = 30 // Default, could be modified by race or equipment
+  
+  // Update size if character is not medium
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnB.size = 'medium' // Keep medium for grid simplicity
+  } else if (character.race.toLowerCase().includes('half-giant') || 
+             character.classes.some(c => c.class === 'barbarian')) {
+    pawnB.size = 'medium' // Keep medium for now, could be configurable
+  }
+  
+  // Update defender profile based on character stats
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  // Update AC based on character equipment and stats
+  const newAC = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  // Store character name on pawn for display
+  ;(pawnB as any).name = character.name
+  
+  // Log the character application
+  appendLogLine(`Pawn B updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnB.hp}/${pawnBMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnB.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
+  // Redraw to reflect changes
+  drawAll()
+}
+
+// Helper functions for synchronizing pawn data with Gold Box character sheets (excluding M pawns)
+function syncPawnToGoldBox(pawnRef: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', source: string = 'combat') {
+  const pawn = pawnRef === 'A' ? pawnA : 
+               pawnRef === 'B' ? pawnB : 
+               pawnRef === 'C' ? pawnC :
+               pawnRef === 'D' ? pawnD :
+               pawnRef === 'E' ? pawnE : pawnF
+  const characterData = (pawn as any).characterData as Character
+  const goldBoxId = (pawn as any).goldBoxId as string
+  
+  if (characterData && goldBoxId && typeof (window as any).updateCharacterHP === 'function') {
+    // Update the character's HP to match the pawn
+    characterData.hitPoints.current = pawn.hp;
+    (window as any).notifyCharacterChanged(goldBoxId, characterData, source)
+    console.log(`Synced ${pawnRef} pawn HP (${pawn.hp}) to Gold Box character ${characterData.name}`)
+  }
+}
+
+function applyDamageToPawn(pawnRef: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', damage: number, source: string = 'combat') {
+  const pawn = pawnRef === 'A' ? pawnA : 
+               pawnRef === 'B' ? pawnB : 
+               pawnRef === 'C' ? pawnC :
+               pawnRef === 'D' ? pawnD :
+               pawnRef === 'E' ? pawnE : pawnF
+  const oldHP = pawn.hp
+  pawn.hp = Math.max(0, pawn.hp - damage)
+  
+  console.log(`Applied ${damage} damage to pawn ${pawnRef}: ${oldHP} -> ${pawn.hp}`)
+  
+  // Sync with Gold Box
+  syncPawnToGoldBox(pawnRef, source)
+  
+  return { oldHP, newHP: pawn.hp, actualDamage: oldHP - pawn.hp }
+}
+
+function healPawn(pawnRef: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', healing: number, source: string = 'healing') {
+  const pawn = pawnRef === 'A' ? pawnA : 
+               pawnRef === 'B' ? pawnB : 
+               pawnRef === 'C' ? pawnC :
+               pawnRef === 'D' ? pawnD :
+               pawnRef === 'E' ? pawnE : pawnF
+  const maxHP = pawnRef === 'A' ? pawnAMaxHP : 
+                pawnRef === 'B' ? pawnBMaxHP :
+                pawnRef === 'C' ? pawnCMaxHP :
+                pawnRef === 'D' ? pawnDMaxHP :
+                pawnRef === 'E' ? pawnEMaxHP : pawnFMaxHP
+  const oldHP = pawn.hp
+  pawn.hp = Math.min(maxHP, pawn.hp + healing)
+  
+  console.log(`Applied ${healing} healing to pawn ${pawnRef}: ${oldHP} -> ${pawn.hp}`)
+  
+  // Sync with Gold Box
+  syncPawnToGoldBox(pawnRef, source)
+  
+  return { oldHP, newHP: pawn.hp, actualHealing: pawn.hp - oldHP }
+}
+
 // Function to apply monster stats to any pawn
-function applyMonsterToPawn(pawnId: 'A' | 'B', monster: import('./game/monsters/types').MonsterData) {
-  const pawn = pawnId === 'A' ? pawnA : pawnB
-  const defender = pawnId === 'A' ? defenderA : defenderB
+function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters/types').MonsterData) {
+  const pawn = pawnId === 'A' ? pawnA : pawnM1
+  const defender = pawnId === 'A' ? defenderA : defenderM1
   
   // Update pawn's hit points based on monster
   const newMaxHP = monster.hitPoints.average
@@ -300,8 +892,8 @@ function applyMonsterToPawn(pawnId: 'A' | 'B', monster: import('./game/monsters/
     pawnAMaxHP = newMaxHP
     pawnA.hp = newMaxHP
   } else {
-    pawnBMaxHP = newMaxHP
-    pawnB.hp = newMaxHP
+    pawnM1MaxHP = newMaxHP
+    pawnM1.hp = newMaxHP
   }
   
   // Update speed based on monster stats
@@ -359,14 +951,15 @@ function applyMonsterToPawn(pawnId: 'A' | 'B', monster: import('./game/monsters/
   const hasReachAttack = monster.attacks?.some(attack => 
     attack.reach && attack.reach > 5
   ) || monster.reach === '10 ft.' || monster.reach === '15 ft.' || monster.reach === '20 ft.'
-  
+
+  // Store monster name on pawn for display purposes
   if (pawnId === 'A') {
     reachA = hasReachAttack
+    ;(pawnA as any).name = monster.name
   } else {
-    reachB = hasReachAttack
-  }
-  
-  // Log the monster application
+    reachM1 = hasReachAttack
+    ;(pawnM1 as any).name = monster.name
+  }  // Log the monster application
   appendLogLine(`Pawn ${pawnId} updated with ${monster.name} (${monster.size} ${monster.type})`)
   appendLogLine(`HP: ${pawn.hp}/${newMaxHP}, AC: ${monster.armorClass.total}, Speed: ${pawn.speed}ft${hasReachAttack ? ', Reach' : ''}`)
   if (monster.specialAttacks && monster.specialAttacks.length > 0) {
@@ -376,8 +969,16 @@ function applyMonsterToPawn(pawnId: 'A' | 'B', monster: import('./game/monsters/
     appendLogLine(`Special Qualities: ${monster.specialQualities.map(sq => sq.name).join(', ')}`)
   }
   
+  // Update initiative display to show new monster info
+  updateInitiativeDisplay()
+  
+  // Ensure M1 is on the visible board when monster is applied
+  if (pawnId === 'M1') {
+    ensureM1OnBoard()
+  }
+  
   // Auto-enable Monster AI for monster pawns
-  if (pawnId === 'B') {
+  if (pawnId === 'M1') {
     console.log(`🤖 Auto-enabling Monster AI for Pawn ${pawnId} (${monster.name})`)
     // Make sure Monster AI is enabled
     if (!monsterAI.isEnabled()) {
@@ -394,45 +995,772 @@ function applyMonsterToPawn(pawnId: 'A' | 'B', monster: import('./game/monsters/
   drawAll()
 }
 
-// Function to apply monster stats to Pawn B (legacy compatibility)
-function applyMonsterToPawnB(monster: import('./game/monsters/types').MonsterData) {
-  applyMonsterToPawn('B', monster)
+// Function to apply monster stats to Pawn M1 (legacy compatibility)
+function applyMonsterToPawnM1(monster: import('./game/monsters/types').MonsterData) {
+  applyMonsterToPawn('M1', monster)
+  // Update initiative display after monster assignment
+  updateInitiativeDisplay()
 }
 
 // Persistent defender profiles for each pawn (demo stats)
 const baseAC = { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }
 const defenderA: DefenderProfile = { ac: baseAC, energyResistance: { fire: 5 }, vulnerability: ['cold'] }
-const defenderB: DefenderProfile = { ac: baseAC, damageReduction: { amount: 5, bypass: 'magic' }, regeneration: { rate: 2, bypass: ['fire','acid'] } }
+const defenderM1: DefenderProfile = { ac: baseAC, damageReduction: { amount: 5, bypass: 'magic' }, regeneration: { rate: 2, bypass: ['fire','acid'] } }
+const defenderC: DefenderProfile = { ac: { ...baseAC } }
+const defenderD: DefenderProfile = { ac: { ...baseAC } }
+const defenderE: DefenderProfile = { ac: { ...baseAC } }
+const defenderF: DefenderProfile = { ac: { ...baseAC } }
 
 // Turn/initiative setup
 const turns = createTurnState()
-  startEncounter(turns, [
+
+// Initialize default pawn names before starting encounter
+initializeDefaultPawnNames()
+
+startEncounter(turns, [
   { id: 'A', dexMod: 2, initiative: 15 },
-  { id: 'B', dexMod: 0, initiative: 12 },
+  { id: 'M1', dexMod: 0, initiative: 12 },
+  { id: 'C', dexMod: 1, initiative: 14 },
+  { id: 'D', dexMod: 3, initiative: 16 },
+  { id: 'E', dexMod: 1, initiative: 13 },
+  { id: 'F', dexMod: 2, initiative: 11 },
 ])
-uiManager.combatLog.addMessage(`Encounter start: Round ${turns.round}, Active=${turns.active?.id}`, 'info')
+uiManager.combatLog.addMessage(`Encounter start: Round ${turns.round}, Active=${getPawnName(turns.active?.id || '')} (${turns.active?.id})`, 'info')
+
+// Update gold box display with encounter start
+if ((window as any).goldBoxAdapter) {
+  (window as any).goldBoxAdapter.updatePartyDisplay?.()
+}
+updateInitiativeDisplay()
+
+// Helper function to get character/monster name for a pawn ID (showing character name + pawn name)
+function getPawnName(pawnId: string): string {
+  switch (pawnId) {
+    case 'A': {
+      const characterName = (pawnA as any).characterData ? (pawnA as any).characterData.name : null
+      return characterName ? `${characterName} (A)` : 'Pawn A'
+    }
+    case 'B': {
+      const characterName = (pawnB as any).characterData ? (pawnB as any).characterData.name : null
+      return characterName ? `${characterName} (B)` : 'Pawn B'
+    }
+    case 'C': {
+      const characterName = (pawnC as any).characterData ? (pawnC as any).characterData.name : null
+      return characterName ? `${characterName} (C)` : 'Pawn C'
+    }
+    case 'D': {
+      const characterName = (pawnD as any).characterData ? (pawnD as any).characterData.name : null
+      return characterName ? `${characterName} (D)` : 'Pawn D'
+    }
+    case 'E': {
+      const characterName = (pawnE as any).characterData ? (pawnE as any).characterData.name : null
+      return characterName ? `${characterName} (E)` : 'Pawn E'
+    }
+    case 'F': {
+      const characterName = (pawnF as any).characterData ? (pawnF as any).characterData.name : null
+      return characterName ? `${characterName} (F)` : 'Pawn F'
+    }
+    default:
+      return pawnId
+  }
+}
+
+// Initialize default names for pawns that don't have characters/monsters assigned
+function initializeDefaultPawnNames() {
+  if (!(pawnA as any).name) (pawnA as any).name = 'Pawn A'
+  if (!(pawnB as any).name) (pawnB as any).name = 'Pawn B'
+  if (!(pawnC as any).name) (pawnC as any).name = 'Pawn C'
+  if (!(pawnD as any).name) (pawnD as any).name = 'Pawn D'
+  if (!(pawnE as any).name) (pawnE as any).name = 'Pawn E'
+  if (!(pawnF as any).name) (pawnF as any).name = 'Pawn F'
+}
 
 function hudText() {
   const b = turns.budget!
-  return `Round ${turns.round} | Turn: ${turns.active?.id ?? '-'} | Std:${b.standardAvailable?'✓':'×'} Move:${b.moveAvailable?'✓':'×'} 5ft:${b.fiveFootStepAvailable?'✓':'×'}`
+  const activeId = turns.active?.id ?? '-'
+  const activeName = activeId !== '-' ? getPawnName(activeId) : '-'
+  return `Round ${turns.round} | Turn: ${activeName} (${activeId}) | Std:${b.standardAvailable?'✓':'×'} Move:${b.moveAvailable?'✓':'×'} 5ft:${b.fiveFootStepAvailable?'✓':'×'}`
 }
+
+function showInitiativeContextMenu(pawnId: string, event: MouseEvent, pawn: any) {
+  // Remove any existing context menu
+  const existingMenu = document.getElementById('initiative-context-menu')
+  if (existingMenu) {
+    existingMenu.remove()
+  }
+
+  // Create context menu
+  const contextMenu = document.createElement('div')
+  contextMenu.id = 'initiative-context-menu'
+  contextMenu.style.cssText = `
+    position: fixed;
+    top: ${event.clientY}px;
+    left: ${event.clientX}px;
+    background: #1f2937;
+    border: 2px solid #374151;
+    border-radius: 6px;
+    padding: 8px 0;
+    z-index: 10000;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #e5e7eb;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    min-width: 200px;
+  `
+
+  const menuItems = [
+    {
+      label: '🎭 Change Token',
+      action: () => {
+        showTokenSelectorForPawn(pawnId)
+        contextMenu.remove()
+      }
+    },
+    {
+      label: '📋 Character Sheet',
+      action: () => {
+        const characterData = (pawn as any).characterData
+        if (characterData) {
+          const characterId = (pawn as any).goldBoxId || `pawn-${pawnId.toLowerCase()}`
+          if (goldBoxAdapter && goldBoxAdapter.showCharacterSheet) {
+            goldBoxAdapter.showCharacterSheet(characterId)
+          } else if (uiManager && uiManager.characterSheet) {
+            uiManager.characterSheet.setCharacter(characterData)
+            uiManager.characterSheet.show()
+          }
+        }
+        contextMenu.remove()
+      },
+      enabled: !!(pawn as any).characterData
+    },
+    {
+      label: '🗂️ Assign Character',
+      action: () => {
+        showCharacterAssignmentForPawn(pawnId)
+        contextMenu.remove()
+      }
+    }
+  ]
+
+  menuItems.forEach(item => {
+    const menuItem = document.createElement('div')
+    menuItem.style.cssText = `
+      padding: 8px 16px;
+      cursor: ${item.enabled !== false ? 'pointer' : 'not-allowed'};
+      color: ${item.enabled !== false ? '#e5e7eb' : '#6b7280'};
+      transition: background-color 0.15s;
+    `
+    menuItem.textContent = item.label
+
+    if (item.enabled !== false) {
+      menuItem.addEventListener('mouseenter', () => {
+        menuItem.style.background = '#374151'
+      })
+      menuItem.addEventListener('mouseleave', () => {
+        menuItem.style.background = 'transparent'
+      })
+      menuItem.addEventListener('click', item.action)
+    }
+
+    contextMenu.appendChild(menuItem)
+  })
+
+  // Close menu when clicking outside
+  const closeMenu = (e: MouseEvent) => {
+    if (!contextMenu.contains(e.target as Node)) {
+      contextMenu.remove()
+      document.removeEventListener('click', closeMenu)
+    }
+  }
+  
+  // Add slight delay to prevent immediate closing
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu)
+  }, 10)
+
+  document.body.appendChild(contextMenu)
+
+  // Adjust position if menu goes off screen
+  const rect = contextMenu.getBoundingClientRect()
+  if (rect.right > window.innerWidth) {
+    contextMenu.style.left = `${event.clientX - rect.width}px`
+  }
+  if (rect.bottom > window.innerHeight) {
+    contextMenu.style.top = `${event.clientY - rect.height}px`
+  }
+}
+
+function showTokenSelectorForPawn(pawnId: string) {
+  // Create token selection modal
+  const modal = document.createElement('div')
+  modal.className = 'token-selector-modal'
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    font-family: 'Courier New', monospace;
+  `
+
+  const content = document.createElement('div')
+  content.style.cssText = `
+    background: #000;
+    border: 3px solid #0080FF;
+    border-radius: 8px;
+    padding: 20px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 80%;
+    overflow-y: auto;
+    color: #0080FF;
+  `
+
+  content.innerHTML = `
+    <h3 style="color: #FFFF00; text-align: center; margin-bottom: 20px;">SELECT TOKEN FOR PAWN ${pawnId}</h3>
+    <div class="token-grid" style="
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    "></div>
+    <div style="text-align: center;">
+      <button class="close-token-selector" style="
+        background: #FF0000;
+        color: #FFFFFF;
+        border: 2px solid #FFFFFF;
+        padding: 10px 20px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      ">CANCEL</button>
+    </div>
+  `
+
+  // Get available tokens from window
+  const availableTokens = (window as any).availableTokens || []
+  const tokenGrid = content.querySelector('.token-grid')
+
+  if (tokenGrid) {
+    availableTokens.forEach((token: any) => {
+      const tokenButton = document.createElement('div')
+      tokenButton.className = 'token-option'
+      tokenButton.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px;
+        border: 2px solid #333;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: border-color 0.2s;
+      `
+
+      tokenButton.innerHTML = `
+        <img src="${token.url}" style="
+          width: 64px;
+          height: 64px;
+          object-fit: cover;
+          border-radius: 4px;
+        " alt="${token.name}" />
+        <div style="
+          font-size: 10px;
+          margin-top: 5px;
+          text-align: center;
+          word-break: break-word;
+        ">${token.name}</div>
+      `
+
+      tokenButton.addEventListener('mouseenter', () => {
+        tokenButton.style.borderColor = '#0080FF'
+      })
+
+      tokenButton.addEventListener('mouseleave', () => {
+        tokenButton.style.borderColor = '#333'
+      })
+
+      tokenButton.addEventListener('click', () => {
+        // Apply token to pawn
+        if ((window as any).setPawnTexture) {
+          (window as any).setPawnTexture(pawnId, token.url)
+        }
+        
+        // Store token information in pawn object
+        const pawn = getPawnObject(pawnId)
+        if (pawn) {
+          (pawn as any).tokenUrl = token.url
+          ;(pawn as any).tokenName = token.name
+        }
+        
+        document.body.removeChild(modal)
+        console.log(`Token ${token.name} applied to pawn ${pawnId}`)
+      })
+
+      tokenGrid.appendChild(tokenButton)
+    })
+  }
+
+  // Close button handler
+  const closeBtn = content.querySelector('.close-token-selector')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      document.body.removeChild(modal)
+    })
+  }
+
+  // Click outside to close
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal)
+    }
+  })
+
+  modal.appendChild(content)
+  document.body.appendChild(modal)
+}
+
+function showCharacterAssignmentForPawn(pawnId: string) {
+  // Create character assignment modal
+  const modal = document.createElement('div')
+  modal.className = 'character-assignment-modal'
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    font-family: 'Courier New', monospace;
+  `
+
+  const content = document.createElement('div')
+  content.style.cssText = `
+    background: #000;
+    border: 3px solid #16a34a;
+    border-radius: 8px;
+    padding: 20px;
+    width: 600px;
+    max-height: 80%;
+    overflow-y: auto;
+    color: #0080FF;
+  `
+
+  // Get available characters from goldBoxAdapter
+  let availableCharacters: any[] = []
+  if (goldBoxAdapter) {
+    const allCharacters = goldBoxAdapter.getAllCharacters()
+    availableCharacters = Array.from(allCharacters.entries()).map(([id, character]) => ({ id, character }))
+  }
+
+  content.innerHTML = `
+    <h3 style="color: #FFFF00; text-align: center; margin-bottom: 20px;">ASSIGN CHARACTER TO PAWN ${pawnId}</h3>
+    <p style="margin-bottom: 20px; text-align: center; color: #e5e7eb;">
+      Select a character to assign to this pawn:
+    </p>
+    <div class="character-list" style="
+      max-height: 300px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    ">
+      ${availableCharacters.length === 0 ? 
+        '<div style="text-align: center; color: #6b7280; padding: 20px;">No characters available. Create characters first in the Gold Box interface.</div>' :
+        availableCharacters.map(({id, character}) => `
+          <div class="character-option" data-character-id="${id}" style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 8px;
+            border: 2px solid #374151;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+          ">
+            <div>
+              <div style="font-weight: bold; color: #f3f4f6;">${character.name}</div>
+              <div style="font-size: 11px; color: #9ca3af;">${character.race} ${character.classes[0]?.class || 'Unknown'} - HP: ${character.hitPoints.current}/${character.hitPoints.max}</div>
+            </div>
+            <div style="font-size: 10px; color: #6b7280;">${id}</div>
+          </div>
+        `).join('')
+      }
+    </div>
+    <div style="text-align: center;">
+      <button class="close-character-assignment" style="
+        background: #FF0000;
+        color: #FFFFFF;
+        border: 2px solid #FFFFFF;
+        padding: 10px 20px;
+        margin: 0 10px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      ">CANCEL</button>
+      <button class="clear-character-assignment" style="
+        background: #6b7280;
+        color: #FFFFFF;
+        border: 2px solid #FFFFFF;
+        padding: 10px 20px;
+        margin: 0 10px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      ">CLEAR ASSIGNMENT</button>
+    </div>
+  `
+
+  // Character option handlers
+  const characterOptions = content.querySelectorAll('.character-option')
+  characterOptions.forEach(option => {
+    option.addEventListener('mouseenter', () => {
+      (option as HTMLElement).style.borderColor = '#0080FF'
+      ;(option as HTMLElement).style.background = 'rgba(0, 128, 255, 0.1)'
+    })
+
+    option.addEventListener('mouseleave', () => {
+      (option as HTMLElement).style.borderColor = '#374151'
+      ;(option as HTMLElement).style.background = 'transparent'
+    })
+
+    option.addEventListener('click', () => {
+      const characterId = (option as HTMLElement).dataset.characterId
+      if (characterId) {
+        assignCharacterToPawn(characterId, pawnId)
+        document.body.removeChild(modal)
+      }
+    })
+  })
+
+  // Close button handler
+  const closeBtn = content.querySelector('.close-character-assignment')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      document.body.removeChild(modal)
+    })
+  }
+
+  // Clear assignment button handler
+  const clearBtn = content.querySelector('.clear-character-assignment')
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      clearCharacterFromPawn(pawnId)
+      document.body.removeChild(modal)
+    })
+  }
+
+  // Click outside to close
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal)
+    }
+  })
+
+  modal.appendChild(content)
+  document.body.appendChild(modal)
+}
+
+function getPawnObject(pawnId: string): any {
+  switch (pawnId) {
+    case 'A': return pawnA
+    case 'M1': return pawnM1
+    case 'C': return pawnC
+    case 'D': return pawnD
+    case 'E': return pawnE
+    case 'F': return pawnF
+    default: return null
+  }
+}
+
+function assignCharacterToPawn(characterId: string, pawnId: string) {
+  if (!goldBoxAdapter) return
+
+  const character = goldBoxAdapter.getCharacter(characterId)
+  if (!character) return
+
+  const pawn = getPawnObject(pawnId)
+  if (!pawn) return
+
+  // Store character data reference in pawn
+  ;(pawn as any).characterData = character
+  ;(pawn as any).goldBoxId = characterId
+  
+  // Apply basic stats
+  pawn.hp = character.hitPoints.current
+  const maxHpProperty = `pawn${pawnId}MaxHP`
+  if ((window as any)[maxHpProperty] !== undefined) {
+    (window as any)[maxHpProperty] = character.hitPoints.max
+  }
+
+  // Update initiative display and redraw
+  updateInitiativeDisplay()
+  if ((window as any).drawAll) {
+    (window as any).drawAll()
+  }
+
+  console.log(`Assigned character ${character.name} to pawn ${pawnId}`)
+}
+
+function clearCharacterFromPawn(pawnId: string) {
+  const pawn = getPawnObject(pawnId)
+  if (!pawn) return
+
+  // Clear character data
+  delete (pawn as any).characterData
+  delete (pawn as any).goldBoxId
+  delete (pawn as any).tokenUrl
+  delete (pawn as any).tokenName
+
+  // Update initiative display and redraw
+  updateInitiativeDisplay()
+  if ((window as any).drawAll) {
+    (window as any).drawAll()
+  }
+
+  console.log(`Cleared character assignment from pawn ${pawnId}`)
+}
+
+function updateInitiativeDisplay() {
+  const initiativeList = document.getElementById('initiative-list')
+  if (!initiativeList) return
+  
+  // Clear existing content
+  initiativeList.innerHTML = ''
+  
+  // Get initiative order from turns (excluding pawns with 'M' in names, adding pawnB)
+  const sortedInitiative = [
+    { id: 'D', initiative: 16 },
+    { id: 'A', initiative: 15 },
+    { id: 'C', initiative: 14 },
+    { id: 'E', initiative: 13 },
+    { id: 'B', initiative: 12 },
+    { id: 'F', initiative: 11 },
+  ]
+  
+  // Helper function to get pawn data (excluding pawns with 'M' in names)
+  function getPawnData(pawnId: string) {
+    switch (pawnId) {
+      case 'A':
+        return { pawn: pawnA, maxHP: pawnAMaxHP, reach: reachA }
+      case 'B':
+        return { pawn: pawnB, maxHP: pawnBMaxHP, reach: false }
+      case 'C':
+        return { pawn: pawnC, maxHP: pawnCMaxHP, reach: false }
+      case 'D':
+        return { pawn: pawnD, maxHP: pawnDMaxHP, reach: false }
+      case 'E':
+        return { pawn: pawnE, maxHP: pawnEMaxHP, reach: false }
+      case 'F':
+        return { pawn: pawnF, maxHP: pawnFMaxHP, reach: false }
+      default:
+        return { pawn: { hp: 0, speed: 30, size: 'medium' }, maxHP: 0, reach: false }
+    }
+  }
+  
+  // Helper function to get health status color
+  function getHealthColor(hp: number, maxHP: number) {
+    if (maxHP === 0) return '#666'
+    const percent = hp / maxHP
+    if (percent >= 0.75) return '#22c55e'  // Green - healthy
+    if (percent >= 0.50) return '#eab308'  // Yellow - wounded
+    if (percent >= 0.25) return '#f97316'  // Orange - badly wounded  
+    if (percent > 0) return '#ef4444'      // Red - critically wounded
+    return '#7f1d1d'                       // Dark red - dead/unconscious
+  }
+  
+  sortedInitiative.forEach(entry => {
+    const isActive = turns.active?.id === entry.id
+    const pawnData = getPawnData(entry.id)
+    const pawnName = getPawnName(entry.id)
+    const healthColor = getHealthColor(pawnData.pawn.hp || 0, pawnData.maxHP)
+    
+    const pawnDiv = document.createElement('div')
+    pawnDiv.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      padding: 6px 8px;
+      margin-bottom: 2px;
+      border-radius: 4px;
+      background: ${isActive ? 'rgba(245, 158, 11, 0.2)' : 'rgba(55, 65, 81, 0.3)'};
+      border-left: 3px solid ${isActive ? '#f59e0b' : 'transparent'};
+      border: 1px solid ${isActive ? '#f59e0b' : 'rgba(75, 85, 99, 0.5)'};
+      font-weight: ${isActive ? '600' : '400'};
+      color: ${isActive ? '#f59e0b' : '#e5e7eb'};
+      font-size: 11px;
+      line-height: 1.2;
+    `
+    
+    // Main row with name and initiative
+    const headerRow = document.createElement('div')
+    headerRow.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    `
+    
+    const nameSpan = document.createElement('span')
+    nameSpan.style.cssText = `
+      font-weight: 600;
+      color: ${isActive ? '#f59e0b' : '#f3f4f6'};
+    `
+    nameSpan.textContent = pawnName
+    
+    const initiativeSpan = document.createElement('span')
+    initiativeSpan.style.cssText = `
+      font-size: 10px;
+      opacity: 0.8;
+      background: rgba(0,0,0,0.3);
+      padding: 1px 4px;
+      border-radius: 2px;
+    `
+    initiativeSpan.textContent = entry.initiative.toString()
+    
+    headerRow.appendChild(nameSpan)
+    headerRow.appendChild(initiativeSpan)
+    
+    // Stats row with HP, Speed, Size
+    const statsRow = document.createElement('div')
+    statsRow.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      opacity: 0.9;
+    `
+    
+    const hpSpan = document.createElement('span')
+    hpSpan.style.cssText = `
+      color: ${healthColor};
+      font-weight: 600;
+    `
+    hpSpan.textContent = `HP: ${pawnData.pawn.hp || 0}/${pawnData.maxHP}`
+    
+    const speedSpan = document.createElement('span')
+    speedSpan.style.color = '#94a3b8'
+    speedSpan.textContent = `${pawnData.pawn.speed || 30}ft`
+    
+    const sizeSpan = document.createElement('span')
+    sizeSpan.style.color = '#94a3b8'
+    sizeSpan.textContent = pawnData.pawn.size === 'large' ? 'L' : 'M'
+    
+    statsRow.appendChild(hpSpan)
+    statsRow.appendChild(speedSpan)
+    statsRow.appendChild(sizeSpan)
+    
+    // Status indicators row
+    const statusRow = document.createElement('div')
+    statusRow.style.cssText = `
+      display: flex;
+      gap: 3px;
+      margin-top: 2px;
+      flex-wrap: wrap;
+    `
+    
+    // Add status indicators
+    const indicators: string[] = []
+    
+    // Health status
+    const hpPercent = pawnData.maxHP > 0 ? (pawnData.pawn.hp || 0) / pawnData.maxHP : 0
+    if (hpPercent <= 0) indicators.push('💀')
+    else if (hpPercent <= 0.25) indicators.push('🩸')
+    else if (hpPercent <= 0.50) indicators.push('🤕')
+    
+    // Reach weapon
+    if (pawnData.reach) indicators.push('🗡️')
+    
+    // Active turn indicator
+    if (isActive) indicators.push('⚡')
+    
+    // Add flatfooted if applicable (you can expand this based on actual conditions)
+    if (flatFootedMode && isActive) indicators.push('🛡️❌')
+    
+    if (indicators.length > 0) {
+      const indicatorSpan = document.createElement('span')
+      indicatorSpan.style.cssText = `
+        font-size: 9px;
+        opacity: 0.8;
+      `
+      indicatorSpan.textContent = indicators.join(' ')
+      statusRow.appendChild(indicatorSpan)
+    }
+    
+    pawnDiv.appendChild(headerRow)
+    pawnDiv.appendChild(statsRow)
+    if (indicators.length > 0) {
+      pawnDiv.appendChild(statusRow)
+    }
+    
+    // Add click handler to show character sheet if character data is available
+    const pawnObj = pawnData.pawn
+    if ((pawnObj as any).characterData) {
+      pawnDiv.style.cursor = 'pointer'
+      pawnDiv.title = 'Click to view character sheet'
+      
+      pawnDiv.addEventListener('click', () => {
+        const characterData = (pawnObj as any).characterData
+        const characterId = (pawnObj as any).goldBoxId || `pawn-${entry.id.toLowerCase()}`
+        
+        console.log(`=== INITIATIVE CLICK DEBUG ===`)
+        console.log('entry.id:', entry.id)
+        console.log('pawnObj.goldBoxId:', (pawnObj as any).goldBoxId)
+        console.log('final characterId:', characterId)
+        console.log('characterData.name:', characterData ? characterData.name : 'NO CHARACTER DATA')
+        console.log(`Initiative click: Opening character sheet for ${characterData.name} (${characterId})`)
+        
+        // Use the GoldBox character sheet instead of the UI manager's sheet
+        if (goldBoxAdapter && goldBoxAdapter.showCharacterSheet) {
+          goldBoxAdapter.showCharacterSheet(characterId)
+        } else if (uiManager && uiManager.characterSheet) {
+          uiManager.characterSheet.setCharacter(characterData)
+          uiManager.characterSheet.show()
+        } else {
+          console.warn('No character sheet interface available')
+        }
+      })
+      
+      // Add right-click context menu for token management
+      pawnDiv.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        showInitiativeContextMenu(entry.id, e, pawnObj)
+      })
+      
+      // Add hover effect
+      pawnDiv.addEventListener('mouseenter', () => {
+        pawnDiv.style.background = isActive ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255, 255, 255, 0.1)'
+      })
+      pawnDiv.addEventListener('mouseleave', () => {
+        pawnDiv.style.background = isActive ? 'rgba(245, 158, 11, 0.2)' : 'rgba(55, 65, 81, 0.3)'
+      })
+    }
+    
+    initiativeList.appendChild(pawnDiv)
+  })
+}
+
 updateActionHUD(hudText())
+updateInitiativeDisplay()
 
 const tokens = new Graphics()
 world.addChild(tokens)
 
 let attackMode = false
-let gameOver: 'A'|'B'|null = null
+let gameOver: 'A'|'M1'|'C'|'D'|'E'|'F'|null = null
 let rangedMode = false
 let editTerrain = false
 let currentRNG: RNG = sessionRNG
 let currentSeed: number | null = null
 let touchMode = false
-let flatFootedMode = false
 let preciseShot = false
 let showLoS = false
-let reachA = false
-let reachB = false
 let useCornerCover = false
 let defensiveCast = false
 let tumbleEnabled = false
@@ -453,11 +1781,11 @@ function captureState(): SaveData {
     version: 2,
     grid: gridCopy,
     pawnA: { ...pawnA, reach: reachA },
-    pawnB: { ...pawnB, reach: reachB },
+    pawnM1: { ...pawnM1, reach: reachM1 },
     round: turns.round,
     initiative: { order: ser.order, index: ser.index },
     aooUsed: (turns as any).aooUsed || {},
-    toggles: { rangedMode, touchMode, flatFootedMode, editTerrain, preciseShot, showLoS, defensiveCast, tumble: tumbleEnabled, reachA, reachB, cornerCover: useCornerCover },
+    toggles: { rangedMode, touchMode, flatFootedMode, editTerrain, preciseShot, showLoS, defensiveCast, tumble: tumbleEnabled, reachA, reachM1, cornerCover: useCornerCover },
     inputs: { tumbleBonus, concentrationBonus: concBonus, spell: selectedSpell },
     rngSeed: currentSeed ?? null,
     effects: { active: effects.serializeEffects() },
@@ -475,7 +1803,7 @@ function restoreFromData(data: SaveData) {
   if ((data as any).effects?.active) effects.deserializeEffects((data as any).effects.active)
   // pawns
   if (data.pawnA) { const { x,y,speed,hp } = data.pawnA; pawnA = { ...pawnA, x, y, speed, hp }; reachA = !!(data.pawnA as any).reach }
-  if (data.pawnB) { const { x,y,speed,hp } = data.pawnB; pawnB = { ...pawnB, x, y, speed, hp }; reachB = !!(data.pawnB as any).reach }
+  if (data.pawnM1) { const { x,y,speed,hp } = data.pawnM1; pawnM1 = { ...pawnM1, x, y, speed, hp }; reachM1 = !!(data.pawnM1 as any).reach }
   // turn state
   if (typeof data.round === 'number') (turns as any).round = data.round
   if (data.initiative) { (turns.tracker as any).deserialize?.(data.initiative); (turns as any).active = (turns.tracker as any).current?.() }
@@ -491,10 +1819,10 @@ function restoreFromData(data: SaveData) {
     defensiveCast = !!data.toggles.defensiveCast
     tumbleEnabled = !!data.toggles.tumble
     reachA = !!data.toggles.reachA
-    reachB = !!data.toggles.reachB
+    reachM1 = !!data.toggles.reachM1
     useCornerCover = !!data.toggles.cornerCover
-    const ids = ['ranged-toggle','touch-toggle','flat-toggle','terrain-toggle','precise-toggle','show-los-toggle','defensive-cast-toggle','tumble-toggle','reachA-toggle','reachB-toggle','corner-cover-toggle'] as const
-    const vals: boolean[] = [rangedMode,touchMode,flatFootedMode,editTerrain,preciseShot,showLoS,defensiveCast,tumbleEnabled,reachA,reachB,useCornerCover]
+    const ids = ['ranged-toggle','touch-toggle','flat-toggle','terrain-toggle','precise-toggle','show-los-toggle','defensive-cast-toggle','tumble-toggle','reachA-toggle','reachM1-toggle','corner-cover-toggle'] as const
+    const vals: boolean[] = [rangedMode,touchMode,flatFootedMode,editTerrain,preciseShot,showLoS,defensiveCast,tumbleEnabled,reachA,reachM1,useCornerCover]
     ids.forEach((id, i) => { const el = document.getElementById(id) as HTMLInputElement | null; if (el) el.checked = vals[i] })
   }
   if (data.inputs) {
@@ -538,8 +1866,8 @@ function drawAll() {
   overlay.clear()
 
   // Threat layers from both pawns
-  const threatB = threatenedSquares(pawnB.x, pawnB.y, pawnB.size, reachB)
-  for (const [x,y] of threatB) drawCell(overlay, x, y, 0xff4444)
+  const threatM1 = threatenedSquares(pawnM1.x, pawnM1.y, pawnM1.size, reachM1)
+  for (const [x,y] of threatM1) drawCell(overlay, x, y, 0xff4444)
   const threatA = threatenedSquares(pawnA.x, pawnA.y, pawnA.size, reachA)
   for (const [x,y] of threatA) drawCell(overlay, x, y, 0x4488ff)
 
@@ -561,14 +1889,24 @@ function drawAll() {
     if (pawnASprite) pawnASprite.visible = false
     tokens.circle(center(pawnA.x), center(pawnA.y), CELL*0.35).fill(0x5aa9e6)
   }
-  if (pawnBSprite && pawnBSprite.texture && pawnBSprite.texture.width > 0 && pawnBSprite.texture.height > 0) {
-    pawnBSprite.x = center(pawnB.x)
-    pawnBSprite.y = center(pawnB.y)
-    scaleToCell(pawnBSprite)
-    pawnBSprite.visible = true
+  if (pawnM1Sprite && pawnM1Sprite.texture && pawnM1Sprite.texture.width > 0 && pawnM1Sprite.texture.height > 0) {
+    pawnM1Sprite.x = center(pawnM1.x)
+    pawnM1Sprite.y = center(pawnM1.y)
+  scaleToCell(pawnM1Sprite)
+  // Scale M1 width to 170% (x axis only) for better visibility
+  pawnM1Sprite.scale.x = (pawnM1Sprite.scale.x || 1) * 1.7
+  pawnM1Sprite.scale.y = (pawnM1Sprite.scale.y || 1) * 1.7
+  pawnM1Sprite.visible = true
   } else {
-    if (pawnBSprite) pawnBSprite.visible = false
-    tokens.circle(center(pawnB.x), center(pawnB.y), CELL*0.4).fill(0xe65a5a)
+    if (pawnM1Sprite) pawnM1Sprite.visible = false
+  // Fallback: draw a slightly wider ellipse for M1 (170% width)
+  const cx = center(pawnM1.x)
+  const cy = center(pawnM1.y)
+  const ry = CELL * 0.4
+  const rx = ry * 1.7
+  tokens.beginFill(0xe65a5a)
+  tokens.drawEllipse(cx, cy, rx, ry)
+  tokens.endFill()
   }
   // Pawn C rendering (optional third pawn)
   if (pawnCSprite && pawnCSprite.texture && pawnCSprite.texture.width > 0 && pawnCSprite.texture.height > 0) {
@@ -579,6 +1917,39 @@ function drawAll() {
   } else {
     if (pawnCSprite) pawnCSprite.visible = false
     if ((window as any).pawnC) tokens.circle(center((window as any).pawnC.x), center((window as any).pawnC.y), CELL*0.35).fill(0x6d28d9)
+  }
+  
+  // Pawn D rendering
+  if (pawnDSprite && pawnDSprite.texture && pawnDSprite.texture.width > 0 && pawnDSprite.texture.height > 0) {
+    pawnDSprite.x = center(pawnD.x)
+    pawnDSprite.y = center(pawnD.y)
+    scaleToCell(pawnDSprite)
+    pawnDSprite.visible = true
+  } else {
+    if (pawnDSprite) pawnDSprite.visible = false
+    tokens.circle(center(pawnD.x), center(pawnD.y), CELL*0.35).fill(0x9333ea)
+  }
+  
+  // Pawn E rendering
+  if (pawnESprite && pawnESprite.texture && pawnESprite.texture.width > 0 && pawnESprite.texture.height > 0) {
+    pawnESprite.x = center(pawnE.x)
+    pawnESprite.y = center(pawnE.y)
+    scaleToCell(pawnESprite)
+    pawnESprite.visible = true
+  } else {
+    if (pawnESprite) pawnESprite.visible = false
+    tokens.circle(center(pawnE.x), center(pawnE.y), CELL*0.35).fill(0x059669)
+  }
+  
+  // Pawn F rendering
+  if (pawnFSprite && pawnFSprite.texture && pawnFSprite.texture.width > 0 && pawnFSprite.texture.height > 0) {
+    pawnFSprite.x = center(pawnF.x)
+    pawnFSprite.y = center(pawnF.y)
+    scaleToCell(pawnFSprite)
+    pawnFSprite.visible = true
+  } else {
+    if (pawnFSprite) pawnFSprite.visible = false
+    tokens.circle(center(pawnF.x), center(pawnF.y), CELL*0.35).fill(0xf59e0b)
   }
   // HP bars
   const barW = CELL*0.7
@@ -591,8 +1962,11 @@ function drawAll() {
     tokens.rect(x, y, w, barH).fill(color)
   }
   drawHP(pawnA.x, pawnA.y, pawnA.hp, 20, 0x5aa9e6)
-  drawHP(pawnB.x, pawnB.y, pawnB.hp, 25, 0xe65a5a)
+  drawHP(pawnM1.x, pawnM1.y, pawnM1.hp, 25, 0xe65a5a)
   if ((window as any).pawnC) drawHP((window as any).pawnC.x, (window as any).pawnC.y, (window as any).pawnC.hp, (window as any).pawnC.maxHp || 20, 0x6d28d9)
+  drawHP(pawnD.x, pawnD.y, pawnD.hp, pawnD.maxHp || 20, 0x9333ea)
+  drawHP(pawnE.x, pawnE.y, pawnE.hp, pawnE.maxHp || 20, 0x059669)
+  drawHP(pawnF.x, pawnF.y, pawnF.hp, pawnF.maxHp || 20, 0xf59e0b)
   if (gameOver) {
     // simple banner rectangle
     tokens.rect(WIDTH/2-160, HEIGHT/2-30, 320, 60).fill(0x111111).stroke({ color: 0xffffff, width: 2 })
@@ -601,44 +1975,61 @@ function drawAll() {
 
 // Initialize sprite variables before drawAll is called
 let pawnASprite: Sprite | null = null
-let pawnBSprite: Sprite | null = null
+let pawnM1Sprite: Sprite | null = null
 let pawnCSprite: Sprite | null = null
+let pawnDSprite: Sprite | null = null
+let pawnESprite: Sprite | null = null
+let pawnFSprite: Sprite | null = null
 
 drawAll()
 
-// Import SVG assets directly with ?url to ensure they work in both dev and production
-import pawnAUrl from './assets/pawns/pawnA.svg?url'
-import pawnBUrl from './assets/pawns/pawnB.svg?url'
-import pawnCUrl from './assets/pawns/pawnC.svg?url'
-import pawnCCustomUrl from './assets/pawns/pawnC_custom.png?url'
-import pawnDUrl from './assets/pawns/pawnD.svg?url'
+// Dynamically load all token assets from the pawns folder so new files are auto-discovered
+// Uses Vite's import.meta.glob with eager + query to return file URLs at build time
+const tokenModules = import.meta.glob('./assets/pawns/*.{png,jpg,svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 
-// Create available tokens list with the imported URLs
-const availableTokens = [
-  { path: './assets/pawns/pawnA.svg', url: pawnAUrl, name: 'pawnA.svg' },
-  { path: './assets/pawns/pawnB.svg', url: pawnBUrl, name: 'pawnB.svg' },
-  { path: './assets/pawns/pawnC.svg', url: pawnCUrl, name: 'pawnC.svg' },
-  { path: './assets/pawns/pawnC_custom.png', url: pawnCCustomUrl, name: 'pawnC_custom.png' },
-  { path: './assets/pawns/pawnD.svg', url: pawnDUrl, name: 'pawnD.svg' }
-]
+// Build available tokens array sorted by filename
+const availableTokens = Object.entries(tokenModules)
+  .map(([path, url]) => {
+    const rawName = path.split('/').pop()
+    const name = rawName || 'unknown'
+    return { path, url, name }
+  })
+  .sort((a, b) => a.name.localeCompare(b.name))
 
-console.log('Available tokens:', availableTokens)
+console.log('Available tokens (auto-discovered):', availableTokens)
 
 // Expose available tokens and setter so static HTML token buttons can use them
 ;(window as any).availableTokens = availableTokens
 ;(window as any).setPawnTexture = setPawnTexture
 
-function ensureSprite(ref: 'A'|'B'|'C') {
-  const cur = ref === 'A' ? pawnASprite : (ref === 'B' ? pawnBSprite : pawnCSprite)
+function ensureSprite(ref: 'A'|'M1'|'C'|'D'|'E'|'F') {
+  let cur: Sprite | null = null
+  switch(ref) {
+    case 'A': cur = pawnASprite; break
+    case 'M1': cur = pawnM1Sprite; break
+    case 'C': cur = pawnCSprite; break
+    case 'D': cur = pawnDSprite; break
+    case 'E': cur = pawnESprite; break
+    case 'F': cur = pawnFSprite; break
+  }
   if (cur) return cur
+  
   const s = new Sprite()
   s.anchor.set(0.5)
   pieces.addChild(s)
-  if (ref === 'A') pawnASprite = s; else if (ref === 'B') pawnBSprite = s; else pawnCSprite = s
+  
+  switch(ref) {
+    case 'A': pawnASprite = s; break
+    case 'M1': pawnM1Sprite = s; break
+    case 'C': pawnCSprite = s; break
+    case 'D': pawnDSprite = s; break
+    case 'E': pawnESprite = s; break
+    case 'F': pawnFSprite = s; break
+  }
   return s
 }
 
-async function setPawnTexture(ref: 'A'|'B'|'C', url: string) {
+async function setPawnTexture(ref: 'A'|'M1'|'C'|'D'|'E'|'F', url: string) {
   console.log(`Loading texture for ${ref} from:`, url)
   const sp = ensureSprite(ref)
   sp.visible = false
@@ -681,18 +2072,134 @@ async function setPawnTexture(ref: 'A'|'B'|'C', url: string) {
   }
 }
 
-// Default selection: prefer pawnC (custom or built-in) for Pawn A, and pawnD for Pawn B.
-// This makes A use pawnC.svg and B use pawnD.svg by default as requested.
+// Default selection: prefer pawnC (custom or built-in) for Pawn A, and pawnD for Pawn M1.
+// This makes A use pawnC.svg and M1 use pawnD.svg by default as requested.
 const defCForA = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name))
-const defDForB = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnD\./i.test(t.name))
-const defA = defCForA || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0]
-const defB = defDForB || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0]
+const defDForM1 = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnD\./i.test(t.name))
+const defA = defCForA || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0] || { url: '', name: 'unknown' }
+const defM1 = defDForM1 || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || { url: '', name: 'unknown' }
 // Keep defC as the C slot (custom pawn image) fallback
-const defC = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0]
+const defC = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || { url: '', name: 'unknown' }
+// Add defaults for D, E, F pawns
+const defD = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0] || { url: '', name: 'unknown' }
+const defE = availableTokens.find(t => /pawnE\./i.test(t.name)) || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || { url: '', name: 'unknown' }
+const defF = availableTokens.find(t => /pawnF\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || { url: '', name: 'unknown' }
 
 if (defA) setPawnTexture('A', defA.url)
-if (defB) setPawnTexture('B', defB.url)
+if (defM1) setPawnTexture('M1', defM1.url)
 if (defC) setPawnTexture('C', defC.url)
+if (defD) setPawnTexture('D', defD.url)
+if (defE) setPawnTexture('E', defE.url)
+if (defF) setPawnTexture('F', defF.url)
+
+// Build compact token manager for the controls panel
+buildCompactTokenManager()
+
+// Build compact token manager for controls panel
+function buildCompactTokenManager() {
+  const container = document.getElementById('token-manager-content')
+  if (!container) return
+  
+  container.innerHTML = ''
+  
+  // Title header
+  const header = document.createElement('div')
+  header.style.cssText = 'color:#f59e0b;font-weight:600;font-size:12px;margin-bottom:6px;'
+  header.textContent = '🎭 Token Manager'
+  container.appendChild(header)
+  
+  // Create compact token row for each pawn
+  const createCompactTokenRow = (label: string, who: 'A'|'M1'|'C'|'D'|'E'|'F', def?: { url: string, name: string }) => {
+    const row = document.createElement('div')
+    row.style.cssText = 'margin-bottom:8px;'
+    
+    // Pawn label with icon
+    const labelDiv = document.createElement('div')
+    labelDiv.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;'
+    
+    const icon = document.createElement('div')
+    icon.style.cssText = 'width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid #4f46e5;font-size:8px;color:white;'
+    
+    // Set icon colors based on pawn
+    switch(who) {
+      case 'A': icon.style.background = '#5aa9e6'; icon.textContent = 'A'; break
+      case 'M1': icon.style.background = '#e65a5a'; icon.textContent = 'M1'; break
+      case 'C': icon.style.background = '#6d28d9'; icon.textContent = 'C'; break
+      case 'D': icon.style.background = '#9333ea'; icon.textContent = 'D'; break
+      case 'E': icon.style.background = '#059669'; icon.textContent = 'E'; break
+      case 'F': icon.style.background = '#f59e0b'; icon.textContent = 'F'; break
+    }
+    
+    const labelText = document.createElement('span')
+    labelText.style.cssText = 'color:#e5e7eb;font-size:11px;font-weight:500;'
+    labelText.textContent = label
+    
+    labelDiv.appendChild(icon)
+    labelDiv.appendChild(labelText)
+    row.appendChild(labelDiv)
+    
+    // Token buttons
+    const buttonsDiv = document.createElement('div')
+    buttonsDiv.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap;'
+    
+    availableTokens.forEach(token => {
+      const btn = document.createElement('button')
+      btn.className = 'token-btn'
+      btn.setAttribute('data-pawn', who)
+      btn.setAttribute('data-file', token.name)
+      
+      const isDefault = def && token.url === def.url
+      btn.style.cssText = `padding:3px 6px;background:${isDefault ? '#0891b2' : '#4b5563'};color:${isDefault ? 'white' : '#d1d5db'};border:none;border-radius:3px;cursor:pointer;font-size:9px;font-weight:500;flex:1;min-width:45px;`
+      btn.textContent = token.name.replace('.svg', '').replace('.png', '')
+      btn.title = token.name
+      
+      btn.addEventListener('click', () => {
+        setPawnTexture(who, token.url)
+        // Update button styles
+        buttonsDiv.querySelectorAll('button').forEach(b => {
+          b.style.background = '#4b5563'
+          b.style.color = '#d1d5db'
+        })
+        btn.style.background = '#0891b2'
+        btn.style.color = 'white'
+      })
+      
+      buttonsDiv.appendChild(btn)
+    })
+    
+    row.appendChild(buttonsDiv)
+    return row
+  }
+  
+  // Add all pawn rows
+  container.appendChild(createCompactTokenRow('Pawn A', 'A', defA))
+  container.appendChild(createCompactTokenRow('Pawn M1', 'M1', defM1))
+  container.appendChild(createCompactTokenRow('Pawn C', 'C', defC))
+  container.appendChild(createCompactTokenRow('Pawn D', 'D', defD))
+  container.appendChild(createCompactTokenRow('Pawn E', 'E', defE))
+  container.appendChild(createCompactTokenRow('Pawn F', 'F', defF))
+  
+  // Status footer
+  const footer = document.createElement('div')
+  footer.style.cssText = 'display:flex;align-items:center;justify-content:space-between;font-size:10px;margin-top:8px;padding-top:6px;border-top:1px solid #374151;'
+  
+  const status = document.createElement('span')
+  status.style.cssText = 'color:#9ca3af;'
+  status.textContent = `${availableTokens.length} tokens found`
+  
+  const rescanBtn = document.createElement('button')
+  rescanBtn.id = 'rescan-assets-btn'
+  rescanBtn.style.cssText = 'padding:3px 8px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:500;'
+  rescanBtn.textContent = 'Rescan'
+  rescanBtn.addEventListener('click', () => {
+    // Rebuild the token manager
+    buildCompactTokenManager()
+  })
+  
+  footer.appendChild(status)
+  footer.appendChild(rescanBtn)
+  container.appendChild(footer)
+}
 
 // Build comprehensive token selector interface
 export function buildTokenSelectors() {
@@ -737,7 +2244,7 @@ export function buildTokenSelectors() {
   content.style.cssText = 'display:block;'
 
   // Create token button grid for each pawn
-  const createTokenRow = (label: string, who: 'A'|'B'|'C', def?: { url: string, name: string } | undefined) => {
+  const createTokenRow = (label: string, who: 'A'|'M1'|'C'|'D'|'E'|'F', def?: { url: string, name: string } | undefined) => {
     const cont = document.createElement('div')
     cont.style.cssText = 'margin-bottom:12px; padding:8px; background:rgba(17,24,39,0.5); border-radius:6px;'
     
@@ -822,11 +2329,17 @@ export function buildTokenSelectors() {
   }
 
   const a = createTokenRow('Pawn A', 'A', defA)
-  const b = createTokenRow('Pawn B', 'B', defB)
+  const b = createTokenRow('Pawn M1', 'M1', defM1)
   const c = createTokenRow('Pawn C', 'C', defC)
+  const d = createTokenRow('Pawn D', 'D', defD)
+  const e = createTokenRow('Pawn E', 'E', defE)
+  const f = createTokenRow('Pawn F', 'F', defF)
   content.appendChild(a.cont)
   content.appendChild(b.cont)
   content.appendChild(c.cont)
+  content.appendChild(d.cont)
+  content.appendChild(e.cont)
+  content.appendChild(f.cont)
 
   const foot = document.createElement('div')
   foot.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid #374151;'
@@ -865,14 +2378,36 @@ export function buildTokenSelectors() {
 
 
 // Demo defenses helper
-function defenderFor(id: 'A'|'B'): DefenderProfile { return id === 'A' ? defenderA : defenderB }
+function defenderFor(id: 'A'|'M1'|'C'|'D'|'E'|'F'): DefenderProfile { 
+  switch(id) {
+    case 'A': return defenderA;
+    case 'M1': return defenderM1;
+    case 'C': return defenderC;
+    case 'D': return defenderD;
+    case 'E': return defenderE;
+    case 'F': return defenderF;
+  }
+}
 
 function planFromActiveTo(mx: number, my: number) {
-  const active = turns.active?.id === 'A' ? pawnA : pawnB
-  const other = turns.active?.id === 'A' ? pawnB : pawnA
+  const activeId = turns.active?.id
+  let active, other;
+  switch(activeId) {
+    case 'A': active = pawnA; break;
+    case 'M1': active = pawnM1; break;
+    case 'C': active = pawnC; break;
+    case 'D': active = pawnD; break;
+    case 'E': active = pawnE; break;
+    case 'F': active = pawnF; break;
+    default: active = pawnA; break;
+  }
+  
+  // For threat calculation, find closest enemy pawn (for now, use M1 as default enemy)
+  other = pawnM1;
+  
   const allowDiagonal = true
   const dontCrossCorners = true
-  const threatSet = threatSetFrom(other.x, other.y, other.size, other === pawnB ? reachB : reachA)
+  const threatSet = threatSetFrom(other.x, other.y, other.size, other === pawnM1 ? reachM1 : reachA)
   const avoid = (document.getElementById('avoid-toggle') as HTMLInputElement | null)?.checked ?? true
   const path = avoid
     ? planPathAvoidingThreat(G, active.x, active.y, mx, my, { allowDiagonal, dontCrossCorners, avoidThreat: true, threatSet, avoidDifficult: preferEasyTerrain })
@@ -901,17 +2436,33 @@ function commitEndTurn() {
   if (turns.round !== before) (turns as any).aooUsed = {}
   // skip defeated
   let safety = 0
-  while (safety++ < 4) {
-  const ap = turns.active?.id === 'A' ? pawnA : pawnB
+  while (safety++ < 10) {
+    const activeId = turns.active?.id
+    let ap;
+    switch(activeId) {
+      case 'A': ap = pawnA; break;
+      case 'M1': ap = pawnM1; break;
+      case 'C': ap = pawnC; break;
+      case 'D': ap = pawnD; break;
+      case 'E': ap = pawnE; break;
+      case 'F': ap = pawnF; break;
+      default: ap = { hp: 0 }; break;
+    }
     if (ap.hp > 0) break
     endTurn(turns)
   }
-  appendLogLine(`End Turn -> Round ${turns.round}, Active=${turns.active?.id}`)
+  appendLogLine(`End Turn -> Round ${turns.round}, Active=${getPawnName(turns.active?.id || '')} (${turns.active?.id})`)
   drawAll()
   updateActionHUD(hudText())
+  updateInitiativeDisplay()
+  
+  // Update gold box display with new active turn
+  if ((window as any).goldBoxAdapter) {
+    (window as any).goldBoxAdapter.updatePartyDisplay?.()
+  }
   
   // Check if the new active pawn is a monster and AI is enabled
-  const newActivePawnId = turns.active?.id as 'A' | 'B'
+  const newActivePawnId = turns.active?.id as 'A' | 'M1'
   console.log(`🔍 Turn ended. New active pawn: ${newActivePawnId}`)
   
   if (newActivePawnId) {
@@ -937,12 +2488,12 @@ function commitEndTurn() {
   }
 }
 
-async function executeMonsterTurn(pawnId: 'A' | 'B') {
+async function executeMonsterTurn(pawnId: 'A' | 'M1') {
   console.log(`🤖 Executing Monster AI turn for Pawn ${pawnId}`)
   
   try {
     // Build game state for AI decision making
-    const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnB, {
+    const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnM1, {
       grid: G,
       terrain: G,
       effects: effects
@@ -993,16 +2544,20 @@ function cycleCoverAt(x: number, y: number) {
 }
 
 // Check if a click position is on a pawn
-function getPawnAtPosition(x: number, y: number): 'A' | 'B' | null {
+function getPawnAtPosition(x: number, y: number): 'A' | 'M1' | 'C' | 'D' | 'E' | 'F' | null {
   if (pawnA.x === x && pawnA.y === y) return 'A'
-  if (pawnB.x === x && pawnB.y === y) return 'B'
+  if (pawnM1.x === x && pawnM1.y === y) return 'M1'
+  if (pawnC.x === x && pawnC.y === y) return 'C'
+  if (pawnD.x === x && pawnD.y === y) return 'D'
+  if (pawnE.x === x && pawnE.y === y) return 'E'
+  if (pawnF.x === x && pawnF.y === y) return 'F'
   return null
 }
 
 // Context menu for pawn interactions
 let contextMenu: HTMLElement | null = null
 
-function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
+function showPawnContextMenu(pawnId: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', event: MouseEvent) {
   // Remove any existing context menu
   if (contextMenu) {
     contextMenu.remove()
@@ -1027,7 +2582,7 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
     min-width: 150px;
   `
 
-  const pawn = pawnId === 'A' ? pawnA : pawnB
+  const pawn = pawnId === 'A' ? pawnA : pawnM1
   const isActivePawn = turns.active?.id === pawnId
 
   // Menu header
@@ -1044,7 +2599,7 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
 
   // HP display
   const hpDisplay = document.createElement('div')
-  const maxHp = pawnId === 'A' ? pawnAMaxHP : pawnBMaxHP
+  const maxHp = pawnId === 'A' ? pawnAMaxHP : pawnM1MaxHP
   hpDisplay.textContent = `HP: ${pawn.hp}/${maxHp}`
   hpDisplay.style.cssText = `
     color: #9ca3af;
@@ -1155,8 +2710,8 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
         hideContextMenu();
         return 
       }
-      const attacker = turns.active?.id === 'A' ? pawnA : pawnB
-      const target = turns.active?.id === 'A' ? pawnB : pawnA
+      const attacker = turns.active?.id === 'A' ? pawnA : pawnM1
+      const target = turns.active?.id === 'A' ? pawnM1 : pawnA
       // Define simple spell data
       const spellLevel = selectedSpell === 'magic-missile' ? 1 : 2
       // Casting can provoke unless casting defensively succeeds
@@ -1169,9 +2724,12 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
         if (total >= dc) provoked = false
       }
       if (provoked) {
-        const otherId = turns.active?.id === 'A' ? 'B' : 'A'
+  // Normalize legacy pawn id 'B' to 'M1' when used in runtime logic
+  const activeId = turns.active?.id
+  const otherIdRaw = activeId === 'A' ? 'B' : 'A'
+  const otherId = (otherIdRaw === 'B') ? 'M1' : otherIdRaw
         const used = (turns as any).aooUsed?.[otherId] ?? 0
-        const threat = threatSetFrom(target.x, target.y, target.size, target === pawnB ? reachB : reachA)
+        const threat = threatSetFrom(target.x, target.y, target.size, target === pawnM1 ? reachM1 : reachA)
         if (threat.has(`${attacker!.x},${attacker!.y}`) && used < 1 && !flatFootedMode) {
           // Cover/fog prevention
           const prevented = aooPreventedByCoverOrFog(G, effects, { x: target.x, y: target.y }, { x: attacker!.x, y: attacker!.y }, [[attacker!.x, attacker!.y]])
@@ -1185,12 +2743,17 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
             if (aooOutcome.hit) {
               undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
               const base = aooOutcome.critical ? 10 : 5
-              const atkPawn = turns.active?.id === 'A' ? pawnA : pawnB
               const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
-              const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+              const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'M1'), packet)
               const taken = applied.taken
-              atkPawn.hp = Math.max(0, atkPawn.hp - taken)
-              appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Caster HP ${atkPawn.hp}.`)
+              
+              // Apply damage with Gold Box synchronization (only apply to character pawns, not monsters)
+              const activeId = turns.active?.id
+              if (activeId && activeId !== 'M1' && ['A', 'B', 'C', 'D', 'E', 'F'].includes(activeId)) {
+                const pawnRef = activeId as 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+                const damageResult = applyDamageToPawn(pawnRef, taken, 'attack_of_opportunity')
+                appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Caster HP ${damageResult.newHP}.`)
+              }
               // Concentration check to avoid losing the spell: DC 10 + damage dealt + spell level
               const roll2 = Math.floor(currentRNG()*20)+1
               const total2 = roll2 + concBonus
@@ -1217,7 +2780,7 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
         } else {
           const base = (Math.floor(currentRNG()*4)+1) + 1 // 1d4+1
           const packet: DamagePacket = { amount: base, types: ['force'] }
-          const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'B' : 'A'), packet)
+          const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'M1' : 'A'), packet)
           const taken = applied.taken
           target.hp = Math.max(0, target.hp - taken)
           appendLogLine(`Magic Missile hits for ${taken}${applied.preventedByER?` (ER)`:''}. Target HP ${target.hp}.`)
@@ -1270,7 +2833,7 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
     infoBtn.style.background = '#6b7280'
   })
   infoBtn.addEventListener('click', () => {
-    const reach = pawnId === 'A' ? reachA : reachB
+    const reach = pawnId === 'A' ? reachA : reachM1
     const defender = defenderFor(pawnId)
     const ac = computeAC(defender.ac)
     const threatSquares = threatenedSquares(pawn.x, pawn.y, pawn.size, reach).length
@@ -1315,7 +2878,11 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
     changeMonsterBtn.style.background = '#7c3aed'
   })
   changeMonsterBtn.addEventListener('click', () => {
-    showMonsterSelectionModal(pawnId)
+    if (pawnId === 'A' || pawnId === 'M1') {
+      showMonsterSelectionModal(pawnId)
+    } else {
+      appendLogLine(`Monster selection not available for Pawn ${pawnId}`)
+    }
     hideContextMenu()
   })
   menu.appendChild(changeMonsterBtn)
@@ -1330,7 +2897,7 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
 
   // AI Status Header
   const aiHeader = document.createElement('div')
-  const isAIEnabled = monsterAI.isEnabled() && monsterTurnManager.isMonsterPawn(pawnId)
+  const isAIEnabled = monsterAI.isEnabled() && (pawnId === 'A' || pawnId === 'M1') && monsterTurnManager.isMonsterPawn(pawnId)
   const currentPersonality = isAIEnabled ? monsterAI.getCurrentPersonality() : null
   
   aiHeader.textContent = isAIEnabled ? `🤖 AI Active: ${currentPersonality?.name}` : '🤖 Monster AI'
@@ -1367,15 +2934,23 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
   aiToggleBtn.addEventListener('click', () => {
     if (isAIEnabled) {
       // Disable AI
+    if (pawnId === 'A' || pawnId === 'M1') {
       monsterAI.disable()
       monsterTurnManager.setMonsterPawn(pawnId, false)
       appendLogLine(`Monster AI disabled for Pawn ${pawnId}`)
     } else {
+      appendLogLine(`Monster AI not available for Pawn ${pawnId}`)
+    }
+    } else {
       // Enable AI for this pawn
-      monsterTurnManager.setMonsterPawn(pawnId, true)
-      monsterAI.enable()
-      const personality = monsterAI.getCurrentPersonality()
-      appendLogLine(`Monster AI enabled for Pawn ${pawnId} as ${personality.name}`)
+      if (pawnId === 'A' || pawnId === 'M1') {
+        monsterTurnManager.setMonsterPawn(pawnId, true)
+        monsterAI.enable()
+        const personality = monsterAI.getCurrentPersonality()
+        appendLogLine(`Monster AI enabled for Pawn ${pawnId} as ${personality.name}`)
+      } else {
+        appendLogLine(`Monster AI not available for Pawn ${pawnId}`)
+      }
     }
     hideContextMenu()
   })
@@ -1409,20 +2984,24 @@ function showPawnContextMenu(pawnId: 'A' | 'B', event: MouseEvent) {
       appendLogLine(`Testing Monster AI for Pawn ${pawnId}...`)
       
       try {
-        const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnB, {
-          pawnId,
-          reachA,
-          reachB,
-          threatenedSquares,
-          attackRoll,
-          appendLogLine
-        })
-        
-        const success = await monsterTurnManager.executeMonsterTurn(pawnId, gameState)
-        if (success) {
-          appendLogLine(`Monster AI test completed for Pawn ${pawnId}`)
+        if (pawnId === 'A' || pawnId === 'M1') {
+          const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnM1, {
+            pawnId,
+            reachA,
+            reachM1,
+            threatenedSquares,
+            attackRoll,
+            appendLogLine
+          })
+          
+          const success = await monsterTurnManager.executeMonsterTurn(pawnId, gameState)
+          if (success) {
+            appendLogLine(`Monster AI test completed for Pawn ${pawnId}`)
+          } else {
+            appendLogLine(`Monster AI test failed for Pawn ${pawnId}`)
+          }
         } else {
-          appendLogLine(`Monster AI test failed for Pawn ${pawnId}`)
+          appendLogLine(`Monster AI test not available for Pawn ${pawnId}`)
         }
       } catch (error) {
         console.error('AI test error:', error)
@@ -1457,7 +3036,7 @@ function hideContextMenu() {
 }
 
 // Monster Selection Modal
-function showMonsterSelectionModal(pawnId: 'A' | 'B') {
+function showMonsterSelectionModal(pawnId: 'A' | 'M1') {
   // Create modal overlay
   const modalOverlay = document.createElement('div')
   modalOverlay.id = 'monster-selection-modal'
@@ -1678,7 +3257,7 @@ app.canvas.addEventListener('mousemove', (ev) => {
   
   if (editTerrain) return
   // If the active pawn is a monster controlled by the AI, disable user preview interactions
-  const activeId = turns.active?.id as 'A'|'B' | undefined
+  const activeId = turns.active?.id as 'A'|'M1' | undefined
   if (activeId && monsterTurnManager.isMonsterPawn(activeId) && monsterAI.isEnabled()) {
     // Show a disabled cursor so the user knows input is blocked during AI turns
     app.canvas.style.cursor = 'not-allowed'
@@ -1704,7 +3283,7 @@ app.canvas.addEventListener('mousemove', (ev) => {
   overlay.fill(0xffffff)
   // LoS overlay if enabled
   if (showLoS) {
-    const active = turns.active?.id === 'A' ? pawnB : pawnB
+    const active = turns.active?.id === 'A' ? pawnA : pawnM1
     const los = effects.losClearConsideringFog(active.x, active.y, mx, my)
     overlay.stroke({ color: los.clear ? 0x66ff66 : 0xff6666, width: 2 }).moveTo(active.x*CELL+CELL/2, active.y*CELL+CELL/2).lineTo(mx*CELL+CELL/2, my*CELL+CELL/2)
   }
@@ -1722,8 +3301,8 @@ app.canvas.addEventListener('click', (ev) => {
     return
   }
   // Prevent manual clicks/movement while AI controls the active pawn
-  const activeId = turns.active?.id as 'A'|'B' | undefined
-  if (activeId && monsterTurnManager.isMonsterPawn(activeId) && monsterAI.isEnabled()) {
+  const activeId = turns.active?.id as 'A'|'M1'|'C'|'D'|'E'|'F' | undefined
+  if (activeId && (activeId === 'A' || activeId === 'M1') && monsterTurnManager.isMonsterPawn(activeId) && monsterAI.isEnabled()) {
     appendLogLine(`Pawn ${activeId} is controlled by AI this turn. Manual movement disabled.`)
     return
   }
@@ -1738,11 +3317,21 @@ app.canvas.addEventListener('click', (ev) => {
   
   if (!attackMode) {
   if (gameOver) return
-    const active = turns.active?.id === 'A' ? pawnA : pawnB
+    const activeId = turns.active?.id
+    let active;
+    switch(activeId) {
+      case 'A': active = pawnA; break;
+      case 'M1': active = pawnM1; break;
+      case 'C': active = pawnC; break;
+      case 'D': active = pawnD; break;
+      case 'E': active = pawnE; break;
+      case 'F': active = pawnF; break;
+      default: active = pawnA; break;
+    }
     if (active.hp <= 0) { appendLogLine(`${turns.active?.id} is down.`); commitEndTurn(); return }
     const last = trimmed[trimmed.length - 1]
     // If attempting to move through/into an enemy-occupied square, require Tumble DC 25
-    const other = turns.active?.id === 'A' ? pawnB : pawnA
+    const other = pawnM1; // For simplicity, M1 is the main enemy
     if (last && last[0] === other.x && last[1] === other.y) {
       if (!tumbleEnabled) { appendLogLine('Cannot move through an enemy without Tumble.'); return }
       const roll = Math.floor(currentRNG()*20)+1
@@ -1764,7 +3353,7 @@ app.canvas.addEventListener('click', (ev) => {
     // If moving at full speed while tumbling, DC +10 (accelerated tumbling). Cannot run or charge (not modeled here).
     let avoided = false
     if (info.provokes && tumbleEnabled) {
-      const activeSpeed = (turns.active?.id === 'A' ? pawnA : pawnB).speed
+      const activeSpeed = active.speed
       const movingFullSpeed = info.feet > (activeSpeed / 2)
       const dc = skills.tumble.dcAvoidAoO({ accelerated: movingFullSpeed })
       const roll = Math.floor(currentRNG()*20)+1
@@ -1776,8 +3365,8 @@ app.canvas.addEventListener('click', (ev) => {
   updateActionHUD(hudText())
     // AoO from the other pawn if path provokes and they have AoO available
     if (info.provokes && !avoided) {
-      const otherId = turns.active?.id === 'A' ? 'B' : 'A'
-      const otherPawn = otherId === 'A' ? pawnA : pawnB
+      const otherId = turns.active?.id === 'A' ? 'M1' : 'A'
+      const otherPawn = otherId === 'A' ? pawnA : pawnM1
       // Flat-footed creatures can't make AoOs (simplified demo toggle)
       if (flatFootedMode) {
         appendLogLine(`${otherId} is flat-footed and cannot make AoOs.`)
@@ -1797,9 +3386,9 @@ app.canvas.addEventListener('click', (ev) => {
         if (outcome.hit) {
           undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
           const raw = rollWeaponDamage(currentRNG, { count: 1, sides: 6, strMod: 3, strScale: 1, critMult: outcome.critical ? 2 : 1 })
-          const tgt = turns.active?.id === 'A' ? pawnA : pawnB
+          const tgt = turns.active?.id === 'A' ? pawnA : pawnM1
           const packet: DamagePacket = { amount: raw, types: ['slashing'], bypassTags: ['magic'] }
-          const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+          const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'M1'), packet)
           const taken = applied.taken
           tgt.hp = Math.max(0, tgt.hp - taken)
           appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${tgt.hp}.`)
@@ -1812,12 +3401,22 @@ app.canvas.addEventListener('click', (ev) => {
     }
   // If target had readied 'attack-when-adjacent' and ended adjacent, trigger now
   const idNow = turns.active?.id
-  const otherIdNow = idNow === 'A' ? 'B' : 'A'
-  const otherPawnNow = otherIdNow === 'A' ? pawnA : pawnB
+  const otherIdNow = idNow === 'A' ? 'M1' : 'A'
+  const otherPawnNow = otherIdNow === 'A' ? pawnA : pawnM1
   const readyMap: any = (turns as any).ready || {}
   if (readyMap[otherIdNow]?.type === 'attack-when-adjacent' && !readyMap[otherIdNow].used) {
-    const dx = Math.abs((idNow === 'A' ? pawnA.x : pawnB.x) - otherPawnNow.x)
-    const dy = Math.abs((idNow === 'A' ? pawnA.y : pawnB.y) - otherPawnNow.y)
+    let currentPawn;
+    switch(idNow) {
+      case 'A': currentPawn = pawnA; break;
+      case 'M1': currentPawn = pawnM1; break;
+      case 'C': currentPawn = pawnC; break;
+      case 'D': currentPawn = pawnD; break;
+      case 'E': currentPawn = pawnE; break;
+      case 'F': currentPawn = pawnF; break;
+      default: currentPawn = pawnA; break;
+    }
+    const dx = Math.abs(currentPawn.x - otherPawnNow.x)
+    const dy = Math.abs(currentPawn.y - otherPawnNow.y)
     if (Math.max(dx, dy) === 1) {
       readyMap[otherIdNow].used = true
       appendLogLine(`${otherIdNow}'s readied action triggers!`)
@@ -1828,27 +3427,46 @@ app.canvas.addEventListener('click', (ev) => {
       if (out.hit) {
         undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
         const raw = rollWeaponDamage(currentRNG, { count: 1, sides: 6, strMod: 3, strScale: 1, critMult: out.critical ? 2 : 1 })
-        const tgt = idNow === 'A' ? pawnA : pawnB
+        const tgt = currentPawn
   const packet: DamagePacket = { amount: raw, types: ['slashing'], bypassTags: ['magic'] }
-  const applied = applyDamage(defenderFor(idNow === 'A' ? 'A' : 'B'), packet)
+  const applied = applyDamage(defenderFor(idNow as 'A'|'M1'|'C'|'D'|'E'|'F'), packet)
         const taken = applied.taken
         tgt.hp = Math.max(0, tgt.hp - taken)
         appendLogLine(`${otherIdNow} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${tgt.hp}.`)
-        if (tgt.hp <= 0) { gameOver = otherIdNow as 'A'|'B'; appendLogLine(`${otherIdNow} wins!`) }
+        if (tgt.hp <= 0) { gameOver = otherIdNow as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${otherIdNow} wins!`) }
       }
     }
   }
   drawAll()
   // Remain on the same turn; use End Turn button to proceed.
   } else {
-    // attack mode: if clicked on enemy square, resolve a simple attack
-    const target = turns.active?.id === 'A' ? pawnB : pawnA
-    if (mx === target.x && my === target.y) {
+    // attack mode: check if clicked on any pawn's square
+    const targetPawnId = getPawnAtPosition(mx, my)
+    if (targetPawnId && targetPawnId !== turns.active?.id) {
+      let target;
+      switch(targetPawnId) {
+        case 'A': target = pawnA; break;
+        case 'M1': target = pawnM1; break;
+        case 'C': target = pawnC; break;
+        case 'D': target = pawnD; break;
+        case 'E': target = pawnE; break;
+        case 'F': target = pawnF; break;
+        default: return;
+      }
   if (gameOver) return
   if (!consume(turns.budget!, 'standard')) { appendLogLine('Standard action already used.'); return }
   
-  const attacker = turns.active?.id === 'A' ? pawnA : pawnB
-  const attackerReach = turns.active?.id === 'A' ? reachA : reachB
+  const activeId = turns.active?.id
+  let attacker, attackerReach;
+  switch(activeId) {
+    case 'A': attacker = pawnA; attackerReach = reachA; break;
+    case 'M1': attacker = pawnM1; attackerReach = reachM1; break;
+    case 'C': attacker = pawnC; attackerReach = false; break;
+    case 'D': attacker = pawnD; attackerReach = false; break;
+    case 'E': attacker = pawnE; attackerReach = false; break;
+    case 'F': attacker = pawnF; attackerReach = false; break;
+    default: attacker = pawnA; attackerReach = reachA; break;
+  }
   
   // Check if attack is within reach
   const reachCheck = isWithinAttackReach(
@@ -1873,9 +3491,9 @@ app.canvas.addEventListener('click', (ev) => {
   const def: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
   // If making a ranged attack while threatened, target gets an AoO first
   if (rangedMode) {
-  const threat = threatSetFrom(target.x, target.y, target.size, target === pawnB ? reachB : reachA)
+  const threat = threatSetFrom(target.x, target.y, target.size, target === pawnM1 ? reachM1 : reachA)
     const attackerKey = turns.active?.id
-    const defenderKey = attackerKey === 'A' ? 'B' : 'A'
+    const defenderKey = attackerKey === 'A' ? 'M1' : 'A'
     if (threat.has(`${attacker!.x},${attacker!.y}`)) {
       if (flatFootedMode) {
         appendLogLine(`${defenderKey} is flat-footed and cannot make AoOs.`)
@@ -1894,13 +3512,17 @@ app.canvas.addEventListener('click', (ev) => {
           if (aooOutcome.hit) {
             undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
             const base = aooOutcome.critical ? 10 : 5
-            const atkPawn = attackerKey === 'A' ? pawnA : pawnB
             const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
-            const applied = applyDamage(defenderFor(attackerKey === 'A' ? 'A' : 'B'), packet)
+            const applied = applyDamage(defenderFor(attackerKey as 'A'|'M1'|'C'|'D'|'E'|'F'), packet)
             const taken = applied.taken
-            atkPawn.hp = Math.max(0, atkPawn.hp - taken)
-            appendLogLine(`${defenderKey} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Attacker HP ${atkPawn.hp}.`)
-            if (atkPawn.hp <= 0) { gameOver = defenderKey as 'A'|'B'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); return }
+            
+            // Apply damage with Gold Box synchronization (only to character pawns, not monsters)
+            if (attackerKey && attackerKey !== 'M1' && ['A', 'B', 'C', 'D', 'E', 'F'].includes(attackerKey)) {
+              const pawnRef = attackerKey as 'A'|'B'|'C'|'D'|'E'|'F'
+              const damageResult = applyDamageToPawn(pawnRef, taken, 'attack_of_opportunity')
+              appendLogLine(`${defenderKey} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Attacker HP ${damageResult.newHP}.`)
+              if (damageResult.newHP <= 0) { gameOver = defenderKey as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); return }
+            }
           }
             (turns as any).aooUsed![defenderKey] = used + 1
           }
@@ -1937,9 +3559,9 @@ app.canvas.addEventListener('click', (ev) => {
       if (outcome.hit) {
         undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
         const raw = rollWeaponDamage(currentRNG, { count: 1, sides: 8, strMod: 3, strScale: 1, critMult: outcome.critical ? 2 : 1 })
-        const targetPawn = turns.active?.id === 'A' ? pawnB : pawnA
+        const targetPawn = target  // Use the target we determined earlier
   const packet: DamagePacket = { amount: raw, types: ['slashing'], bypassTags: ['magic'] }
-  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'B' : 'A'), packet)
+  const applied = applyDamage(defenderFor(targetPawnId), packet)
         const taken = applied.taken
         targetPawn.hp = Math.max(0, targetPawn.hp - taken)
   appendLogLine(`${turns.active?.id} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${targetPawn.hp}.`)
@@ -1950,10 +3572,23 @@ app.canvas.addEventListener('click', (ev) => {
     // after the slash duration, show hit/miss indicator for 2s and flash the pawn for 2s
     setTimeout(() => {
       try { showHitOrMiss(overlay, target.x, target.y, CELL, true, 2000) } catch (e) {}
-      try { flashPawnHit(target === pawnA ? pawnASprite : pawnBSprite, 2000) } catch (e) {}
+      let targetSprite;
+      switch(targetPawnId) {
+        case 'A': targetSprite = pawnASprite; break;
+        case 'M1': targetSprite = pawnM1Sprite; break;
+        case 'C': 
+        case 'D': 
+        case 'E': 
+        case 'F': targetSprite = pawnCSprite; break;
+        default: targetSprite = pawnASprite; break;
+      }
+      try { flashPawnHit(targetSprite, 2000) } catch (e) {}
     }, 3000)
   } catch (e) { }
-  if (targetPawn.hp <= 0) { gameOver = turns.active?.id === 'A' ? 'A' : 'B'; appendLogLine(`${gameOver} wins!`) }
+  if (targetPawn.hp <= 0) { 
+    gameOver = activeId as 'A'|'M1'|'C'|'D'|'E'|'F' || null; 
+    appendLogLine(`${activeId || 'Unknown'} wins!`) 
+  }
       }
   drawAll()
   updateActionHUD(hudText())
@@ -2076,9 +3711,9 @@ document.getElementById('reachA-toggle')?.addEventListener('change', (e) => {
   appendLogLine(`Pawn A reach weapon: ${reachA ? 'ON' : 'OFF'}`)
   drawAll()
 })
-document.getElementById('reachB-toggle')?.addEventListener('change', (e) => {
-  reachB = (e.target as HTMLInputElement).checked
-  appendLogLine(`Pawn B reach weapon: ${reachB ? 'ON' : 'OFF'}`)
+document.getElementById('reachM1-toggle')?.addEventListener('change', (e) => {
+  reachM1 = (e.target as HTMLInputElement).checked
+  appendLogLine(`Pawn M1 reach weapon: ${reachM1 ? 'ON' : 'OFF'}`)
   drawAll()
 })
 document.getElementById('corner-cover-toggle')?.addEventListener('change', (e) => {
@@ -2115,8 +3750,8 @@ document.getElementById('spell-select')?.addEventListener('change', (e) => {
 })
 document.getElementById('cast-btn')?.addEventListener('click', () => {
   if (!consume(turns.budget!, 'standard')) { appendLogLine('Standard action already used.'); return }
-  const attacker = turns.active?.id === 'A' ? pawnA : pawnB
-  const target = turns.active?.id === 'A' ? pawnB : pawnA
+  const attacker = turns.active?.id === 'A' ? pawnA : pawnM1
+  const target = turns.active?.id === 'A' ? pawnM1 : pawnA
   // Define simple spell data
   const spellLevel = selectedSpell === 'magic-missile' ? 1 : 2
   // Casting can provoke unless casting defensively succeeds
@@ -2129,14 +3764,14 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
     if (total >= dc) provoked = false
   }
   if (provoked) {
-    const otherId = turns.active?.id === 'A' ? 'B' : 'A'
+    const otherId = turns.active?.id === 'A' ? 'M1' : 'A'
     const used = (turns as any).aooUsed?.[otherId] ?? 0
-  const threat = threatSetFrom(target.x, target.y, target.size, target === pawnB ? reachB : reachA)
+  const threat = threatSetFrom(target.x, target.y, target.size, target === pawnM1 ? reachM1 : reachA)
     if (threat.has(`${attacker!.x},${attacker!.y}`) && used < 1 && !flatFootedMode) {
       // Cover/fog prevention
       const prevented = aooPreventedByCoverOrFog(G, effects, { x: target.x, y: target.y }, { x: attacker!.x, y: attacker!.y }, [[attacker!.x, attacker!.y]])
       if (prevented) {
-        appendLogLine(`${otherId}'s AoO prevented by cover.`)
+  appendLogLine(`${otherId}'s AoO prevented by cover.`)
       } else {
       const aooAtk: AttackProfile = { bab: 2, abilityMod: 3, sizeMod: 0 }
       const aooDef: DefenderProfile = { ac: { base: 10, armor: 4, shield: 0, natural: 0, deflection: 0, dodge: 1, misc: 0 }, touchAttack: touchMode, flatFooted: flatFootedMode }
@@ -2145,9 +3780,9 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
       if (aooOutcome.hit) {
         undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
         const base = aooOutcome.critical ? 10 : 5
-        const atkPawn = turns.active?.id === 'A' ? pawnA : pawnB
+        const atkPawn = turns.active?.id === 'A' ? pawnA : pawnM1
   const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
-  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'M1'), packet)
         const taken = applied.taken
         atkPawn.hp = Math.max(0, atkPawn.hp - taken)
         appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Caster HP ${atkPawn.hp}.`)
@@ -2176,7 +3811,7 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
     } else {
       const base = (Math.floor(currentRNG()*4)+1) + 1 // 1d4+1
   const packet: DamagePacket = { amount: base, types: ['force'] }
-  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'B' : 'A'), packet)
+  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'M1' : 'A'), packet)
       const taken = applied.taken
       target.hp = Math.max(0, target.hp - taken)
       appendLogLine(`Magic Missile hits for ${taken}${applied.preventedByER?` (ER)`:''}. Target HP ${target.hp}.`)
@@ -2194,16 +3829,16 @@ document.getElementById('cast-btn')?.addEventListener('click', () => {
 })
 document.getElementById('potion-btn')?.addEventListener('click', () => {
   if (!consume(turns.budget!, 'standard')) { appendLogLine('Standard action already used.'); return }
-  const self = turns.active?.id === 'A' ? pawnA : pawnB
+  const self = turns.active?.id === 'A' ? pawnA : pawnM1
   undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
   const heal = 5
   self.hp = Math.min(self === pawnA ? 20 : 25, self.hp + heal)
   appendLogLine(`Drinks potion: heals ${heal}. HP now ${self.hp}.`)
   // Drinking a potion provokes if threatened and not prevented by cover/fog
-  const other = turns.active?.id === 'A' ? pawnB : pawnA
-  const threat = threatSetFrom(other.x, other.y, other.size, other === pawnB ? reachB : reachA)
+  const other = turns.active?.id === 'A' ? pawnM1 : pawnA
+  const threat = threatSetFrom(other.x, other.y, other.size, other === pawnM1 ? reachM1 : reachA)
   const key = `${self.x},${self.y}`
-  const otherId = turns.active?.id === 'A' ? 'B' : 'A'
+  const otherId = turns.active?.id === 'A' ? 'M1' : 'A'
   if (Provokes['drink-potion'] && threat.has(key) && !flatFootedMode) {
     const prevented = aooPreventedByCoverOrFog(G, effects, { x: other.x, y: other.y }, { x: self.x, y: self.y }, [[self.x, self.y]])
     const used = (turns as any).aooUsed?.[otherId] ?? 0
@@ -2216,7 +3851,7 @@ document.getElementById('potion-btn')?.addEventListener('click', () => {
         undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
         const base = aooOutcome.critical ? 10 : 5
   const packet: DamagePacket = { amount: base, types: ['slashing'], bypassTags: ['magic'] }
-  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'B'), packet)
+  const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'M1'), packet)
         const taken = applied.taken
         self.hp = Math.max(0, self.hp - taken)
         appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${self.hp}.`)
@@ -2247,12 +3882,62 @@ document.getElementById('apply-seed')?.addEventListener('click', () => {
 document.getElementById('reset-btn')?.addEventListener('click', () => {
   undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
   pawnA = { x: 2, y: 2, speed: 30, size: 'medium', hp: 20 }
-  pawnB = { x: 12, y: 8, speed: 30, size: 'large', hp: 25 }
+  const randomPos = generateRandomPosition()
+  pawnM1 = { ...randomPos, speed: 30, size: 'large', hp: 25 }
   gameOver = null
   ;(turns as any).aooUsed = {}
   appendLogLine('Reset encounter.')
   drawAll()
   updateActionHUD(hudText())
+})
+
+// Export current SaveData to a JSON file
+document.getElementById('export-btn')?.addEventListener('click', () => {
+  try {
+    const data = captureState()
+    const parsed = SaveDataSchema.parse(data)
+    const blob = new Blob([JSON.stringify(parsed, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    a.href = url
+    a.download = `srd-grid-save-${stamp}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    appendLogLine('Exported save to file.')
+  } catch (e) {
+    console.error('Export failed:', e)
+    appendLogLine('Export failed.')
+  }
+})
+
+// Import SaveData from a JSON file
+document.getElementById('import-btn')?.addEventListener('click', () => {
+  const input = document.getElementById('import-file') as HTMLInputElement | null
+  if (input) input.click()
+})
+
+document.getElementById('import-file')?.addEventListener('change', async (e) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files && input.files[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const raw = JSON.parse(text)
+    const data = SaveDataSchema.parse(raw)
+    restoreFromData(data)
+    appendLogLine('Imported save from file.')
+    // Persist to localStorage as well for convenience
+    try { localStorage.setItem('srd-grid-save', JSON.stringify(data)) } catch {}
+  } catch (err) {
+    console.error('Import failed:', err)
+    appendLogLine('Import failed: invalid or corrupted save file.')
+  } finally {
+    // Reset input so same file can be selected again later
+    input.value = ''
+  }
 })
 
 // Undo button
@@ -2288,11 +3973,11 @@ document.getElementById('save-btn')?.addEventListener('click', () => {
     version: 2,
     grid: G.flags,
     pawnA: { ...pawnA, reach: reachA },
-    pawnB: { ...pawnB, reach: reachB },
+    pawnM1: { ...pawnM1, reach: reachM1 },
     round: turns.round,
     initiative: { order: (turns.tracker as any).serialize().order, index: (turns.tracker as any).serialize().index },
     aooUsed: (turns as any).aooUsed || {},
-  toggles: { rangedMode, touchMode, flatFootedMode, editTerrain, preciseShot, showLoS, defensiveCast, tumble: tumbleEnabled, reachA, reachB, cornerCover: useCornerCover },
+  toggles: { rangedMode, touchMode, flatFootedMode, editTerrain, preciseShot, showLoS, defensiveCast, tumble: tumbleEnabled, reachA, reachM1, cornerCover: useCornerCover },
   inputs: { tumbleBonus, concentrationBonus: concBonus, spell: selectedSpell },
     rngSeed: currentSeed ?? null,
   effects: { active: effects.serializeEffects() }
@@ -2323,10 +4008,10 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
   pawnA = { ...pawnA, x, y, speed, hp }
   reachA = !!(data.pawnA as any).reach
     }
-    if (data.pawnB) {
-  const { x,y,speed,hp } = data.pawnB
-  pawnB = { ...pawnB, x, y, speed, hp }
-  reachB = !!(data.pawnB as any).reach
+    if (data.pawnM1) {
+  const { x,y,speed,hp } = data.pawnM1
+  pawnM1 = { ...pawnM1, x, y, speed, hp }
+  reachM1 = !!(data.pawnM1 as any).reach
     }
     if (typeof data.round === 'number') (turns as any).round = data.round
     if (data.initiative) {
@@ -2344,7 +4029,7 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
   defensiveCast = !!data.toggles.defensiveCast
   tumbleEnabled = !!data.toggles.tumble
   reachA = !!data.toggles.reachA
-  reachB = !!data.toggles.reachB
+  reachM1 = !!data.toggles.reachM1
   useCornerCover = !!data.toggles.cornerCover
   const rEl = document.getElementById('ranged-toggle') as HTMLInputElement | null
   if (rEl) rEl.checked = rangedMode
@@ -2364,8 +4049,8 @@ document.getElementById('load-btn')?.addEventListener('click', () => {
   if (tuEl) tuEl.checked = tumbleEnabled
   const ra = document.getElementById('reachA-toggle') as HTMLInputElement | null
   if (ra) ra.checked = reachA
-  const rb = document.getElementById('reachB-toggle') as HTMLInputElement | null
-  if (rb) rb.checked = reachB
+  const rb = document.getElementById('reachM1-toggle') as HTMLInputElement | null
+  if (rb) rb.checked = reachM1
   const cc = document.getElementById('corner-cover-toggle') as HTMLInputElement | null
   if (cc) cc.checked = useCornerCover
     }
@@ -2394,7 +4079,7 @@ Object.assign(window as any, { app, G })
 function initializeMonsterUI() {
   monsterSelectionUI.init('monster-selection-panel')
   monsterSelectionUI.onMonsterSelected((monster) => {
-    applyMonsterToPawnB(monster)
+    applyMonsterToPawnM1(monster)
     toggleMonsterSelectionUI() // Close UI after selection
   })
 }
@@ -2445,7 +4130,7 @@ function toggleMonsterSelectionUI() {
 
 function selectRandomMonster() {
   const monster = monsterService.selectRandomMonster()
-  applyMonsterToPawnB(monster)
+  applyMonsterToPawnM1(monster)
   appendLogLine(`Random monster selected: ${monster.name}`)
 }
 
@@ -2549,17 +4234,17 @@ try {
   };
 
   // Add function to designate a pawn as a monster
-  (window as any).setMonsterPawn = (pawnId: 'A' | 'B') => {
+  (window as any).setMonsterPawn = (pawnId: 'A' | 'M1') => {
     console.log(`Setting pawn ${pawnId} as monster`);
     monsterTurnManager.setMonsterPawn(pawnId, true);
     monsterDialogueUI.showMessage(`Pawn ${pawnId} is now controlled by Monster AI!`, monsterAI.getCurrentPersonality());
   };
 
   // Add function to manually trigger a monster turn for testing
-  (window as any).triggerMonsterTurn = async (pawnId?: 'A' | 'B') => {
-    const targetPawn = pawnId || turns.active?.id as 'A' | 'B';
-    if (!targetPawn) {
-      console.error('No pawn specified and no active pawn found');
+  (window as any).triggerMonsterTurn = async (pawnId?: 'A' | 'M1') => {
+    const targetPawn = pawnId || turns.active?.id as 'A' | 'M1';
+    if (!targetPawn || (targetPawn !== 'A' && targetPawn !== 'M1')) {
+      console.error('Invalid pawn specified. Must be A or M1');
       return;
     }
     
@@ -2582,7 +4267,7 @@ Current Status:
 - Monster AI enabled: ${monsterAI.isEnabled()}
 - Current personality: ${monsterAI.getCurrentPersonality().name}
 - Available personalities: ${monsterAI.getAvailablePersonalities().join(', ')}
-- Monster pawns: A=${monsterTurnManager.isMonsterPawn('A')}, B=${monsterTurnManager.isMonsterPawn('B')}
+- Monster pawns: A=${monsterTurnManager.isMonsterPawn('A')}, M1=${monsterTurnManager.isMonsterPawn('M1')}
 - Active pawn: ${turns.active?.id}
     `);
     monsterDialogueUI.showMessage('Monster AI help displayed in console. Check console for commands.', monsterAI.getCurrentPersonality());
@@ -2590,7 +4275,7 @@ Current Status:
 
   // Expose game functions and state for Monster AI action execution
   (window as any).pawnA = pawnA;
-  (window as any).pawnB = pawnB;
+  (window as any).pawnM1 = pawnM1;
   (window as any).turns = turns;
   (window as any).consume = consume;
   (window as any).planFromActiveTo = planFromActiveTo;
@@ -2602,7 +4287,7 @@ Current Status:
   (window as any).CELL = CELL;
   (window as any).isWithinAttackReach = isWithinAttackReach;
   (window as any).reachA = reachA;
-  (window as any).reachB = reachB;
+  (window as any).reachM1 = reachM1;
   (window as any).rangedMode = rangedMode;
   
 } catch (error) {
@@ -2634,15 +4319,15 @@ document.addEventListener('keydown', (e) => {
   }
   
   if (key === 'x' || key === 'X') {
-    // Show context menu for pawn B
-    if (pawnB.hp > 0) {
+    // Show context menu for pawn M1
+    if (pawnM1.hp > 0) {
       const rect = app.canvas.getBoundingClientRect()
       const fakeEvent = new MouseEvent('contextmenu', {
-        clientX: rect.left + (pawnB.x * CELL) + (CELL / 2),
-        clientY: rect.top + (pawnB.y * CELL) + (CELL / 2),
+        clientX: rect.left + (pawnM1.x * CELL) + (CELL / 2),
+        clientY: rect.top + (pawnM1.y * CELL) + (CELL / 2),
         bubbles: true
       })
-      showPawnContextMenu('B', fakeEvent)
+      showPawnContextMenu('M1', fakeEvent)
     }
     return
   }

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Token Manager Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .test-results { margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <h1>Token Manager Functionality Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="test-results" class="test-results"></div>
+    </div>
+    
+    <script>
+        // Test function to verify all pawns are handled
+        function testTokenManager() {
+            const results = [];
+            
+            // Check if main page is accessible
+            try {
+                const mainWindow = window.open('http://localhost:5175/', 'mainTest', 'width=800,height=600');
+                
+                setTimeout(() => {
+                    try {
+                        // Check if token manager content exists
+                        const tokenContent = mainWindow.document.getElementById('token-manager-content');
+                        if (tokenContent) {
+                            results.push('✓ Token manager content div found');
+                            
+                            // Check for all 6 pawns
+                            const expectedPawns = ['A', 'M1', 'C', 'D', 'E', 'F'];
+                            let pawnCount = 0;
+                            
+                            expectedPawns.forEach(pawn => {
+                                const pawnElements = tokenContent.querySelectorAll(`[data-pawn="${pawn}"]`);
+                                if (pawnElements.length > 0) {
+                                    results.push(`✓ Pawn ${pawn} found (${pawnElements.length} buttons)`);
+                                    pawnCount++;
+                                } else {
+                                    results.push(`✗ Pawn ${pawn} NOT found`);
+                                }
+                            });
+                            
+                            if (pawnCount === 6) {
+                                results.push('✓ ALL 6 PAWNS SUCCESSFULLY FOUND!');
+                            } else {
+                                results.push(`✗ Only ${pawnCount}/6 pawns found`);
+                            }
+                        } else {
+                            results.push('✗ Token manager content div not found');
+                        }
+                        
+                        displayResults(results);
+                        mainWindow.close();
+                        
+                    } catch (err) {
+                        results.push('✗ Error accessing main window: ' + err.message);
+                        displayResults(results);
+                        mainWindow.close();
+                    }
+                }, 2000); // Give time for the page to load
+                
+            } catch (err) {
+                results.push('✗ Error opening main window: ' + err.message);
+                displayResults(results);
+            }
+        }
+        
+        function displayResults(results) {
+            const container = document.getElementById('test-results');
+            const allPassed = results.every(r => r.startsWith('✓'));
+            
+            container.innerHTML = results.map(result => 
+                `<div style="margin: 5px 0; color: ${result.startsWith('✓') ? 'green' : 'red'}">${result}</div>`
+            ).join('');
+            
+            if (allPassed) {
+                container.parentElement.classList.add('success');
+                container.parentElement.classList.remove('error');
+            } else {
+                container.parentElement.classList.add('error');
+                container.parentElement.classList.remove('success');
+            }
+        }
+        
+        // Auto-run test after page loads
+        window.onload = function() {
+            setTimeout(testTokenManager, 1000);
+        };
+    </script>
+    
+    <button onclick="testTokenManager()">Run Test Again</button>
+</body>
+</html>

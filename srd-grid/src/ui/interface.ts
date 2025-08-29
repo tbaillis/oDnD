@@ -178,9 +178,9 @@ export class CharacterSheetUI {
   }
 
   private renderEquipment(): string {
-    if (!this.character) return ''
+    if (!this.character || !this.character.equipment) return ''
     
-    const weapons = this.character.equipment.weapons.map(w => w.name).join(', ') || 'None'
+    const weapons = this.character.equipment.weapons?.map(w => w.name).join(', ') || 'None'
     const armor = this.character.equipment.armor?.name || 'None'
 
     return `
@@ -387,7 +387,7 @@ export class CombatLog {
     log.id = 'combat-log'
     log.style.cssText = `
       position: fixed;
-      top: 60px;
+      bottom: 8px;
       right: 8px;
       width: 300px;
       max-height: 160px;
@@ -453,8 +453,14 @@ export class UIManager {
     this.characterCreation = new CharacterCreationModal({
       onComplete: (character) => {
         console.log('CharacterCreationModal onComplete called with:', character)
+        console.log('Character data type:', typeof character)
+        console.log('Character keys:', Object.keys(character))
+        
         // Convert the modal character data to the expected Character type
         const convertedCharacter = this.convertCharacterData(character)
+        console.log('Converted character:', convertedCharacter)
+        console.log('Converted character name:', convertedCharacter.name)
+        
         this.characterSheet.setCharacter(convertedCharacter)
         this.combatLog.addMessage(`Created new character: ${character.name}`)
         
@@ -462,8 +468,20 @@ export class UIManager {
         this.dmChat.addSystemMessage(`New character created: ${character.name}, a ${character.race} ${character.characterClass}`)
         
         // Apply character to Pawn A if applyCharacterToPawnA is available globally
+        console.log('Checking for applyCharacterToPawnA function...')
+        console.log('window.applyCharacterToPawnA type:', typeof (window as any).applyCharacterToPawnA)
+        
         if (typeof (window as any).applyCharacterToPawnA === 'function') {
-          (window as any).applyCharacterToPawnA(convertedCharacter)
+          console.log('Calling applyCharacterToPawnA with:', convertedCharacter.name)
+          try {
+            ;(window as any).applyCharacterToPawnA(convertedCharacter)
+            console.log('applyCharacterToPawnA call completed successfully')
+          } catch (error) {
+            console.error('Error calling applyCharacterToPawnA:', error)
+          }
+        } else {
+          console.error('applyCharacterToPawnA function not found on window!')
+          console.log('Available window properties:', Object.keys(window as any).filter(k => k.includes('apply') || k.includes('character') || k.includes('pawn')))
         }
       },
       onCancel: () => {
@@ -515,9 +533,13 @@ export class UIManager {
       },
       armorClass: { base: 10, total: 10, touch: 10, flatFooted: 10 },
       savingThrows: { fortitude: 0, reflex: 0, will: 0 },
-      skills: modalData.skills || [],
+      skills: {},
       feats: [],
-      equipment: modalData.equipment || [],
+      equipment: {
+        weapons: modalData.equipment?.weapons || [],
+        armor: modalData.equipment?.armor || undefined,
+        items: modalData.equipment?.items || []
+      },
       spells: {
         known: {},
         perDay: {}

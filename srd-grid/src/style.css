@@ -2136,15 +2136,16 @@ select option {
 }
 
 /* Combat log */
-.combat-log {
+.combat-log, #combat-log {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  position: fixed;
-  top: 60px;
-  right: 8px;
+  position: fixed !important;
+  bottom: 8px !important;
+  right: 8px !important;
+  top: auto !important;
   width: 350px;
   max-height: 150px;
   overflow-y: auto;
@@ -2154,23 +2155,25 @@ select option {
 
 /* Responsive adjustments for combat log */
 @media (max-width: 900px) {
-  .combat-log {
+  .combat-log, #combat-log {
     width: 250px;
     max-height: 100px;
     font-size: 11px;
-    right: 4px;
-    top: 80px;
+    right: 4px !important;
+    bottom: 4px !important;
+    top: auto !important;
     border-radius: 12px;
   }
 }
 
 @media (max-width: 640px) {
-  .combat-log {
+  .combat-log, #combat-log {
     width: 200px;
     max-height: 80px;
     font-size: 10px;
-    right: 4px;
-    top: 70px;
+    right: 4px !important;
+    bottom: 4px !important;
+    top: auto !important;
     border-radius: 8px;
   }
 }

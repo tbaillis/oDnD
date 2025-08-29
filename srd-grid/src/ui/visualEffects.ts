@@ -2,7 +2,7 @@ import type { Graphics, Sprite } from 'pixi.js'
 
 let thinkingEl: HTMLDivElement | null = null
 
-export function showThinking(pawnId?: 'A'|'B') {
+export function showThinking(pawnId?: 'A'|'M1') {
   if (!thinkingEl) {
     thinkingEl = document.createElement('div')
     thinkingEl.id = 'monster-thinking'

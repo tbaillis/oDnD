@@ -2,8 +2,9 @@ import { Application, Container, Graphics, Sprite } from 'pixi.js'
 import { createWorld, type World } from './engine/world'
 import { createRenderSystem, timeSystem, healthSystem, type InputState, createInputSystem } from './engine/systems'
 import { UIManager } from './ui/interface'
-import { sampleSpells } from './game/magic'
+
 import { createSampleEncounter, sampleData } from './data/sampleData'
+import { srdSpells } from './data/srdSpells'
 import { pipe } from 'bitecs'
 
 // Game state interface
@@ -69,8 +70,8 @@ async function initializeGame(): Promise<GameState> {
     uiManager.characterSheet.setCharacter(encounter.party[0].character)
   }
   
-  // Set up spell book with sample spells
-  uiManager.spellBook.setSpells(sampleSpells)
+  // Set up spell book with all SRD spells
+  uiManager.spellBook.setSpells(srdSpells)
 
   // Create systems pipeline
   const systems = pipe(

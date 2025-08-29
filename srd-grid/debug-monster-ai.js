@@ -22,7 +22,7 @@ if (window.monsterAI) {
 if (window.monsterTurnManager) {
   console.log('Monster Turn Manager Status:');
   console.log('- Pawn A is Monster:', window.monsterTurnManager.isMonsterPawn('A'));
-  console.log('- Pawn B is Monster:', window.monsterTurnManager.isMonsterPawn('B'));
+  console.log('- Pawn M1 is Monster:', window.monsterTurnManager.isMonsterPawn('M1'));
 }
 
 if (window.turns) {
@@ -34,8 +34,8 @@ if (window.turns) {
 
 console.log('\n🛠️ Quick Fix Commands:');
 console.log('1. Enable Monster AI: window.toggleMonsterAI()');
-console.log('2. Set Pawn B as Monster: window.setMonsterPawn("B")');
-console.log('3. Trigger Monster Turn: window.triggerMonsterTurn("B")');
+console.log('2. Set Pawn M1 as Monster: window.setMonsterPawn("M1")');
+console.log('3. Trigger Monster Turn: window.triggerMonsterTurn("M1")');
 console.log('4. Show AI Help: window.monsterAIHelp()');
 
 // Auto-enable if not enabled
@@ -45,10 +45,10 @@ if (window.monsterAI && !window.monsterAI.isEnabled()) {
 }
 
 // Auto-set Pawn B as monster if not set
-if (window.monsterTurnManager && !window.monsterTurnManager.isMonsterPawn('B')) {
-  console.log('🔧 Setting Pawn B as Monster...');
-  window.setMonsterPawn('B');
+if (window.monsterTurnManager && !window.monsterTurnManager.isMonsterPawn('M1')) {
+  console.log('🔧 Setting Pawn M1 as Monster...');
+  window.setMonsterPawn('M1');
 }
 
-console.log('\n✅ Monster AI should now be active for Pawn B!');
+console.log('\n✅ Monster AI should now be active for Pawn M1!');
 console.log('Try ending a player turn to trigger AI behavior.');

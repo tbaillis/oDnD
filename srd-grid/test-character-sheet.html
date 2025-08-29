@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Gold Box Character Sheet Test</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #000;
+      color: #0080FF;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .test-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    .test-section {
+      border: 2px solid #333;
+      margin-bottom: 20px;
+      padding: 15px;
+    }
+    
+    .test-button {
+      background: #0080FF;
+      color: #000;
+      border: 2px solid #FFF;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    
+    .status {
+      margin: 10px 0;
+      padding: 5px;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>Gold Box Character Sheet Integration Test</h1>
+    
+    <div class="test-section">
+      <h2>Gold Box Interface</h2>
+      <button class="test-button" onclick="toggleGoldBox()">Toggle Gold Box (Ctrl+G)</button>
+      <div class="status" id="goldbox-status">Gold Box not initialized</div>
+    </div>
+    
+    <div class="test-section">
+      <h2>Character Creation</h2>
+      <button class="test-button" onclick="createTestCharacter()">Create Test Character</button>
+      <div class="status" id="character-status">No character created</div>
+    </div>
+    
+    <div class="test-section">
+      <h2>Character Sheet Test</h2>
+      <button class="test-button" onclick="testCharacterSheet()">Test Character Sheet</button>
+      <div class="status" id="sheet-status">Character sheet not tested</div>
+    </div>
+    
+    <div class="test-section">
+      <h2>Synchronization Test</h2>
+      <button class="test-button" onclick="testDamageSync()">Test Damage Sync</button>
+      <button class="test-button" onclick="testHealingSync()">Test Healing Sync</button>
+      <button class="test-button" onclick="testSheetUpdateSync()">Test Sheet Update Sync</button>
+      <div class="status" id="sync-status">Synchronization not tested</div>
+    </div>
+    
+    <div class="test-section">
+      <h2>Instructions</h2>
+      <ol>
+        <li>Click "Toggle Gold Box" to show the Gold Box interface</li>
+        <li>Click "Create Test Character" to add a character to the party</li>
+        <li>Click on the character in the Gold Box to open the character sheet</li>
+        <li>Verify that the character sheet opens with editable fields</li>
+        <li>Test saving and closing the character sheet</li>
+        <li><strong>Test synchronization:</strong> Use damage/healing tests to verify character data updates in both directions</li>
+        <li><strong>Sheet Update Test:</strong> Modify character data in the sheet and verify it updates the pawn and Gold Box display</li>
+      </ol>
+    </div>
+  </div>
+
+  <script type="module">
+    import { GoldBoxAdapter } from '/src/ui/goldBoxAdapter.ts'
+    import { GoldBoxCharacterSheet } from '/src/ui/goldBoxCharacterSheet.ts'
+    
+    let goldBoxAdapter = null
+    let testCharacterSheet = null
+    
+    // Initialize Gold Box
+    try {
+      goldBoxAdapter = new GoldBoxAdapter()
+      document.getElementById('goldbox-status').textContent = 'Gold Box initialized successfully'
+    } catch (error) {
+      document.getElementById('goldbox-status').textContent = 'Error initializing Gold Box: ' + error.message
+      console.error('Gold Box initialization error:', error)
+    }
+    
+    // Initialize character sheet
+    try {
+      testCharacterSheet = new GoldBoxCharacterSheet()
+      document.getElementById('sheet-status').textContent = 'Character sheet ready for testing'
+    } catch (error) {
+      document.getElementById('sheet-status').textContent = 'Error initializing character sheet: ' + error.message
+      console.error('Character sheet initialization error:', error)
+    }
+    
+    // Make functions global for button onclick
+    window.toggleGoldBox = function() {
+      if (goldBoxAdapter) {
+        goldBoxAdapter.toggle()
+        document.getElementById('goldbox-status').textContent = 'Gold Box toggled'
+      }
+    }
+    
+    window.createTestCharacter = function() {
+      // Create a test character
+      const testCharacter = {
+        name: 'Test Hero',
+        race: 'Human',
+        classes: [{
+          class: 'fighter',
+          level: 5
+        }],
+        abilityScores: {
+          STR: 16,
+          DEX: 14,
+          CON: 15,
+          INT: 12,
+          WIS: 13,
+          CHA: 10
+        },
+        hitPoints: {
+          max: 47,
+          current: 47,
+          temporary: 0
+        },
+        armorClass: {
+          base: 10,
+          total: 18,
+          touch: 12,
+          flatFooted: 16
+        },
+        savingThrows: {
+          fortitude: 6,
+          reflex: 3,
+          will: 2
+        },
+        skills: {
+          'Climb': { ranks: 8, total: 12, classSkill: true },
+          'Jump': { ranks: 8, total: 12, classSkill: true },
+          'Intimidate': { ranks: 5, total: 5, classSkill: true }
+        },
+        feats: ['Power Attack', 'Cleave', 'Great Cleave'],
+        equipment: {
+          weapons: [{
+            name: 'Longsword +1',
+            type: 'simple',
+            damageType: 'slashing',
+            damage: '1d8+4',
+            critical: '19-20/x2',
+            properties: []
+          }],
+          items: []
+        }
+      }
+      
+      // Trigger character created event
+      const event = new CustomEvent('character-created', {
+        detail: { character: testCharacter }
+      })
+      document.dispatchEvent(event)
+      
+      document.getElementById('character-status').textContent = 'Test character "' + testCharacter.name + '" created and added to party'
+    }
+    
+    window.testCharacterSheet = function() {
+      if (testCharacterSheet) {
+        const testCharacter = {
+          name: 'Sheet Test Character',
+          race: 'Elf',
+          classes: [{
+            class: 'wizard',
+            level: 3
+          }],
+          abilityScores: {
+            STR: 8,
+            DEX: 16,
+            CON: 14,
+            INT: 18,
+            WIS: 12,
+            CHA: 10
+          },
+          hitPoints: {
+            max: 18,
+            current: 18,
+            temporary: 0
+          },
+          armorClass: {
+            base: 10,
+            total: 13,
+            touch: 13,
+            flatFooted: 10
+          },
+          savingThrows: {
+            fortitude: 2,
+            reflex: 4,
+            will: 5
+          },
+          skills: {
+            'Spellcraft': { ranks: 6, total: 10, classSkill: true },
+            'Knowledge (Arcana)': { ranks: 6, total: 10, classSkill: true }
+          },
+          feats: ['Spell Focus (Evocation)', 'Scribe Scroll'],
+          equipment: {
+            weapons: [{
+              name: 'Quarterstaff',
+              type: 'simple',
+              damageType: 'bludgeoning',
+              damage: '1d6-1',
+              critical: '20/x2',
+              properties: []
+            }],
+            items: []
+          }
+        }
+        
+        testCharacterSheet.show(testCharacter)
+        document.getElementById('sheet-status').textContent = 'Character sheet opened for: ' + testCharacter.name
+      }
+    }
+
+    window.testDamageSync = function() {
+      if (typeof window.applyDamageToPawn === 'function') {
+        // Apply 5 damage to pawn A
+        const result = window.applyDamageToPawn('A', 5, 'test')
+        document.getElementById('sync-status').textContent = `Applied 5 damage to Pawn A: ${result.oldHP} -> ${result.newHP}. Check Gold Box for update!`
+      } else {
+        document.getElementById('sync-status').textContent = 'Damage sync function not available'
+      }
+    }
+
+    window.testHealingSync = function() {
+      if (typeof window.healPawn === 'function') {
+        // Heal 3 HP to pawn A
+        const result = window.healPawn('A', 3, 'test')
+        document.getElementById('sync-status').textContent = `Applied 3 healing to Pawn A: ${result.oldHP} -> ${result.newHP}. Check Gold Box for update!`
+      } else {
+        document.getElementById('sync-status').textContent = 'Healing sync function not available'
+      }
+    }
+
+    window.testSheetUpdateSync = function() {
+      if (goldBoxAdapter && typeof window.notifyCharacterChanged === 'function') {
+        // Create a modified character and notify of changes
+        const character = window.getGoldBoxCharacter('pawn-a')
+        if (character) {
+          // Modify the character
+          character.hitPoints.current = Math.max(1, character.hitPoints.current - 2)
+          character.abilityScores.STR += 2
+          
+          // Notify the system of the change
+          window.notifyCharacterChanged('pawn-a', character, 'test-update')
+          
+          document.getElementById('sync-status').textContent = `Updated character ${character.name} externally. Check character sheet and Gold Box for sync!`
+        } else {
+          document.getElementById('sync-status').textContent = 'No character found with ID pawn-a'
+        }
+      } else {
+        document.getElementById('sync-status').textContent = 'Character update sync functions not available'
+      }
+    }
+    
+    // Add keyboard shortcut
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'g') {
+        e.preventDefault()
+        window.toggleGoldBox()
+      }
+    })
+    
+    console.log('Gold Box Character Sheet test initialized')
+  </script>
+</body>
+</html>

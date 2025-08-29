@@ -1,5 +1,5 @@
 import { createCharacter, type AbilityScores } from '../game/character'
-import { sampleSpells } from '../game/magic'
+import { srdSpells } from './srdSpells'
 import { sampleWeapons, sampleArmor } from '../game/equipment'
 import { createEntity, type World } from '../engine/world'
 import { GridPosition, SpriteComp, Team, Stats, HP, ACBreakdown, Movement } from '../engine/components'
@@ -215,7 +215,7 @@ export const sampleData = {
     wizard: createSampleWizard,
     cleric: createSampleCleric
   },
-  spells: sampleSpells,
+  spells: srdSpells,
   equipment: {
     weapons: sampleWeapons,
     armor: sampleArmor
