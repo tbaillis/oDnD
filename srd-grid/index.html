@@ -360,6 +360,9 @@
           <button id="apply-seed" style="padding:3px 6px;background:#6b7280;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Apply</button>
           <button id="save-btn" style="padding:3px 6px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Save</button>
           <button id="load-btn" style="padding:3px 6px;background:#dc2626;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Load</button>
+          <button id="export-btn" style="padding:3px 6px;background:#2563eb;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Export</button>
+          <button id="import-btn" style="padding:3px 6px;background:#10b981;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Import</button>
+          <input id="import-file" type="file" accept=".json,application/json" style="display:none" />
           <button id="reset-btn" style="padding:3px 6px;background:#f59e0b;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;">Reset</button>
         </div>
 
@@ -377,6 +380,10 @@
               <input id="detailed-logging-toggle" type="checkbox" style="accent-color:#8b5cf6;" /> 
               <span style="color:#00bfff;">🌐 Server & Stack</span>
             </label>
+            <label style="display:flex;gap:3px;align-items:center;cursor:pointer;">
+              <input id="party-debug-toggle" type="checkbox" style="accent-color:#8b5cf6;" /> 
+              <span style="color:#ffaa00;">🎭 Party State</span>
+            </label>
             <button id="show-log-panel" style="padding:3px 8px;background:#8b5cf6;color:white;border:none;border-radius:3px;cursor:pointer;font-size:10px;margin-left:8px;">Show Panel</button>
           </div>
         </div>
@@ -389,8 +396,8 @@
     </div>
 
     <!-- Initiative Order Panel -->
-    <div id="initiative-panel" style="position:fixed;top:60px;right:8px;background:rgba(20,25,30,0.95);padding:8px 12px;border-radius:6px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;font-size:12px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,0.6);min-width:150px;">
-      <div style="font-weight:600;color:#f59e0b;margin-bottom:6px;text-align:center;">Initiative Order</div>
+    <div id="initiative-panel" style="position:fixed;top:60px;right:8px;background:rgba(20,25,30,0.95);padding:8px 12px;border-radius:6px;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#e5e7eb;border:1px solid #374151;font-size:12px;z-index:1100;box-shadow:0 4px 12px rgba(0,0,0,0.6);min-width:150px;cursor:move;">
+      <div id="initiative-header" style="font-weight:600;color:#f59e0b;margin-bottom:6px;text-align:center;cursor:move;user-select:none;">Initiative Order</div>
       <div id="initiative-list" style="display:flex;flex-direction:column;gap:2px;">
         <!-- Initiative list will be populated by JavaScript -->
       </div>
@@ -547,17 +554,20 @@
         // Debug logging functionality
         const aiLoggingToggle = document.getElementById('ai-logging-toggle');
         const detailedLoggingToggle = document.getElementById('detailed-logging-toggle');
+        const partyDebugToggle = document.getElementById('party-debug-toggle');
         const showLogPanelBtn = document.getElementById('show-log-panel');
         
-        if (aiLoggingToggle && detailedLoggingToggle && showLogPanelBtn) {
+        if (aiLoggingToggle && detailedLoggingToggle && partyDebugToggle && showLogPanelBtn) {
           // Load saved settings (but do NOT auto-apply them so the panel stays hidden on startup)
           const savedAILogging = localStorage.getItem('aiLoggingEnabled') === 'true';
           const savedDetailedLogging = localStorage.getItem('detailedLoggingEnabled') === 'true';
+          const savedPartyDebug = localStorage.getItem('partyDebugEnabled') === 'true';
 
           // Don't check the toggles automatically on load to avoid opening the panel.
           // User must explicitly enable logging for the panel to become visible.
           aiLoggingToggle.checked = false;
           detailedLoggingToggle.checked = false;
+          partyDebugToggle.checked = savedPartyDebug;
 
           // Wait for debug logger to be available
           function initDebugLogging() {
@@ -580,12 +590,38 @@
                 console.log('Detailed Logging:', enabled ? 'enabled' : 'disabled');
               });
 
+              // Party debug panel toggle
+              partyDebugToggle.addEventListener('change', function() {
+                const enabled = this.checked;
+                localStorage.setItem('partyDebugEnabled', enabled.toString());
+                
+                // Find and toggle the debug panel visibility
+                const debugPanels = document.querySelectorAll('[style*="position: fixed"][style*="top: 10px"][style*="right: 10px"]');
+                debugPanels.forEach(panel => {
+                  if (panel.innerHTML && panel.innerHTML.includes('Debug Panel')) {
+                    panel.style.display = enabled ? 'block' : 'none';
+                  }
+                });
+                
+                console.log('Party Debug Panel:', enabled ? 'shown' : 'hidden');
+              });
+
               // Show panel button should only reveal the panel (it won't enable logging automatically)
               showLogPanelBtn.addEventListener('click', function() {
                 window.debugLogger.showPanel();
               });
 
               console.log('🔍 Debug logging system initialized (panel hidden by default)');
+              
+              // Initialize party debug panel visibility based on saved setting
+              setTimeout(() => {
+                const debugPanels = document.querySelectorAll('[style*="position: fixed"][style*="top: 10px"][style*="right: 10px"]');
+                debugPanels.forEach(panel => {
+                  if (panel.innerHTML && panel.innerHTML.includes('Debug Panel')) {
+                    panel.style.display = savedPartyDebug ? 'block' : 'none';
+                  }
+                });
+              }, 500); // Give time for the debug panel to be created
             } else {
               // Retry in 100ms if debugLogger not available yet
               setTimeout(initDebugLogging, 100);
@@ -594,6 +630,73 @@
 
           // Initialize when ready
           initDebugLogging();
+        }
+
+        // Initiative panel dragging functionality
+        const initiativePanel = document.getElementById('initiative-panel');
+        const initiativeHeader = document.getElementById('initiative-header');
+        
+        if (initiativePanel && initiativeHeader) {
+          let isDragging = false;
+          let startX, startY, initialX, initialY;
+          
+          // Load saved position
+          const savedPos = localStorage.getItem('initiativePanelPosition');
+          if (savedPos) {
+            const { x, y } = JSON.parse(savedPos);
+            initiativePanel.style.left = x + 'px';
+            initiativePanel.style.top = y + 'px';
+            initiativePanel.style.right = 'auto'; // Remove right positioning
+          }
+          
+          initiativeHeader.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            const rect = initiativePanel.getBoundingClientRect();
+            initialX = rect.left;
+            initialY = rect.top;
+            
+            // Remove right positioning to use left/top instead
+            initiativePanel.style.right = 'auto';
+            initiativePanel.style.left = initialX + 'px';
+            initiativePanel.style.top = initialY + 'px';
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            
+            e.preventDefault();
+          });
+          
+          function onMouseMove(e) {
+            if (!isDragging) return;
+            
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            const newX = Math.max(0, Math.min(window.innerWidth - initiativePanel.offsetWidth, initialX + dx));
+            const newY = Math.max(0, Math.min(window.innerHeight - initiativePanel.offsetHeight, initialY + dy));
+            
+            initiativePanel.style.left = newX + 'px';
+            initiativePanel.style.top = newY + 'px';
+          }
+          
+          function onMouseUp(e) {
+            if (isDragging) {
+              isDragging = false;
+              
+              // Save position
+              const rect = initiativePanel.getBoundingClientRect();
+              localStorage.setItem('initiativePanelPosition', JSON.stringify({
+                x: rect.left,
+                y: rect.top
+              }));
+              
+              document.removeEventListener('mousemove', onMouseMove);
+              document.removeEventListener('mouseup', onMouseUp);
+            }
+          }
         }
 
         // Global keyboard shortcuts

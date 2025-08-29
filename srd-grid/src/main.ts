@@ -66,6 +66,69 @@ try {
   goldBoxAdapter = new GoldBoxAdapter()
   console.log('Main: Gold Box Adapter created successfully')
   
+  // Expose debug methods globally
+  ;(window as any).debugPartyState = () => goldBoxAdapter.debugPartyState()
+  ;(window as any).goldBoxAdapter = goldBoxAdapter
+  
+  // Test function to simulate clicking on different characters
+  // Test function to simulate clicking on different characters (excluding M pawns)
+  ;(window as any).testCharacterClicks = () => {
+    console.log('=== TESTING CHARACTER CLICKS ===')
+    const pawnIds = ['A', 'B', 'C', 'D', 'E', 'F']
+    pawnIds.forEach(id => {
+      console.log(`--- Testing pawn ${id} ---`)
+      const pawn = (window as any)[`pawn${id}`]
+      if (pawn) {
+        console.log(`goldBoxId: ${(pawn as any).goldBoxId}`)
+        console.log(`characterData: ${(pawn as any).characterData ? (pawn as any).characterData.name : 'None'}`)
+        
+        if ((pawn as any).characterData) {
+          const characterId = (pawn as any).goldBoxId || `pawn-${id.toLowerCase()}`
+          console.log(`Would show character sheet for: ${characterId}`)
+        }
+      }
+    })
+  }
+
+  // Add debug panel to the page
+  const debugPanel = document.createElement('div')
+  debugPanel.style.cssText = `
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    z-index: 1000;
+    max-width: 300px;
+  `
+  debugPanel.innerHTML = `
+    <div style="margin-bottom: 10px;"><strong>Debug Panel</strong></div>
+    <button onclick="debugPartyState()" style="margin: 2px; padding: 4px 8px;">Show Party State</button>
+    <button onclick="testCharacterClicks()" style="margin: 2px; padding: 4px 8px;">Test Character Mapping</button>
+    <div id="debug-output" style="margin-top: 10px; max-height: 200px; overflow-y: auto;"></div>
+  `
+  document.body.appendChild(debugPanel)
+  
+  // Override console.log to also show in debug panel
+  const originalConsoleLog = console.log
+  ;(window as any).originalConsoleLog = originalConsoleLog
+  console.log = (...args) => {
+    originalConsoleLog(...args)
+    const output = document.getElementById('debug-output')
+    if (output && args.some(arg => typeof arg === 'string' && (arg.includes('===') || arg.includes('Gold Box')))) {
+      const div = document.createElement('div')
+      div.textContent = args.join(' ')
+      div.style.fontSize = '10px'
+      div.style.margin = '1px 0'
+      output.appendChild(div)
+      output.scrollTop = output.scrollHeight
+    }
+  }
+  
   console.log('Main: Integrating with UI Manager...')
   goldBoxAdapter.integrateWithUIManager(uiManager)
   console.log('Main: UI Manager integration complete')
@@ -79,9 +142,9 @@ try {
   goldBoxAdapter = null as any
 }
 
-// Expose applyCharacterToPawn functions globally so UIManager and Gold Box can access them
+// Expose applyCharacterToPawn functions globally so UIManager and Gold Box can access them (excluding M pawns)
 ;(window as any).applyCharacterToPawnA = applyCharacterToPawnA
-;(window as any).applyCharacterToPawnM1 = applyCharacterToPawnM1
+;(window as any).applyCharacterToPawnB = applyCharacterToPawnB
 ;(window as any).applyCharacterToPawnC = applyCharacterToPawnC
 ;(window as any).applyCharacterToPawnD = applyCharacterToPawnD
 ;(window as any).applyCharacterToPawnE = applyCharacterToPawnE
@@ -375,6 +438,7 @@ function moveM1ToPosition(x: number, y: number) {
 
 // Token state (six pawns for full party - positioned adjacently for party formation)
 let pawnA = { x: 2, y: 2, speed: 30, size: 'medium' as const, hp: 20 }
+;(pawnA as any).goldBoxId = 'pawn-a'
 // M1 is positioned randomly away from the party each time
 const m1Position = generateRandomPosition()
 let pawnM1 = { x: m1Position.x, y: m1Position.y, speed: 30, size: 'large' as 'large' | 'medium', hp: 25 }
@@ -391,6 +455,7 @@ let pawnC = { x: 4, y: 2, speed: 30, size: 'medium' as const, hp: 20, maxHp: 20 
 let pawnD = { x: 2, y: 3, speed: 30, size: 'medium' as const, hp: 18, maxHp: 18 }
 let pawnE = { x: 3, y: 3, speed: 30, size: 'medium' as const, hp: 22, maxHp: 22 }
 let pawnF = { x: 4, y: 3, speed: 30, size: 'medium' as const, hp: 16, maxHp: 16 }
+let pawnB = { x: 1, y: 3, speed: 30, size: 'medium' as const, hp: 24, maxHp: 24 }
 
 // Expose pawns globally
 ;(window as any).pawnA = pawnA
@@ -399,6 +464,7 @@ let pawnF = { x: 4, y: 3, speed: 30, size: 'medium' as const, hp: 16, maxHp: 16 
 ;(window as any).pawnD = pawnD
 ;(window as any).pawnE = pawnE
 ;(window as any).pawnF = pawnF
+;(window as any).pawnB = pawnB
 
 let pawnAMaxHP = 20 // Track max HP for pawn A
 let pawnM1MaxHP = 25 // Track max HP for pawn M1
@@ -406,6 +472,7 @@ let pawnCMaxHP = 20 // Track max HP for pawn C
 let pawnDMaxHP = 18 // Track max HP for pawn D
 let pawnEMaxHP = 22 // Track max HP for pawn E
 let pawnFMaxHP = 16 // Track max HP for pawn F
+let pawnBMaxHP = 24 // Track max HP for pawn B
 
 // Function to apply character stats to Pawn A
 function applyCharacterToPawnA(character: Character, suppressEvent: boolean = false) {
@@ -450,7 +517,9 @@ function applyCharacterToPawnA(character: Character, suppressEvent: boolean = fa
   
   // Store character name on pawn for Gold Box sync  
   (pawnA as any).name = character.name;
-  (pawnA as any).characterData = character;  // Store full character data
+  
+  // NOTE: characterData will be set by GoldBoxAdapter to ensure object reference consistency
+  // Don't set it here to avoid reference conflicts with the character sheet system
   
   // Only dispatch event if not suppressed (to prevent infinite loops)
   if (!suppressEvent) {
@@ -710,10 +779,55 @@ function applyCharacterToPawnF(character: Character, suppressEvent: boolean = fa
   drawAll()
 }
 
-// Helper functions for synchronizing pawn data with Gold Box character sheets
-function syncPawnToGoldBox(pawnRef: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', source: string = 'combat') {
+// Apply character stats to Pawn B
+function applyCharacterToPawnB(character: Character, suppressEvent: boolean = false) {
+  // Update Pawn B's hit points based on character
+  pawnBMaxHP = character.hitPoints.max
+  pawnB.hp = character.hitPoints.current
+  
+  // Update speed based on character's race and size
+  pawnB.speed = 30 // Default, could be modified by race or equipment
+  
+  // Update size if character is not medium
+  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
+    pawnB.size = 'medium' // Keep medium for grid simplicity
+  } else if (character.race.toLowerCase().includes('half-giant') || 
+             character.classes.some(c => c.class === 'barbarian')) {
+    pawnB.size = 'medium' // Keep medium for now, could be configurable
+  }
+  
+  // Update defender profile based on character stats
+  const dexMod = getAbilityModifier(character.abilityScores.DEX)
+  
+  // Update AC based on character equipment and stats
+  const newAC = {
+    base: 10,
+    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
+    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
+    natural: 0,
+    deflection: 0,
+    dodge: dexMod,
+    misc: 0
+  }
+  
+  // Store character name on pawn for display
+  ;(pawnB as any).name = character.name
+  
+  // Log the character application
+  appendLogLine(`Pawn B updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
+  appendLogLine(`HP: ${pawnB.hp}/${pawnBMaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnB.speed}ft`)
+  
+  // Update initiative display to show new character info
+  updateInitiativeDisplay()
+  
+  // Redraw to reflect changes
+  drawAll()
+}
+
+// Helper functions for synchronizing pawn data with Gold Box character sheets (excluding M pawns)
+function syncPawnToGoldBox(pawnRef: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', source: string = 'combat') {
   const pawn = pawnRef === 'A' ? pawnA : 
-               pawnRef === 'M1' ? pawnM1 : 
+               pawnRef === 'B' ? pawnB : 
                pawnRef === 'C' ? pawnC :
                pawnRef === 'D' ? pawnD :
                pawnRef === 'E' ? pawnE : pawnF
@@ -728,9 +842,9 @@ function syncPawnToGoldBox(pawnRef: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', source: 
   }
 }
 
-function applyDamageToPawn(pawnRef: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', damage: number, source: string = 'combat') {
+function applyDamageToPawn(pawnRef: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', damage: number, source: string = 'combat') {
   const pawn = pawnRef === 'A' ? pawnA : 
-               pawnRef === 'M1' ? pawnM1 : 
+               pawnRef === 'B' ? pawnB : 
                pawnRef === 'C' ? pawnC :
                pawnRef === 'D' ? pawnD :
                pawnRef === 'E' ? pawnE : pawnF
@@ -745,14 +859,14 @@ function applyDamageToPawn(pawnRef: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', damage: 
   return { oldHP, newHP: pawn.hp, actualDamage: oldHP - pawn.hp }
 }
 
-function healPawn(pawnRef: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', healing: number, source: string = 'healing') {
+function healPawn(pawnRef: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', healing: number, source: string = 'healing') {
   const pawn = pawnRef === 'A' ? pawnA : 
-               pawnRef === 'M1' ? pawnM1 : 
+               pawnRef === 'B' ? pawnB : 
                pawnRef === 'C' ? pawnC :
                pawnRef === 'D' ? pawnD :
                pawnRef === 'E' ? pawnE : pawnF
   const maxHP = pawnRef === 'A' ? pawnAMaxHP : 
-                pawnRef === 'M1' ? pawnM1MaxHP :
+                pawnRef === 'B' ? pawnBMaxHP :
                 pawnRef === 'C' ? pawnCMaxHP :
                 pawnRef === 'D' ? pawnDMaxHP :
                 pawnRef === 'E' ? pawnEMaxHP : pawnFMaxHP
@@ -919,21 +1033,33 @@ if ((window as any).goldBoxAdapter) {
 }
 updateInitiativeDisplay()
 
-// Helper function to get character/monster name for a pawn ID
+// Helper function to get character/monster name for a pawn ID (showing character name + pawn name)
 function getPawnName(pawnId: string): string {
   switch (pawnId) {
-    case 'A':
-      return (pawnA as any).name || 'Pawn A'
-    case 'M1':
-      return (pawnM1 as any).name || 'Pawn M1'
-    case 'C':
-      return (pawnC as any).name || 'Pawn C'
-    case 'D':
-      return (pawnD as any).name || 'Pawn D'
-    case 'E':
-      return (pawnE as any).name || 'Pawn E'
-    case 'F':
-      return (pawnF as any).name || 'Pawn F'
+    case 'A': {
+      const characterName = (pawnA as any).characterData ? (pawnA as any).characterData.name : null
+      return characterName ? `${characterName} (A)` : 'Pawn A'
+    }
+    case 'B': {
+      const characterName = (pawnB as any).characterData ? (pawnB as any).characterData.name : null
+      return characterName ? `${characterName} (B)` : 'Pawn B'
+    }
+    case 'C': {
+      const characterName = (pawnC as any).characterData ? (pawnC as any).characterData.name : null
+      return characterName ? `${characterName} (C)` : 'Pawn C'
+    }
+    case 'D': {
+      const characterName = (pawnD as any).characterData ? (pawnD as any).characterData.name : null
+      return characterName ? `${characterName} (D)` : 'Pawn D'
+    }
+    case 'E': {
+      const characterName = (pawnE as any).characterData ? (pawnE as any).characterData.name : null
+      return characterName ? `${characterName} (E)` : 'Pawn E'
+    }
+    case 'F': {
+      const characterName = (pawnF as any).characterData ? (pawnF as any).characterData.name : null
+      return characterName ? `${characterName} (F)` : 'Pawn F'
+    }
     default:
       return pawnId
   }
@@ -942,7 +1068,7 @@ function getPawnName(pawnId: string): string {
 // Initialize default names for pawns that don't have characters/monsters assigned
 function initializeDefaultPawnNames() {
   if (!(pawnA as any).name) (pawnA as any).name = 'Pawn A'
-  if (!(pawnM1 as any).name) (pawnM1 as any).name = 'Pawn M1'
+  if (!(pawnB as any).name) (pawnB as any).name = 'Pawn B'
   if (!(pawnC as any).name) (pawnC as any).name = 'Pawn C'
   if (!(pawnD as any).name) (pawnD as any).name = 'Pawn D'
   if (!(pawnE as any).name) (pawnE as any).name = 'Pawn E'
@@ -956,6 +1082,452 @@ function hudText() {
   return `Round ${turns.round} | Turn: ${activeName} (${activeId}) | Std:${b.standardAvailable?'✓':'×'} Move:${b.moveAvailable?'✓':'×'} 5ft:${b.fiveFootStepAvailable?'✓':'×'}`
 }
 
+function showInitiativeContextMenu(pawnId: string, event: MouseEvent, pawn: any) {
+  // Remove any existing context menu
+  const existingMenu = document.getElementById('initiative-context-menu')
+  if (existingMenu) {
+    existingMenu.remove()
+  }
+
+  // Create context menu
+  const contextMenu = document.createElement('div')
+  contextMenu.id = 'initiative-context-menu'
+  contextMenu.style.cssText = `
+    position: fixed;
+    top: ${event.clientY}px;
+    left: ${event.clientX}px;
+    background: #1f2937;
+    border: 2px solid #374151;
+    border-radius: 6px;
+    padding: 8px 0;
+    z-index: 10000;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #e5e7eb;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    min-width: 200px;
+  `
+
+  const menuItems = [
+    {
+      label: '🎭 Change Token',
+      action: () => {
+        showTokenSelectorForPawn(pawnId)
+        contextMenu.remove()
+      }
+    },
+    {
+      label: '📋 Character Sheet',
+      action: () => {
+        const characterData = (pawn as any).characterData
+        if (characterData) {
+          const characterId = (pawn as any).goldBoxId || `pawn-${pawnId.toLowerCase()}`
+          if (goldBoxAdapter && goldBoxAdapter.showCharacterSheet) {
+            goldBoxAdapter.showCharacterSheet(characterId)
+          } else if (uiManager && uiManager.characterSheet) {
+            uiManager.characterSheet.setCharacter(characterData)
+            uiManager.characterSheet.show()
+          }
+        }
+        contextMenu.remove()
+      },
+      enabled: !!(pawn as any).characterData
+    },
+    {
+      label: '🗂️ Assign Character',
+      action: () => {
+        showCharacterAssignmentForPawn(pawnId)
+        contextMenu.remove()
+      }
+    }
+  ]
+
+  menuItems.forEach(item => {
+    const menuItem = document.createElement('div')
+    menuItem.style.cssText = `
+      padding: 8px 16px;
+      cursor: ${item.enabled !== false ? 'pointer' : 'not-allowed'};
+      color: ${item.enabled !== false ? '#e5e7eb' : '#6b7280'};
+      transition: background-color 0.15s;
+    `
+    menuItem.textContent = item.label
+
+    if (item.enabled !== false) {
+      menuItem.addEventListener('mouseenter', () => {
+        menuItem.style.background = '#374151'
+      })
+      menuItem.addEventListener('mouseleave', () => {
+        menuItem.style.background = 'transparent'
+      })
+      menuItem.addEventListener('click', item.action)
+    }
+
+    contextMenu.appendChild(menuItem)
+  })
+
+  // Close menu when clicking outside
+  const closeMenu = (e: MouseEvent) => {
+    if (!contextMenu.contains(e.target as Node)) {
+      contextMenu.remove()
+      document.removeEventListener('click', closeMenu)
+    }
+  }
+  
+  // Add slight delay to prevent immediate closing
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu)
+  }, 10)
+
+  document.body.appendChild(contextMenu)
+
+  // Adjust position if menu goes off screen
+  const rect = contextMenu.getBoundingClientRect()
+  if (rect.right > window.innerWidth) {
+    contextMenu.style.left = `${event.clientX - rect.width}px`
+  }
+  if (rect.bottom > window.innerHeight) {
+    contextMenu.style.top = `${event.clientY - rect.height}px`
+  }
+}
+
+function showTokenSelectorForPawn(pawnId: string) {
+  // Create token selection modal
+  const modal = document.createElement('div')
+  modal.className = 'token-selector-modal'
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    font-family: 'Courier New', monospace;
+  `
+
+  const content = document.createElement('div')
+  content.style.cssText = `
+    background: #000;
+    border: 3px solid #0080FF;
+    border-radius: 8px;
+    padding: 20px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 80%;
+    overflow-y: auto;
+    color: #0080FF;
+  `
+
+  content.innerHTML = `
+    <h3 style="color: #FFFF00; text-align: center; margin-bottom: 20px;">SELECT TOKEN FOR PAWN ${pawnId}</h3>
+    <div class="token-grid" style="
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    "></div>
+    <div style="text-align: center;">
+      <button class="close-token-selector" style="
+        background: #FF0000;
+        color: #FFFFFF;
+        border: 2px solid #FFFFFF;
+        padding: 10px 20px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      ">CANCEL</button>
+    </div>
+  `
+
+  // Get available tokens from window
+  const availableTokens = (window as any).availableTokens || []
+  const tokenGrid = content.querySelector('.token-grid')
+
+  if (tokenGrid) {
+    availableTokens.forEach((token: any) => {
+      const tokenButton = document.createElement('div')
+      tokenButton.className = 'token-option'
+      tokenButton.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px;
+        border: 2px solid #333;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: border-color 0.2s;
+      `
+
+      tokenButton.innerHTML = `
+        <img src="${token.url}" style="
+          width: 64px;
+          height: 64px;
+          object-fit: cover;
+          border-radius: 4px;
+        " alt="${token.name}" />
+        <div style="
+          font-size: 10px;
+          margin-top: 5px;
+          text-align: center;
+          word-break: break-word;
+        ">${token.name}</div>
+      `
+
+      tokenButton.addEventListener('mouseenter', () => {
+        tokenButton.style.borderColor = '#0080FF'
+      })
+
+      tokenButton.addEventListener('mouseleave', () => {
+        tokenButton.style.borderColor = '#333'
+      })
+
+      tokenButton.addEventListener('click', () => {
+        // Apply token to pawn
+        if ((window as any).setPawnTexture) {
+          (window as any).setPawnTexture(pawnId, token.url)
+        }
+        
+        // Store token information in pawn object
+        const pawn = getPawnObject(pawnId)
+        if (pawn) {
+          (pawn as any).tokenUrl = token.url
+          ;(pawn as any).tokenName = token.name
+        }
+        
+        document.body.removeChild(modal)
+        console.log(`Token ${token.name} applied to pawn ${pawnId}`)
+      })
+
+      tokenGrid.appendChild(tokenButton)
+    })
+  }
+
+  // Close button handler
+  const closeBtn = content.querySelector('.close-token-selector')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      document.body.removeChild(modal)
+    })
+  }
+
+  // Click outside to close
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal)
+    }
+  })
+
+  modal.appendChild(content)
+  document.body.appendChild(modal)
+}
+
+function showCharacterAssignmentForPawn(pawnId: string) {
+  // Create character assignment modal
+  const modal = document.createElement('div')
+  modal.className = 'character-assignment-modal'
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    font-family: 'Courier New', monospace;
+  `
+
+  const content = document.createElement('div')
+  content.style.cssText = `
+    background: #000;
+    border: 3px solid #16a34a;
+    border-radius: 8px;
+    padding: 20px;
+    width: 600px;
+    max-height: 80%;
+    overflow-y: auto;
+    color: #0080FF;
+  `
+
+  // Get available characters from goldBoxAdapter
+  let availableCharacters: any[] = []
+  if (goldBoxAdapter) {
+    const allCharacters = goldBoxAdapter.getAllCharacters()
+    availableCharacters = Array.from(allCharacters.entries()).map(([id, character]) => ({ id, character }))
+  }
+
+  content.innerHTML = `
+    <h3 style="color: #FFFF00; text-align: center; margin-bottom: 20px;">ASSIGN CHARACTER TO PAWN ${pawnId}</h3>
+    <p style="margin-bottom: 20px; text-align: center; color: #e5e7eb;">
+      Select a character to assign to this pawn:
+    </p>
+    <div class="character-list" style="
+      max-height: 300px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    ">
+      ${availableCharacters.length === 0 ? 
+        '<div style="text-align: center; color: #6b7280; padding: 20px;">No characters available. Create characters first in the Gold Box interface.</div>' :
+        availableCharacters.map(({id, character}) => `
+          <div class="character-option" data-character-id="${id}" style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 8px;
+            border: 2px solid #374151;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+          ">
+            <div>
+              <div style="font-weight: bold; color: #f3f4f6;">${character.name}</div>
+              <div style="font-size: 11px; color: #9ca3af;">${character.race} ${character.classes[0]?.class || 'Unknown'} - HP: ${character.hitPoints.current}/${character.hitPoints.max}</div>
+            </div>
+            <div style="font-size: 10px; color: #6b7280;">${id}</div>
+          </div>
+        `).join('')
+      }
+    </div>
+    <div style="text-align: center;">
+      <button class="close-character-assignment" style="
+        background: #FF0000;
+        color: #FFFFFF;
+        border: 2px solid #FFFFFF;
+        padding: 10px 20px;
+        margin: 0 10px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      ">CANCEL</button>
+      <button class="clear-character-assignment" style="
+        background: #6b7280;
+        color: #FFFFFF;
+        border: 2px solid #FFFFFF;
+        padding: 10px 20px;
+        margin: 0 10px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+      ">CLEAR ASSIGNMENT</button>
+    </div>
+  `
+
+  // Character option handlers
+  const characterOptions = content.querySelectorAll('.character-option')
+  characterOptions.forEach(option => {
+    option.addEventListener('mouseenter', () => {
+      (option as HTMLElement).style.borderColor = '#0080FF'
+      ;(option as HTMLElement).style.background = 'rgba(0, 128, 255, 0.1)'
+    })
+
+    option.addEventListener('mouseleave', () => {
+      (option as HTMLElement).style.borderColor = '#374151'
+      ;(option as HTMLElement).style.background = 'transparent'
+    })
+
+    option.addEventListener('click', () => {
+      const characterId = (option as HTMLElement).dataset.characterId
+      if (characterId) {
+        assignCharacterToPawn(characterId, pawnId)
+        document.body.removeChild(modal)
+      }
+    })
+  })
+
+  // Close button handler
+  const closeBtn = content.querySelector('.close-character-assignment')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      document.body.removeChild(modal)
+    })
+  }
+
+  // Clear assignment button handler
+  const clearBtn = content.querySelector('.clear-character-assignment')
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      clearCharacterFromPawn(pawnId)
+      document.body.removeChild(modal)
+    })
+  }
+
+  // Click outside to close
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal)
+    }
+  })
+
+  modal.appendChild(content)
+  document.body.appendChild(modal)
+}
+
+function getPawnObject(pawnId: string): any {
+  switch (pawnId) {
+    case 'A': return pawnA
+    case 'M1': return pawnM1
+    case 'C': return pawnC
+    case 'D': return pawnD
+    case 'E': return pawnE
+    case 'F': return pawnF
+    default: return null
+  }
+}
+
+function assignCharacterToPawn(characterId: string, pawnId: string) {
+  if (!goldBoxAdapter) return
+
+  const character = goldBoxAdapter.getCharacter(characterId)
+  if (!character) return
+
+  const pawn = getPawnObject(pawnId)
+  if (!pawn) return
+
+  // Store character data reference in pawn
+  ;(pawn as any).characterData = character
+  ;(pawn as any).goldBoxId = characterId
+  
+  // Apply basic stats
+  pawn.hp = character.hitPoints.current
+  const maxHpProperty = `pawn${pawnId}MaxHP`
+  if ((window as any)[maxHpProperty] !== undefined) {
+    (window as any)[maxHpProperty] = character.hitPoints.max
+  }
+
+  // Update initiative display and redraw
+  updateInitiativeDisplay()
+  if ((window as any).drawAll) {
+    (window as any).drawAll()
+  }
+
+  console.log(`Assigned character ${character.name} to pawn ${pawnId}`)
+}
+
+function clearCharacterFromPawn(pawnId: string) {
+  const pawn = getPawnObject(pawnId)
+  if (!pawn) return
+
+  // Clear character data
+  delete (pawn as any).characterData
+  delete (pawn as any).goldBoxId
+  delete (pawn as any).tokenUrl
+  delete (pawn as any).tokenName
+
+  // Update initiative display and redraw
+  updateInitiativeDisplay()
+  if ((window as any).drawAll) {
+    (window as any).drawAll()
+  }
+
+  console.log(`Cleared character assignment from pawn ${pawnId}`)
+}
+
 function updateInitiativeDisplay() {
   const initiativeList = document.getElementById('initiative-list')
   if (!initiativeList) return
@@ -963,23 +1535,23 @@ function updateInitiativeDisplay() {
   // Clear existing content
   initiativeList.innerHTML = ''
   
-  // Get initiative order from turns
+  // Get initiative order from turns (excluding pawns with 'M' in names, adding pawnB)
   const sortedInitiative = [
     { id: 'D', initiative: 16 },
     { id: 'A', initiative: 15 },
     { id: 'C', initiative: 14 },
     { id: 'E', initiative: 13 },
-    { id: 'M1', initiative: 12 },
+    { id: 'B', initiative: 12 },
     { id: 'F', initiative: 11 },
   ]
   
-  // Helper function to get pawn data
+  // Helper function to get pawn data (excluding pawns with 'M' in names)
   function getPawnData(pawnId: string) {
     switch (pawnId) {
       case 'A':
         return { pawn: pawnA, maxHP: pawnAMaxHP, reach: reachA }
-      case 'M1':
-        return { pawn: pawnM1, maxHP: pawnM1MaxHP, reach: reachM1 }
+      case 'B':
+        return { pawn: pawnB, maxHP: pawnBMaxHP, reach: false }
       case 'C':
         return { pawn: pawnC, maxHP: pawnCMaxHP, reach: false }
       case 'D':
@@ -1125,6 +1697,49 @@ function updateInitiativeDisplay() {
     pawnDiv.appendChild(statsRow)
     if (indicators.length > 0) {
       pawnDiv.appendChild(statusRow)
+    }
+    
+    // Add click handler to show character sheet if character data is available
+    const pawnObj = pawnData.pawn
+    if ((pawnObj as any).characterData) {
+      pawnDiv.style.cursor = 'pointer'
+      pawnDiv.title = 'Click to view character sheet'
+      
+      pawnDiv.addEventListener('click', () => {
+        const characterData = (pawnObj as any).characterData
+        const characterId = (pawnObj as any).goldBoxId || `pawn-${entry.id.toLowerCase()}`
+        
+        console.log(`=== INITIATIVE CLICK DEBUG ===`)
+        console.log('entry.id:', entry.id)
+        console.log('pawnObj.goldBoxId:', (pawnObj as any).goldBoxId)
+        console.log('final characterId:', characterId)
+        console.log('characterData.name:', characterData ? characterData.name : 'NO CHARACTER DATA')
+        console.log(`Initiative click: Opening character sheet for ${characterData.name} (${characterId})`)
+        
+        // Use the GoldBox character sheet instead of the UI manager's sheet
+        if (goldBoxAdapter && goldBoxAdapter.showCharacterSheet) {
+          goldBoxAdapter.showCharacterSheet(characterId)
+        } else if (uiManager && uiManager.characterSheet) {
+          uiManager.characterSheet.setCharacter(characterData)
+          uiManager.characterSheet.show()
+        } else {
+          console.warn('No character sheet interface available')
+        }
+      })
+      
+      // Add right-click context menu for token management
+      pawnDiv.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        showInitiativeContextMenu(entry.id, e, pawnObj)
+      })
+      
+      // Add hover effect
+      pawnDiv.addEventListener('mouseenter', () => {
+        pawnDiv.style.background = isActive ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255, 255, 255, 0.1)'
+      })
+      pawnDiv.addEventListener('mouseleave', () => {
+        pawnDiv.style.background = isActive ? 'rgba(245, 158, 11, 0.2)' : 'rgba(55, 65, 81, 0.3)'
+      })
     }
     
     initiativeList.appendChild(pawnDiv)
@@ -2132,11 +2747,13 @@ function showPawnContextMenu(pawnId: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F', event: 
               const applied = applyDamage(defenderFor(turns.active?.id === 'A' ? 'A' : 'M1'), packet)
               const taken = applied.taken
               
-              // Apply damage with Gold Box synchronization
-              const pawnRef = turns.active?.id === 'A' ? 'A' : 'M1'
-              const damageResult = applyDamageToPawn(pawnRef, taken, 'attack_of_opportunity')
-              
-              appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Caster HP ${damageResult.newHP}.`)
+              // Apply damage with Gold Box synchronization (only apply to character pawns, not monsters)
+              const activeId = turns.active?.id
+              if (activeId && activeId !== 'M1' && ['A', 'B', 'C', 'D', 'E', 'F'].includes(activeId)) {
+                const pawnRef = activeId as 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+                const damageResult = applyDamageToPawn(pawnRef, taken, 'attack_of_opportunity')
+                appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Caster HP ${damageResult.newHP}.`)
+              }
               // Concentration check to avoid losing the spell: DC 10 + damage dealt + spell level
               const roll2 = Math.floor(currentRNG()*20)+1
               const total2 = roll2 + concBonus
@@ -2899,12 +3516,13 @@ app.canvas.addEventListener('click', (ev) => {
             const applied = applyDamage(defenderFor(attackerKey as 'A'|'M1'|'C'|'D'|'E'|'F'), packet)
             const taken = applied.taken
             
-            // Apply damage with Gold Box synchronization
-            const pawnRef = attackerKey as 'A'|'M1'|'C'|'D'|'E'|'F'
-            const damageResult = applyDamageToPawn(pawnRef, taken, 'attack_of_opportunity')
-            
-            appendLogLine(`${defenderKey} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Attacker HP ${damageResult.newHP}.`)
-            if (damageResult.newHP <= 0) { gameOver = defenderKey as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); return }
+            // Apply damage with Gold Box synchronization (only to character pawns, not monsters)
+            if (attackerKey && attackerKey !== 'M1' && ['A', 'B', 'C', 'D', 'E', 'F'].includes(attackerKey)) {
+              const pawnRef = attackerKey as 'A'|'B'|'C'|'D'|'E'|'F'
+              const damageResult = applyDamageToPawn(pawnRef, taken, 'attack_of_opportunity')
+              appendLogLine(`${defenderKey} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Attacker HP ${damageResult.newHP}.`)
+              if (damageResult.newHP <= 0) { gameOver = defenderKey as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); return }
+            }
           }
             (turns as any).aooUsed![defenderKey] = used + 1
           }
@@ -3271,6 +3889,55 @@ document.getElementById('reset-btn')?.addEventListener('click', () => {
   appendLogLine('Reset encounter.')
   drawAll()
   updateActionHUD(hudText())
+})
+
+// Export current SaveData to a JSON file
+document.getElementById('export-btn')?.addEventListener('click', () => {
+  try {
+    const data = captureState()
+    const parsed = SaveDataSchema.parse(data)
+    const blob = new Blob([JSON.stringify(parsed, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    a.href = url
+    a.download = `srd-grid-save-${stamp}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    appendLogLine('Exported save to file.')
+  } catch (e) {
+    console.error('Export failed:', e)
+    appendLogLine('Export failed.')
+  }
+})
+
+// Import SaveData from a JSON file
+document.getElementById('import-btn')?.addEventListener('click', () => {
+  const input = document.getElementById('import-file') as HTMLInputElement | null
+  if (input) input.click()
+})
+
+document.getElementById('import-file')?.addEventListener('change', async (e) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files && input.files[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const raw = JSON.parse(text)
+    const data = SaveDataSchema.parse(raw)
+    restoreFromData(data)
+    appendLogLine('Imported save from file.')
+    // Persist to localStorage as well for convenience
+    try { localStorage.setItem('srd-grid-save', JSON.stringify(data)) } catch {}
+  } catch (err) {
+    console.error('Import failed:', err)
+    appendLogLine('Import failed: invalid or corrupted save file.')
+  } finally {
+    // Reset input so same file can be selected again later
+    input.value = ''
+  }
 })
 
 // Undo button

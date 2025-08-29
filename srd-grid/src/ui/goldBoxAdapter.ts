@@ -168,16 +168,16 @@ export class GoldBoxAdapter {
     // The sync will happen automatically when characters are created or changed
   }
 
-  // Method to assign character to specific pawn slot
-  public assignCharacterToPawn(character: Character, pawnSlot: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F'): void {
+  // Method to assign character to specific pawn slot (excluding pawns with 'M' in names)
+  public assignCharacterToPawn(character: Character, pawnSlot: 'A' | 'C' | 'D' | 'E' | 'F' | 'B'): void {
     console.log(`Gold Box: Assigning ${character.name} to Pawn ${pawnSlot}`)
     
     switch (pawnSlot) {
       case 'A':
         this.setPawnACharacter(character, true) // Suppress events to prevent loops
         break
-      case 'M1':
-        this.setPawnM1Character(character, true)
+      case 'B':
+        this.setPawnBCharacter(character, true)
         break
       case 'C':
         this.setPawnCCharacter(character, true)
@@ -199,10 +199,11 @@ export class GoldBoxAdapter {
     this.updatePartyDisplay()
   }
 
-  // Method to find an available pawn slot
-  public findAvailablePawnSlot(): 'A' | 'M1' | 'C' | 'D' | 'E' | 'F' | null {
-    const pawnIds = ['pawn-a', 'pawn-m1', 'pawn-c', 'pawn-d', 'pawn-e', 'pawn-f']
-    const pawnLetters: ('A' | 'M1' | 'C' | 'D' | 'E' | 'F')[] = ['A', 'M1', 'C', 'D', 'E', 'F']
+  // Method to find an available pawn slot (excluding pawns with 'M' in their names)
+  public findAvailablePawnSlot(): 'A' | 'C' | 'D' | 'E' | 'F' | 'B' | null {
+    // Exclude pawnM1 (has 'M' in name) and add pawnB as the sixth character slot
+    const pawnIds = ['pawn-a', 'pawn-c', 'pawn-d', 'pawn-e', 'pawn-f', 'pawn-b']
+    const pawnLetters: ('A' | 'C' | 'D' | 'E' | 'F' | 'B')[] = ['A', 'C', 'D', 'E', 'F', 'B']
     
     for (let i = 0; i < pawnIds.length; i++) {
       if (!this.characters.has(pawnIds[i])) {
@@ -222,13 +223,13 @@ export class GoldBoxAdapter {
       applyCharacterToPawnA(character, suppressEvent)
       console.log('Applied character to Pawn A:', character.name, suppressEvent ? '(events suppressed)' : '')
       
-      // Verify the application worked by checking pawn data
+      // CRITICAL: Ensure the pawn uses the same character object reference as the GoldBoxAdapter
       const pawnA = (window as any).pawnA
       if (pawnA) {
-        console.log('Pawn A after character application:', pawnA)
-        // Store additional character data on the pawn for persistence
-        pawnA.characterData = character
+        console.log('Syncing Pawn A character data with GoldBoxAdapter reference')
+        pawnA.characterData = character  // Use the exact same object reference
         pawnA.goldBoxId = 'pawn-a'
+        console.log('Pawn A character data set to:', character.name)
       }
     } else {
       console.warn('applyCharacterToPawnA function not found on window - will retry later')
@@ -240,7 +241,7 @@ export class GoldBoxAdapter {
           retryApply(character, suppressEvent)
           const pawnA = (window as any).pawnA
           if (pawnA) {
-            pawnA.characterData = character
+            pawnA.characterData = character  // Use the exact same object reference
             pawnA.goldBoxId = 'pawn-a'
           }
         }
@@ -255,6 +256,48 @@ export class GoldBoxAdapter {
     }
   }
 
+  private setPawnBCharacter(character: Character, suppressEvent: boolean = false): void {
+    this.addCharacter('pawn-b', character)
+    
+    // Apply to the actual Pawn B in the game
+    const applyCharacterToPawnB = (window as any).applyCharacterToPawnB
+    if (typeof applyCharacterToPawnB === 'function') {
+      applyCharacterToPawnB(character, suppressEvent)
+      console.log('Applied character to Pawn B:', character.name, suppressEvent ? '(events suppressed)' : '')
+      
+      // CRITICAL: Ensure the pawn uses the same character object reference as the GoldBoxAdapter
+      const pawnB = (window as any).pawnB
+      if (pawnB) {
+        console.log('Syncing Pawn B character data with GoldBoxAdapter reference')
+        pawnB.characterData = character  // Use the exact same object reference
+        pawnB.goldBoxId = 'pawn-b'
+        console.log('Pawn B character data set to:', character.name)
+      }
+    } else {
+      console.warn('applyCharacterToPawnB function not found on window - will retry later')
+      // Store the character data anyway and apply it later when the function becomes available
+      setTimeout(() => {
+        const retryApply = (window as any).applyCharacterToPawnB
+        if (typeof retryApply === 'function') {
+          console.log('Retrying character application for:', character.name)
+          retryApply(character, suppressEvent)
+          const pawnB = (window as any).pawnB
+          if (pawnB) {
+            pawnB.characterData = character  // Use the exact same object reference
+            pawnB.goldBoxId = 'pawn-b'
+          }
+        }
+      }, 100)
+    }
+    
+    this.interface.addMessage(`${character.name} joins the party!`, 'System')
+    
+    // Only update display if not suppressing events
+    if (!suppressEvent) {
+      this.updatePartyDisplay()
+    }
+  }
+
   private setPawnM1Character(character: Character, suppressEvent: boolean = false): void {
     this.addCharacter('pawn-m1', character)
     
@@ -262,6 +305,13 @@ export class GoldBoxAdapter {
     if (typeof applyCharacterToPawnM1 === 'function') {
       applyCharacterToPawnM1(character, suppressEvent)
       console.log('Applied character to Pawn M1:', character.name, suppressEvent ? '(events suppressed)' : '')
+      
+      // Sync character data to ensure object reference consistency
+      const pawnM1 = (window as any).pawnM1
+      if (pawnM1) {
+        pawnM1.characterData = character
+        pawnM1.goldBoxId = 'pawn-m1'
+      }
     }
     
     this.interface.addMessage(`${character.name} joins the party!`, 'System')
@@ -279,6 +329,13 @@ export class GoldBoxAdapter {
     if (typeof applyCharacterToPawnC === 'function') {
       applyCharacterToPawnC(character, suppressEvent)
       console.log('Applied character to Pawn C:', character.name, suppressEvent ? '(events suppressed)' : '')
+      
+      // Sync character data to ensure object reference consistency
+      const pawnC = (window as any).pawnC
+      if (pawnC) {
+        pawnC.characterData = character
+        pawnC.goldBoxId = 'pawn-c'
+      }
     }
     
     this.interface.addMessage(`${character.name} joins the party!`, 'System')
@@ -296,6 +353,13 @@ export class GoldBoxAdapter {
     if (typeof applyCharacterToPawnD === 'function') {
       applyCharacterToPawnD(character, suppressEvent)
       console.log('Applied character to Pawn D:', character.name, suppressEvent ? '(events suppressed)' : '')
+      
+      // Sync character data to ensure object reference consistency
+      const pawnD = (window as any).pawnD
+      if (pawnD) {
+        pawnD.characterData = character
+        pawnD.goldBoxId = 'pawn-d'
+      }
     }
     
     this.interface.addMessage(`${character.name} joins the party!`, 'System')
@@ -313,6 +377,13 @@ export class GoldBoxAdapter {
     if (typeof applyCharacterToPawnE === 'function') {
       applyCharacterToPawnE(character, suppressEvent)
       console.log('Applied character to Pawn E:', character.name, suppressEvent ? '(events suppressed)' : '')
+      
+      // Sync character data to ensure object reference consistency
+      const pawnE = (window as any).pawnE
+      if (pawnE) {
+        pawnE.characterData = character
+        pawnE.goldBoxId = 'pawn-e'
+      }
     }
     
     this.interface.addMessage(`${character.name} joins the party!`, 'System')
@@ -330,6 +401,13 @@ export class GoldBoxAdapter {
     if (typeof applyCharacterToPawnF === 'function') {
       applyCharacterToPawnF(character, suppressEvent)
       console.log('Applied character to Pawn F:', character.name, suppressEvent ? '(events suppressed)' : '')
+      
+      // Sync character data to ensure object reference consistency
+      const pawnF = (window as any).pawnF
+      if (pawnF) {
+        pawnF.characterData = character
+        pawnF.goldBoxId = 'pawn-f'
+      }
     }
     
     this.interface.addMessage(`${character.name} joins the party!`, 'System')
@@ -473,6 +551,7 @@ export class GoldBoxAdapter {
   }
 
   private initializeDemo(): void {
+    console.log('=== INITIALIZING DEMO ===')
     // Check if there's already a character on Pawn A
     const pawnA = (window as any).pawnA
     let pawnACharacterLoaded = false
@@ -492,6 +571,7 @@ export class GoldBoxAdapter {
     
     // Create sample characters for full 6-person party
     const sampleCharacters = this.createSampleParty()
+    console.log('Created sample characters:', sampleCharacters.map(c => c.name))
     
     if (!pawnACharacterLoaded) {
       // No existing character, use first sample as Pawn A
@@ -501,21 +581,27 @@ export class GoldBoxAdapter {
     
     // Assign characters to all 6 pawn slots
     const remainingCharacters = pawnACharacterLoaded ? sampleCharacters : sampleCharacters.slice(1)
-    
+    console.log('Assigning remaining characters:', remainingCharacters.map(c => c.name))
+
     // Fill pawn slots B through F with sample characters
     if (remainingCharacters.length > 0) {
+      console.log('Assigning to M1:', remainingCharacters[0].name)
       this.setPawnM1Character(remainingCharacters[0], true)
     }
     if (remainingCharacters.length > 1) {
+      console.log('Assigning to C:', remainingCharacters[1].name)
       this.setPawnCCharacter(remainingCharacters[1], true)
     }
     if (remainingCharacters.length > 2) {
+      console.log('Assigning to D:', remainingCharacters[2].name)
       this.setPawnDCharacter(remainingCharacters[2], true)
     }
     if (remainingCharacters.length > 3) {
+      console.log('Assigning to E:', remainingCharacters[3].name)
       this.setPawnECharacter(remainingCharacters[3], true)
     }
     if (remainingCharacters.length > 4) {
+      console.log('Assigning to F:', remainingCharacters[4].name)
       this.setPawnFCharacter(remainingCharacters[4], true)
     }
     
@@ -652,6 +738,19 @@ export class GoldBoxAdapter {
     this.updatePartyDisplay()
   }
 
+  public showCharacterSheet(characterId: string): void {
+    console.log(`=== SHOWING CHARACTER SHEET FOR: ${characterId} ===`)
+    const character = this.characters.get(characterId)
+    console.log('Found character:', character ? character.name : 'NOT FOUND')
+    console.log('Available characters:', Array.from(this.characters.keys()))
+    
+    if (character && this.characterSheet) {
+      this.characterSheet.show(character, characterId)
+    } else {
+      console.warn(`Cannot show character sheet: character with ID '${characterId}' not found`)
+    }
+  }
+
   // Debug methods - can be called from browser console
   public debugPartyState(): void {
     console.log('=== Gold Box Debug Party State ===')
@@ -663,14 +762,13 @@ export class GoldBoxAdapter {
       console.log(`    AC: ${character.armorClass.total}`)
     })
     
-    const pawnA = (window as any).pawnA
-    console.log('Pawn A data:', pawnA)
-    if (pawnA && pawnA.characterData) {
-      console.log('Pawn A has character data:', pawnA.characterData.name)
-    } else {
-      console.log('Pawn A has no character data')
-    }
-    console.log('================================')
+    console.log('=== Pawn goldBoxId Mapping ===')
+    const pawns = ['pawnA', 'pawnB', 'pawnC', 'pawnD', 'pawnE', 'pawnF']
+    pawns.forEach(pawnName => {
+      const pawn = (window as any)[pawnName]
+      console.log(`${pawnName}.goldBoxId:`, (pawn as any)?.goldBoxId)
+      console.log(`${pawnName}.characterData:`, (pawn as any)?.characterData ? (pawn as any).characterData.name : 'None')
+    })
   }
 
   public forceRefresh(): void {

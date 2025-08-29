@@ -9,6 +9,9 @@ export class GoldBoxCharacterSheet {
   private characterId: string | null = null
   private isVisible = false
   private container: HTMLElement | null = null
+  private currentTokenUrl: string = ''
+  private currentTokenName: string = ''
+  private mappedPawnId: string | null = null
 
   constructor() {
     this.createCharacterSheet()
@@ -103,6 +106,59 @@ export class GoldBoxCharacterSheet {
                 <option value="CE">Chaotic Evil</option>
               </select></label>
               <label>Experience: <input type="number" class="char-experience" /></label>
+            </div>
+          </div>
+
+          <!-- Token Selection -->
+          <div class="token-selection section">
+            <h3 class="section-title">PAWN TOKEN</h3>
+            <div class="token-selector">
+              <div class="current-token-preview">
+                <img class="token-preview-image" style="
+                  width: 64px;
+                  height: 64px;
+                  border: 2px solid #0080FF;
+                  border-radius: 4px;
+                  object-fit: cover;
+                  background: #111;
+                " alt="Current token" />
+                <div class="token-info" style="
+                  color: #0080FF;
+                  font-size: 11px;
+                  margin-top: 4px;
+                  text-align: center;
+                ">
+                  <div class="token-name">No token</div>
+                  <div class="pawn-mapping">Not mapped</div>
+                </div>
+              </div>
+              <div class="token-controls" style="
+                display: flex;
+                gap: 8px;
+                margin-top: 8px;
+                flex-wrap: wrap;
+              ">
+                <button type="button" class="change-token-btn" style="
+                  background: #0080FF;
+                  color: #000;
+                  border: 1px solid #0080FF;
+                  padding: 6px 12px;
+                  cursor: pointer;
+                  border-radius: 4px;
+                  font-size: 11px;
+                  font-weight: bold;
+                ">Change Token</button>
+                <button type="button" class="map-to-pawn-btn" style="
+                  background: #16a34a;
+                  color: #fff;
+                  border: 1px solid #16a34a;
+                  padding: 6px 12px;
+                  cursor: pointer;
+                  border-radius: 4px;
+                  font-size: 11px;
+                  font-weight: bold;
+                ">Map to Pawn</button>
+              </div>
             </div>
           </div>
 
@@ -412,6 +468,9 @@ export class GoldBoxCharacterSheet {
     // Setup ability score modifier calculation
     this.setupAbilityModifiers()
 
+    // Setup token selection handlers
+    this.setupTokenSelection()
+
     // Style all form elements
     this.styleFormElements()
   }
@@ -433,6 +492,381 @@ export class GoldBoxCharacterSheet {
         })
       }
     })
+  }
+
+  private setupTokenSelection(): void {
+    if (!this.container) return
+
+    // Change token button handler
+    const changeTokenBtn = this.container.querySelector('.change-token-btn')
+    if (changeTokenBtn) {
+      changeTokenBtn.addEventListener('click', () => {
+        this.showTokenSelector()
+      })
+    }
+
+    // Map to pawn button handler
+    const mapToPawnBtn = this.container.querySelector('.map-to-pawn-btn')
+    if (mapToPawnBtn) {
+      mapToPawnBtn.addEventListener('click', () => {
+        this.showPawnMapper()
+      })
+    }
+
+    // Initialize token preview
+    this.updateTokenPreview()
+  }
+
+  private updateTokenPreview(): void {
+    if (!this.container) return
+
+    const previewImage = this.container.querySelector('.token-preview-image') as HTMLImageElement
+    const tokenName = this.container.querySelector('.token-name')
+    const pawnMapping = this.container.querySelector('.pawn-mapping')
+
+    if (previewImage) {
+      previewImage.src = this.currentTokenUrl || '/src/assets/pawns/pawnA.svg'
+      previewImage.alt = this.currentTokenName || 'Default token'
+    }
+
+    if (tokenName) {
+      tokenName.textContent = this.currentTokenName || 'Default Token'
+    }
+
+    if (pawnMapping) {
+      pawnMapping.textContent = this.mappedPawnId ? `Mapped to Pawn ${this.mappedPawnId}` : 'Not mapped to board'
+    }
+  }
+
+  private showTokenSelector(): void {
+    // Create token selection modal
+    const modal = document.createElement('div')
+    modal.className = 'token-selector-modal'
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20000;
+      font-family: 'Courier New', monospace;
+    `
+
+    const content = document.createElement('div')
+    content.style.cssText = `
+      background: #000;
+      border: 3px solid #0080FF;
+      border-radius: 8px;
+      padding: 20px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 80%;
+      overflow-y: auto;
+      color: #0080FF;
+    `
+
+    content.innerHTML = `
+      <h3 style="color: #FFFF00; text-align: center; margin-bottom: 20px;">SELECT TOKEN</h3>
+      <div class="token-grid" style="
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+        margin-bottom: 20px;
+      "></div>
+      <div style="text-align: center;">
+        <button class="close-token-selector" style="
+          background: #FF0000;
+          color: #FFFFFF;
+          border: 2px solid #FFFFFF;
+          padding: 10px 20px;
+          cursor: pointer;
+          font-family: inherit;
+          font-weight: bold;
+        ">CANCEL</button>
+      </div>
+    `
+
+    // Get available tokens from window
+    const availableTokens = (window as any).availableTokens || []
+    const tokenGrid = content.querySelector('.token-grid')
+
+    if (tokenGrid) {
+      availableTokens.forEach((token: any) => {
+        const tokenButton = document.createElement('div')
+        tokenButton.className = 'token-option'
+        tokenButton.style.cssText = `
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 10px;
+          border: 2px solid #333;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: border-color 0.2s;
+        `
+
+        tokenButton.innerHTML = `
+          <img src="${token.url}" style="
+            width: 64px;
+            height: 64px;
+            object-fit: cover;
+            border-radius: 4px;
+          " alt="${token.name}" />
+          <div style="
+            font-size: 10px;
+            margin-top: 5px;
+            text-align: center;
+            word-break: break-word;
+          ">${token.name}</div>
+        `
+
+        tokenButton.addEventListener('mouseenter', () => {
+          tokenButton.style.borderColor = '#0080FF'
+        })
+
+        tokenButton.addEventListener('mouseleave', () => {
+          tokenButton.style.borderColor = '#333'
+        })
+
+        tokenButton.addEventListener('click', () => {
+          this.currentTokenUrl = token.url
+          this.currentTokenName = token.name
+          this.updateTokenPreview()
+          document.body.removeChild(modal)
+        })
+
+        tokenGrid.appendChild(tokenButton)
+      })
+    }
+
+    // Close button handler
+    const closeBtn = content.querySelector('.close-token-selector')
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        document.body.removeChild(modal)
+      })
+    }
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal)
+      }
+    })
+
+    modal.appendChild(content)
+    document.body.appendChild(modal)
+  }
+
+  private showPawnMapper(): void {
+    // Create pawn mapping modal
+    const modal = document.createElement('div')
+    modal.className = 'pawn-mapper-modal'
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20000;
+      font-family: 'Courier New', monospace;
+    `
+
+    const content = document.createElement('div')
+    content.style.cssText = `
+      background: #000;
+      border: 3px solid #16a34a;
+      border-radius: 8px;
+      padding: 20px;
+      width: 500px;
+      color: #0080FF;
+    `
+
+    content.innerHTML = `
+      <h3 style="color: #FFFF00; text-align: center; margin-bottom: 20px;">MAP TO PAWN</h3>
+      <p style="margin-bottom: 20px; text-align: center;">
+        Select which pawn on the board this character should control:
+      </p>
+      <div class="pawn-options" style="
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+      ">
+        <button class="pawn-option" data-pawn="A" style="
+          background: #5aa9e6;
+          color: #000;
+          border: none;
+          padding: 15px;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: bold;
+        ">Pawn A</button>
+        <button class="pawn-option" data-pawn="M1" style="
+          background: #e65a5a;
+          color: #fff;
+          border: none;
+          padding: 15px;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: bold;
+        ">Pawn M1</button>
+        <button class="pawn-option" data-pawn="C" style="
+          background: #6d28d9;
+          color: #fff;
+          border: none;
+          padding: 15px;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: bold;
+        ">Pawn C</button>
+        <button class="pawn-option" data-pawn="D" style="
+          background: #9333ea;
+          color: #fff;
+          border: none;
+          padding: 15px;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: bold;
+        ">Pawn D</button>
+        <button class="pawn-option" data-pawn="E" style="
+          background: #059669;
+          color: #fff;
+          border: none;
+          padding: 15px;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: bold;
+        ">Pawn E</button>
+        <button class="pawn-option" data-pawn="F" style="
+          background: #f59e0b;
+          color: #000;
+          border: none;
+          padding: 15px;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: bold;
+        ">Pawn F</button>
+      </div>
+      <div style="text-align: center;">
+        <button class="close-pawn-mapper" style="
+          background: #FF0000;
+          color: #FFFFFF;
+          border: 2px solid #FFFFFF;
+          padding: 10px 20px;
+          margin: 0 10px;
+          cursor: pointer;
+          font-family: inherit;
+          font-weight: bold;
+        ">CANCEL</button>
+        <button class="clear-mapping" style="
+          background: #6b7280;
+          color: #FFFFFF;
+          border: 2px solid #FFFFFF;
+          padding: 10px 20px;
+          margin: 0 10px;
+          cursor: pointer;
+          font-family: inherit;
+          font-weight: bold;
+        ">CLEAR MAPPING</button>
+      </div>
+    `
+
+    // Pawn option handlers
+    const pawnOptions = content.querySelectorAll('.pawn-option')
+    pawnOptions.forEach(option => {
+      option.addEventListener('click', () => {
+        const pawnId = (option as HTMLElement).dataset.pawn
+        if (pawnId) {
+          this.mappedPawnId = pawnId
+          this.applyCharacterToPawn(pawnId)
+          this.updateTokenPreview()
+          document.body.removeChild(modal)
+        }
+      })
+    })
+
+    // Close button handler
+    const closeBtn = content.querySelector('.close-pawn-mapper')
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        document.body.removeChild(modal)
+      })
+    }
+
+    // Clear mapping button handler
+    const clearBtn = content.querySelector('.clear-mapping')
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        this.mappedPawnId = null
+        this.updateTokenPreview()
+        document.body.removeChild(modal)
+      })
+    }
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal)
+      }
+    })
+
+    modal.appendChild(content)
+    document.body.appendChild(modal)
+  }
+
+  private applyCharacterToPawn(pawnId: string): void {
+    if (!this.character) return
+
+    // Apply current token to the pawn if we have one
+    if (this.currentTokenUrl && (window as any).setPawnTexture) {
+      (window as any).setPawnTexture(pawnId, this.currentTokenUrl)
+    }
+
+    // Apply character data to the pawn
+    const pawn = this.getPawnObject(pawnId)
+    if (pawn) {
+      // Store character data reference in pawn
+      ;(pawn as any).characterData = this.character
+      ;(pawn as any).goldBoxId = this.characterId || pawnId.toLowerCase()
+      
+      // Apply basic stats
+      pawn.hp = this.character.hitPoints.current
+      const maxHpProperty = `pawn${pawnId}MaxHP`
+      if ((window as any)[maxHpProperty] !== undefined) {
+        (window as any)[maxHpProperty] = this.character.hitPoints.max
+      }
+
+      // Update initiative display and redraw
+      if ((window as any).updateInitiativeDisplay) {
+        (window as any).updateInitiativeDisplay()
+      }
+      if ((window as any).drawAll) {
+        (window as any).drawAll()
+      }
+
+      console.log(`Applied character ${this.character.name} to pawn ${pawnId}`)
+    }
+  }
+
+  private getPawnObject(pawnId: string): any {
+    switch (pawnId) {
+      case 'A': return (window as any).pawnA
+      case 'M1': return (window as any).pawnM1
+      case 'C': return (window as any).pawnC
+      case 'D': return (window as any).pawnD
+      case 'E': return (window as any).pawnE
+      case 'F': return (window as any).pawnF
+      default: return null
+    }
   }
 
   private styleFormElements(): void {
@@ -634,6 +1068,67 @@ export class GoldBoxCharacterSheet {
 
     // Trigger modifier calculations
     this.updateAbilityModifiers()
+
+    // Load token information from character/pawn mapping
+    this.loadTokenInformation()
+  }
+
+  private loadTokenInformation(): void {
+    if (!this.character) return
+
+    // Try to find which pawn this character is mapped to
+    const pawnIds = ['A', 'M1', 'C', 'D', 'E', 'F']
+    
+    // First try: use characterId if available and it matches goldBoxId pattern
+    if (this.characterId) {
+      const pawnIdFromCharId = this.characterId.replace('pawn-', '').toUpperCase()
+      if (pawnIds.includes(pawnIdFromCharId)) {
+        const pawn = this.getPawnObject(pawnIdFromCharId)
+        if (pawn && (pawn as any).characterData) {
+          this.mappedPawnId = pawnIdFromCharId
+          console.log(`Character ${this.character.name} mapped to pawn ${pawnIdFromCharId} via characterId`)
+        }
+      }
+    }
+    
+    // Second try: search by character name if not found by ID
+    if (!this.mappedPawnId) {
+      for (const pawnId of pawnIds) {
+        const pawn = this.getPawnObject(pawnId)
+        if (pawn && (pawn as any).characterData) {
+          // Compare by character name instead of object reference to avoid reference issues
+          if ((pawn as any).characterData.name === this.character.name) {
+            this.mappedPawnId = pawnId
+            console.log(`Character ${this.character.name} found mapped to pawn ${pawnId} via name search`)
+            break
+          }
+        }
+      }
+    }
+
+    // If we found a mapped pawn, try to get its current token
+    if (this.mappedPawnId) {
+      // Check if the pawn has a custom token stored
+      const pawn = this.getPawnObject(this.mappedPawnId)
+      if (pawn && (pawn as any).tokenUrl) {
+        this.currentTokenUrl = (pawn as any).tokenUrl
+        this.currentTokenName = (pawn as any).tokenName || 'Custom Token'
+      } else {
+        // Try to determine default token based on pawn ID
+        const availableTokens = (window as any).availableTokens || []
+        const defaultToken = availableTokens.find((t: any) => 
+          t.name.toLowerCase().includes(`pawn${this.mappedPawnId}`.toLowerCase())
+        ) || availableTokens[0]
+        
+        if (defaultToken) {
+          this.currentTokenUrl = defaultToken.url
+          this.currentTokenName = defaultToken.name
+        }
+      }
+    }
+
+    // Update the token preview with loaded information
+    this.updateTokenPreview()
   }
 
   private setInputValue(className: string, value: any): void {
