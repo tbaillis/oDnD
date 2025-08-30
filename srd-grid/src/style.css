@@ -14,6 +14,34 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Dungeon title centered above the grid */
+#dungeon-title {
+  position: fixed;
+  left: 50%;
+  top: -8px; /* just above the main background area */
+  transform: translateX(-50%);
+  z-index: 1050; /* behind main UI panels (1100+) but above background */
+  pointer-events: none;
+}
+
+.dungeon-text {
+  display: inline-block;
+  font-family:  'Courier New'; /* serif similar to D&D title */
+  font-size: 120px; /* 3x the original 48px */
+  color: #891dc7; /* white text */
+
+  text-shadow: -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000; /* reinforce border for non-webkit */
+  font-weight: 1000;
+  letter-spacing: 1px;
+  opacity: 0.98;
+  display: inline-block;
+}
+
+@media (max-width: 900px) {
+  .dungeon-text { font-size: 96px; }
+}
+
+
 a {
   font-weight: 500;
   color: #87ceeb;

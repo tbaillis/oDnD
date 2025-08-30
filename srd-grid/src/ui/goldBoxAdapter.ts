@@ -202,8 +202,8 @@ export class GoldBoxAdapter {
   // Method to find an available pawn slot (excluding pawns with 'M' in their names)
   public findAvailablePawnSlot(): 'A' | 'C' | 'D' | 'E' | 'F' | 'B' | null {
     // Exclude pawnM1 (has 'M' in name) and add pawnB as the sixth character slot
-    const pawnIds = ['pawn-a', 'pawn-c', 'pawn-d', 'pawn-e', 'pawn-f', 'pawn-b']
-    const pawnLetters: ('A' | 'C' | 'D' | 'E' | 'F' | 'B')[] = ['A', 'C', 'D', 'E', 'F', 'B']
+  const pawnIds = ['pawn-a', 'pawn-b', 'pawn-c', 'pawn-d', 'pawn-e', 'pawn-f']
+  const pawnLetters: ('A' | 'B' | 'C' | 'D' | 'E' | 'F')[] = ['A', 'B', 'C', 'D', 'E', 'F']
     
     for (let i = 0; i < pawnIds.length; i++) {
       if (!this.characters.has(pawnIds[i])) {
@@ -822,7 +822,7 @@ export class GoldBoxAdapter {
       // Map gold box character IDs to pawn IDs for turn tracking
       const pawnIdMap: Record<string, string> = {
         'pawn-a': 'A',
-        'pawn-m1': 'M1', 
+        'pawn-b': 'B',
         'pawn-c': 'C',
         'pawn-d': 'D',
         'pawn-e': 'E',
@@ -969,9 +969,9 @@ export class GoldBoxAdapter {
   // Expose assignment methods globally
   public exposeGlobalMethods(): void {
     const windowObj = window as any
-    windowObj.assignCharacterToPawn = (character: Character, pawnSlot: 'A' | 'M1' | 'C' | 'D' | 'E' | 'F' | 'B') => {
-      // Accept legacy 'B' alias and map it to 'M1'
-      const slot = (pawnSlot === 'B') ? 'M1' : pawnSlot
+    windowObj.assignCharacterToPawn = (character: Character, pawnSlot: 'A' | 'B' | 'M1' | 'C' | 'D' | 'E' | 'F') => {
+      // Treat 'B' as a proper pawn slot; accept 'M1' only if explicitly provided
+      const slot = pawnSlot
       this.assignCharacterToPawn(character, slot as any)
     }
     windowObj.findAvailablePawnSlot = () => {

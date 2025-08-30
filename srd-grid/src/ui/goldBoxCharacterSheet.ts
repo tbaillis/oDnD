@@ -710,15 +710,15 @@ export class GoldBoxCharacterSheet {
           border-radius: 4px;
           font-weight: bold;
         ">Pawn A</button>
-        <button class="pawn-option" data-pawn="M1" style="
-          background: #e65a5a;
-          color: #fff;
+        <button class="pawn-option" data-pawn="B" style="
+          background: #94a3b8;
+          color: #000;
           border: none;
           padding: 15px;
           cursor: pointer;
           border-radius: 4px;
           font-weight: bold;
-        ">Pawn M1</button>
+        ">Pawn B</button>
         <button class="pawn-option" data-pawn="C" style="
           background: #6d28d9;
           color: #fff;
@@ -755,6 +755,15 @@ export class GoldBoxCharacterSheet {
           border-radius: 4px;
           font-weight: bold;
         ">Pawn F</button>
+        <button class="pawn-option" data-pawn="M1" style="
+          background: #e65a5a;
+          color: #fff;
+          border: none;
+          padding: 15px;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: bold;
+        ">Pawn M1</button>
       </div>
       <div style="text-align: center;">
         <button class="close-pawn-mapper" style="
@@ -860,7 +869,7 @@ export class GoldBoxCharacterSheet {
   private getPawnObject(pawnId: string): any {
     switch (pawnId) {
       case 'A': return (window as any).pawnA
-      case 'M1': return (window as any).pawnM1
+      case 'B': return (window as any).pawnB
       case 'C': return (window as any).pawnC
       case 'D': return (window as any).pawnD
       case 'E': return (window as any).pawnE
@@ -1077,7 +1086,7 @@ export class GoldBoxCharacterSheet {
     if (!this.character) return
 
     // Try to find which pawn this character is mapped to
-    const pawnIds = ['A', 'M1', 'C', 'D', 'E', 'F']
+    const pawnIds = ['A', 'B', 'C', 'D', 'E', 'F']
     
     // First try: use characterId if available and it matches goldBoxId pattern
     if (this.characterId) {
