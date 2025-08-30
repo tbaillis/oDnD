@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Sprite, Assets, Texture } from 'pixi.js'
 import { createWorld, updateTime } from './engine/world'
 import { UIManager } from './ui/interface'
+import { DungeonView } from './ui/dungeonView'
 import { DMChatPanel } from './ui/dmChat'
 import { BattlefieldSettings } from './ui/battlefieldSettings'
 import { GoldBoxAdapter } from './ui/goldBoxAdapter'
@@ -168,6 +169,15 @@ try {
   console.error('Main: Error initializing Gold Box Adapter:', error)
   // Create a minimal fallback
   goldBoxAdapter = null as any
+}
+
+// Create dungeon view and position it next to the party panel (not inside character sheet)
+try {
+  const dungeonView = new DungeonView(document.body)
+  ;(window as any).dungeonView = dungeonView
+  console.log('Dungeon view created and attached to DOM')
+} catch (err) {
+  console.warn('Failed to create dungeon view:', err)
 }
 
 // Expose applyCharacterToPawn functions globally so UIManager and Gold Box can access them (excluding M pawns)

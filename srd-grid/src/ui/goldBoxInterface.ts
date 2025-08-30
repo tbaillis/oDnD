@@ -1,4 +1,5 @@
 import type { Character } from '../game/character'
+import { DungeonView } from './dungeonView'
 
 // Condition codes and their display information
 export interface ConditionInfo {
@@ -150,9 +151,18 @@ export class GoldBoxInterface {
     // Create command bar (spans both columns)
     this.commandBarElement = this.createCommandBar()
 
-    // Layout components
-    gridContainer.appendChild(this.viewportElement)
-    gridContainer.appendChild(this.partyPanelElement)
+  // Create dungeon slot (will hold the DungeonView)
+  const dungeonSlot = this.createDungeonSlot()
+
+  // Layout components
+  // Left column will contain the viewport and dungeon slot stacked vertically
+  const leftColumn = document.createElement('div')
+  leftColumn.style.cssText = `display:flex; flex-direction:column; gap:8px;`
+  leftColumn.appendChild(this.viewportElement)
+  leftColumn.appendChild(dungeonSlot)
+
+  gridContainer.appendChild(leftColumn)
+  gridContainer.appendChild(this.partyPanelElement)
     
     const bottomSection = document.createElement('div')
     bottomSection.style.cssText = `
@@ -167,6 +177,8 @@ export class GoldBoxInterface {
 
     this.container.appendChild(gridContainer)
     document.body.appendChild(this.container)
+  // save dungeon slot reference for later instantiation
+  ;(this as any)._dungeonSlot = dungeonSlot
   }
 
   private createViewport(): HTMLElement {
@@ -225,6 +237,27 @@ export class GoldBoxInterface {
     panel.appendChild(header)
     panel.appendChild(membersList)
     return panel
+  }
+
+  private createDungeonSlot(): HTMLElement {
+    const slot = document.createElement('div')
+    slot.className = 'dungeon-slot'
+    slot.style.cssText = `
+      border: 2px solid #00aaff;
+      background: #04050a;
+      padding: 6px;
+      width: 440px;
+      box-sizing: border-box;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    `
+    const title = document.createElement('div')
+    title.textContent = 'Dungeon'
+    title.style.cssText = 'color: #ffd86b; font-weight: bold; text-align:center; margin-bottom:6px;'
+    slot.appendChild(title)
+    return slot
   }
 
   private createMessageLog(): HTMLElement {
@@ -365,12 +398,50 @@ export class GoldBoxInterface {
     this.isVisible = true
     this.container.style.display = 'block'
     console.log('Gold Box Interface shown')
+    // instantiate DungeonView inside the main viewport content (replace image)
+    try {
+      const content = this.viewportElement.querySelector('.viewport-content') as HTMLElement | null
+      if (content && !(content as any)._dungeonInstance) {
+        // clear any existing content (image placeholder)
+        content.innerHTML = ''
+        const dungeon = new DungeonView(content)
+        ;(content as any)._dungeonInstance = dungeon
+        ;(window as any).dungeonView = dungeon
+        console.log('DungeonView instantiated in Gold Box viewport content')
+      }
+    } catch (err) {
+      console.warn('Failed to instantiate DungeonView in viewport content:', err)
+    }
   }
 
   public hide(): void {
     this.isVisible = false
     this.container.style.display = 'none'
     console.log('Gold Box Interface hidden')
+    // destroy dungeon view instance if present and restore viewport placeholder
+    try {
+      const content = this.viewportElement.querySelector('.viewport-content') as HTMLElement | null
+      const inst = content && (content as any)._dungeonInstance
+      if (inst && inst.destroy) {
+        try { inst.destroy() } catch (e) { /* ignore */ }
+      }
+      if (content) {
+        (content as any)._dungeonInstance = undefined
+        // restore placeholder image/text
+        content.innerHTML = ''
+        if (this.currentScene.mode === 'image' && this.currentScene.imageSrc) {
+          const img = document.createElement('img')
+          img.src = this.currentScene.imageSrc
+          img.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain;'
+          content.appendChild(img)
+        } else {
+          content.textContent = 'Scene will appear here'
+        }
+      }
+      ;(window as any).dungeonView = undefined
+    } catch (err) {
+      console.warn('Failed to clean up DungeonView instance:', err)
+    }
   }
 
   public toggle(): void {
