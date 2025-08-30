@@ -755,15 +755,6 @@ export class GoldBoxCharacterSheet {
           border-radius: 4px;
           font-weight: bold;
         ">Pawn F</button>
-        <button class="pawn-option" data-pawn="M1" style="
-          background: #e65a5a;
-          color: #fff;
-          border: none;
-          padding: 15px;
-          cursor: pointer;
-          border-radius: 4px;
-          font-weight: bold;
-        ">Pawn M1</button>
       </div>
       <div style="text-align: center;">
         <button class="close-pawn-mapper" style="

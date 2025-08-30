@@ -1074,6 +1074,19 @@ if ((window as any).goldBoxAdapter) {
 }
 updateInitiativeDisplay()
 
+// On game start, map available Gold Box characters to pawns A-F in order
+if (goldBoxAdapter) {
+  // Ensure mapping follows pawn labels A..F regardless of adapter iteration order
+  const chars = goldBoxAdapter.getAllCharacters()
+  const pawnOrder = ['A','B','C','D','E','F']
+  for (const pawnId of pawnOrder) {
+    const charId = `pawn-${pawnId.toLowerCase()}`
+    if (chars.has(charId)) {
+      assignCharacterToPawn(charId, pawnId)
+    }
+  }
+}
+
 // Helper function to get character/monster name for a pawn ID (showing character name + pawn name)
 function getPawnName(pawnId: string): string {
   switch (pawnId) {
@@ -1100,6 +1113,10 @@ function getPawnName(pawnId: string): string {
     case 'F': {
       const characterName = (pawnF as any).characterData ? (pawnF as any).characterData.name : null
       return characterName ? `${characterName} (F)` : 'Pawn F'
+    }
+    case 'M1': {
+      const monsterName = (pawnM1 as any).characterData ? (pawnM1 as any).characterData.name : null
+      return monsterName ? `${monsterName} (M1)` : 'Monster (M1)'
     }
     default:
       return pawnId
@@ -1763,19 +1780,24 @@ function updateInitiativeDisplay() {
       pawnDiv.title = 'Click to view character sheet'
       
       pawnDiv.addEventListener('click', () => {
+        // If this is the monster slot, open the monster assignment/UI
+        if (entry.id === 'M1') {
+          // Prefer the dedicated monster UI if available
+          if ((window as any).showMonsterUI) {
+            (window as any).showMonsterUI()
+          } else {
+            // Fallback to monster selection modal
+            showMonsterSelectionModal('M1')
+          }
+          return
+        }
+
         const characterData = (pawnObj as any).characterData
         const characterId = (pawnObj as any).goldBoxId || `pawn-${entry.id.toLowerCase()}`
-        
-        console.log(`=== INITIATIVE CLICK DEBUG ===`)
-        console.log('entry.id:', entry.id)
-        console.log('pawnObj.goldBoxId:', (pawnObj as any).goldBoxId)
-        console.log('final characterId:', characterId)
-        console.log('characterData.name:', characterData ? characterData.name : 'NO CHARACTER DATA')
-        console.log(`Initiative click: Opening character sheet for ${characterData.name} (${characterId})`)
-        
+
         // Use the GoldBox character sheet instead of the UI manager's sheet
-        if (goldBoxAdapter && goldBoxAdapter.showCharacterSheet) {
-          goldBoxAdapter.showCharacterSheet(characterId)
+        if (goldBoxAdapter && (goldBoxAdapter as any).showCharacterSheet) {
+          (goldBoxAdapter as any).showCharacterSheet(characterId)
         } else if (uiManager && uiManager.characterSheet) {
           uiManager.characterSheet.setCharacter(characterData)
           uiManager.characterSheet.show()
@@ -2093,7 +2115,7 @@ function buildCompactTokenManager() {
   container.appendChild(header)
   
   // Create compact token row for each pawn
-  const createCompactTokenRow = (label: string, who: 'A'|'B'|'M1'|'C'|'D'|'E'|'F', def?: { url: string, name: string }) => {
+  const createCompactTokenRow = (label: string, who: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', def?: { url: string, name: string }) => {
     const row = document.createElement('div')
     row.style.cssText = 'margin-bottom:8px;'
     
@@ -2231,7 +2253,7 @@ export function buildTokenSelectors() {
   content.style.cssText = 'display:block;'
 
   // Create token button grid for each pawn
-  const createTokenRow = (label: string, who: 'A'|'M1'|'C'|'D'|'E'|'F', def?: { url: string, name: string } | undefined) => {
+  const createTokenRow = (label: string, who: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', def?: { url: string, name: string } | undefined) => {
     const cont = document.createElement('div')
     cont.style.cssText = 'margin-bottom:12px; padding:8px; background:rgba(17,24,39,0.5); border-radius:6px;'
     
@@ -2316,17 +2338,20 @@ export function buildTokenSelectors() {
   }
 
   const a = createTokenRow('Pawn A', 'A', defA)
-  const b = createTokenRow('Pawn M1', 'M1', defM1)
+  const b = createTokenRow('Pawn B', 'B', defB)
   const c = createTokenRow('Pawn C', 'C', defC)
   const d = createTokenRow('Pawn D', 'D', defD)
   const e = createTokenRow('Pawn E', 'E', defE)
   const f = createTokenRow('Pawn F', 'F', defF)
+  const m1 = createTokenRow('Pawn M1', 'M1', defM1)
   content.appendChild(a.cont)
   content.appendChild(b.cont)
   content.appendChild(c.cont)
   content.appendChild(d.cont)
   content.appendChild(e.cont)
   content.appendChild(f.cont)
+  // Legacy/monster pawn last
+  content.appendChild(m1.cont)
 
   const foot = document.createElement('div')
   foot.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid #374151;'

@@ -483,7 +483,7 @@ export class GoldBoxInterface {
       // Extract pawn ID from character.id (e.g., "pawn-a" -> "A", "pawn-m1" -> "M1") 
       const pawnIdMap: Record<string, string> = {
         'pawn-a': 'A',
-        'pawn-m1': 'M1',
+        'pawn-b': 'B',
         'pawn-c': 'C', 
         'pawn-d': 'D',
         'pawn-e': 'E',
