@@ -104,6 +104,32 @@ export class GoldBoxInterface {
     this.createInterface()
     this.setupEventListeners()
     this.initializeDefaultCommands()
+
+  // NOTE: inline story list will be created in createInterface
+
+    // If a global story manager exists, subscribe to its events to render story messages
+    try {
+      const globalStory = (window as any).story
+      if (globalStory && typeof globalStory.onEvent === 'function') {
+        globalStory.onEvent((e: any) => {
+          switch (e.type) {
+            case 'encounter_started':
+              this.addMessage(`Encounter started: ${e.encounterId} (Chapter ${e.chapterId})`, 'Narration')
+              break
+            case 'battle_result':
+              this.addMessage(`Battle ${e.result.toUpperCase()} ${e.encounterId ? `in ${e.encounterId}` : ''} ${e.details?.loot ? `- Loot: ${JSON.stringify(e.details.loot)}` : ''}`, 'Combat')
+              break
+            case 'dungeon_explored':
+              this.addMessage(`Exploration progress: ${e.progress ?? 0}% ${e.encounterId ? `(encounter ${e.encounterId})` : ''}`, 'Narration')
+              break
+            default:
+              this.addMessage(`Story event: ${e.type}`, 'System')
+          }
+        })
+      }
+    } catch (err) {}
+
+  // nothing to append here; createInterface will wire story list element
   }
 
   private createInterface(): void {
@@ -161,8 +187,8 @@ export class GoldBoxInterface {
   leftColumn.appendChild(this.viewportElement)
   leftColumn.appendChild(dungeonSlot)
 
-  gridContainer.appendChild(leftColumn)
-  gridContainer.appendChild(this.partyPanelElement)
+    gridContainer.appendChild(leftColumn)
+    gridContainer.appendChild(this.partyPanelElement)
     
     const bottomSection = document.createElement('div')
     bottomSection.style.cssText = `
@@ -404,7 +430,9 @@ export class GoldBoxInterface {
       if (content && !(content as any)._dungeonInstance) {
         // clear any existing content (image placeholder)
         content.innerHTML = ''
-        const dungeon = new DungeonView(content)
+  // If a global story manager exists, pass it through for optional linking
+  const globalStory = (window as any).story
+  const dungeon = globalStory ? new DungeonView(content, { story: globalStory, chapterId: 'ch-1' }) : new DungeonView(content)
         ;(content as any)._dungeonInstance = dungeon
         ;(window as any).dungeonView = dungeon
         console.log('DungeonView instantiated in Gold Box viewport content')

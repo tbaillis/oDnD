@@ -91,6 +91,10 @@ const uiManager = new UIManager(document.body)
 // Initialize Gold Box Interface
 console.log('Main: About to create Gold Box Adapter...')
 let goldBoxAdapter: GoldBoxAdapter
+// Central story manager for optional story linking across UI components
+import { StoryManager } from './tools'
+const story = new StoryManager()
+;(window as any).story = story
 try {
   goldBoxAdapter = new GoldBoxAdapter()
   console.log('Main: Gold Box Adapter created successfully')
@@ -176,6 +180,34 @@ try {
   const dungeonView = new DungeonView(document.body)
   ;(window as any).dungeonView = dungeonView
   console.log('Dungeon view created and attached to DOM')
+  // Automatic demo: open Gold Box and simulate a few moves to generate story events
+  try {
+    const autoDemo = async () => {
+      // small delay to let UI initialize
+      await new Promise(r => setTimeout(r, 500))
+      try {
+        const gb = (window as any).goldBox as any
+        if (gb && typeof gb.show === 'function') gb.show()
+      } catch (e) {}
+
+      const dv = (window as any).dungeonView as any
+      if (!dv) return
+
+      // perform several forward steps with pauses so random encounters and progress fire
+      for (let i = 0; i < 12; i++) {
+        try {
+          if (typeof dv.moveForward === 'function') dv.moveForward(1)
+          else if (typeof dv['onKeyDown'] === 'function') dv['onKeyDown']({ key: '8' } as any)
+        } catch (e) {}
+        // wait a bit between moves
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise(r => setTimeout(r, 250))
+      }
+      console.log('Auto demo finished')
+    }
+    // run demo (non-blocking)
+    autoDemo().catch(() => {})
+  } catch (e) {}
 } catch (err) {
   console.warn('Failed to create dungeon view:', err)
 }

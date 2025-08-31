@@ -5,6 +5,18 @@
 // - Solid gray walls, three-band shading, bold outlines
 // - Simple minimap placed into .party-panel if present
 
+type Monster = {
+  id: string
+  name: string
+  hp: number
+  ac?: number
+  cr?: number
+  talkChance?: number // chance to be talked down
+}
+
+import { DungeonLinker, BattleLinker } from '../tools'
+import type { StoryManager as StoryManagerType, ID } from '../tools'
+
 export class DungeonView {
   private container: HTMLElement
   private canvas: HTMLCanvasElement
@@ -17,6 +29,23 @@ export class DungeonView {
   private floorPattern?: CanvasPattern
   private ambientLevel = 0.15
   private torchLevel = 1.0
+  private inEncounter = false
+  private inBattle = false
+  private encounterChance = 0.1 // 10% per move by default
+  private currentMonster?: Monster
+  private battlePlayerHP = 18
+  private battlePlayerMaxHP = 18
+  private battleEnemyHP = 0
+  private battleEnemyMaxHP = 0
+  private battleGridSize = 7 // tactical grid (odd -> center player)
+  private battlePlayerPos = { x: 3, y: 3 }
+  private battleEnemyPos = { x: 5, y: 3 }
+  private encounterOverlay?: HTMLElement
+  private monsterTable: Monster[] = [
+    { id: 'goblin', name: 'Goblin', hp: 7, ac: 15, cr: 1 / 4, talkChance: 0.25 },
+    { id: 'kobold', name: 'Kobold', hp: 5, ac: 12, cr: 1 / 8, talkChance: 0.20 },
+    { id: 'orc', name: 'Orc', hp: 15, ac: 13, cr: 1 / 2, talkChance: 0.15 }
+  ]
 
   // Player state
   private px = 25.5
@@ -27,7 +56,8 @@ export class DungeonView {
   private renderWidth = 840
   private renderHeight = 720
 
-  constructor(parent: HTMLElement = document.body) {
+  // options param is optional and only used when integrating with StoryManager
+  constructor(parent: HTMLElement = document.body, options?: { story?: StoryManagerType; chapterId?: ID; encounterId?: ID }) {
     this.container = document.createElement('div')
     this.container.id = 'dungeon-view'
     const inlineStyle = 'position: relative; width: ' + (this.renderWidth + 4) + 'px; height: ' + (this.renderHeight + 120) + 'px; background: linear-gradient(#0b1020, #071021); border: 1px solid #333; color: #fff; padding: 8px; box-sizing: border-box; font-family: "Courier New", monospace;'
@@ -144,7 +174,32 @@ export class DungeonView {
 
     this.adjustCanvasSize()
     requestAnimationFrame(() => this.frame())
+
+    // optional story integration
+    try {
+      if (options?.story) {
+        this.story = options.story
+        this.dungeonLinker = new DungeonLinker(this.story!)
+        this.battleLinker = new BattleLinker(this.story!)
+        this.storyChapterId = options.chapterId
+        this.storyEncounterId = options.encounterId
+      }
+    } catch (e) {}
   }
+
+  // optional story linking fields
+  private story?: StoryManagerType
+  private dungeonLinker?: DungeonLinker
+  private battleLinker?: BattleLinker
+  private storyChapterId?: ID
+  private storyEncounterId?: ID
+  private _battleCtrl?: {
+    log?: (entry: { who?: string; target?: string; dmg?: number; text?: string }) => void
+    narrative?: (text: string, meta?: any) => void
+    awardXP?: (amount: number) => void
+    finish: (result: any, details?: any) => void
+  }
+  private _dungeonCtrl?: { progress: (percent: number, details?: any) => void }
 
   private adjustCanvasSize() {
     try {
@@ -261,6 +316,11 @@ export class DungeonView {
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || (active as HTMLElement).isContentEditable)) return
 
     const key = e.key.toLowerCase()
+    if (this.inBattle) {
+      this.handleBattleKey(key)
+      this.frame()
+      return
+    }
     switch (key) {
       case 'arrowup':
       case '8':
@@ -292,6 +352,35 @@ export class DungeonView {
     this.frame()
   }
 
+  // battle input handling
+  private handleBattleKey(key: string) {
+    if (!this.inBattle) return
+    switch (key) {
+      case 'arrowup':
+      case 'w':
+        if (this.battlePlayerPos.y > 0) this.battlePlayerPos.y--
+        break
+      case 'arrowdown':
+      case 's':
+        if (this.battlePlayerPos.y < this.battleGridSize - 1) this.battlePlayerPos.y++
+        break
+      case 'arrowleft':
+      case 'a':
+        if (this.battlePlayerPos.x > 0) this.battlePlayerPos.x--
+        break
+      case 'arrowright':
+      case 'd':
+        if (this.battlePlayerPos.x < this.battleGridSize - 1) this.battlePlayerPos.x++
+        break
+      case ' ': // space = attack if adjacent
+        this.battlePlayerAttack()
+        break
+      case 'r': // try to retreat (50% chance)
+        if (Math.random() < 0.5) { this.endBattle(false); this.currentMonster = undefined } else { /* fail */ }
+        break
+    }
+  }
+
   private moveForward(dir: number) {
     const speed = 1.0
     const nx = this.px + Math.cos(this.pa) * speed * dir
@@ -299,6 +388,158 @@ export class DungeonView {
     if (!this.isWall(nx, ny)) {
       this.px = nx
       this.py = ny
+      // random encounter check on successful move
+      this.maybeTriggerEncounter()
+      // if story is attached, send a small exploration progress ping
+      try {
+        if (this.dungeonLinker) {
+          // lazy init dungeon ctrl
+          if (!this._dungeonCtrl) this._dungeonCtrl = this.dungeonLinker.explore(this.storyChapterId, this.storyEncounterId, { dungeonId: 'auto', rooms: 0 })
+          this._dungeonCtrl.progress(1, { pos: { x: this.px, y: this.py } })
+        }
+      } catch (e) {}
+    }
+  }
+
+  // encounter logic
+  private maybeTriggerEncounter() {
+    if (this.inEncounter || this.inBattle) return
+    if (Math.random() < this.encounterChance) {
+      this.startEncounter()
+    }
+  }
+
+  private startEncounter() {
+    this.inEncounter = true
+    const m = this.monsterTable[Math.floor(Math.random() * this.monsterTable.length)]
+    this.currentMonster = { ...m }
+    this.createEncounterOverlay()
+    // inform story that a battle is starting
+    try {
+      if (this.battleLinker) {
+        this._battleCtrl = this.battleLinker.startBattle(this.storyChapterId, this.storyEncounterId, { battleId: this.currentMonster?.id || 'unknown', participants: ['player'] })
+      }
+    } catch (e) {}
+  }
+
+  private endEncounter() {
+    this.inEncounter = false
+    this.currentMonster = undefined
+    if (this.encounterOverlay && this.encounterOverlay.parentElement) this.encounterOverlay.parentElement.removeChild(this.encounterOverlay)
+    this.encounterOverlay = undefined
+    // report a minor progress/completion to the story if attached
+    try {
+      if (this._battleCtrl) {
+        this._battleCtrl.finish('won', { note: 'encounter resolved' })
+        this._battleCtrl = undefined
+      }
+      if (this._dungeonCtrl) {
+        this._dungeonCtrl.progress(100, { note: 'explore step' })
+      }
+    } catch (e) {}
+  }
+
+  private createEncounterOverlay() {
+    try {
+      const overlay = document.createElement('div')
+      overlay.style.cssText = 'position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:#0b1020; border:2px solid #666; padding:12px; color:#fff; z-index:1300; width:320px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,0.7); font-family: "Courier New", monospace;'
+      const title = document.createElement('div')
+      title.style.cssText = 'font-weight:bold; color:#ffd86b; margin-bottom:8px;'
+      title.textContent = 'Encounter'
+      overlay.appendChild(title)
+
+      const info = document.createElement('div')
+      info.style.marginBottom = '8px'
+      info.textContent = this.currentMonster ? `You encounter a ${this.currentMonster.name}!` : 'You encounter something...'
+      overlay.appendChild(info)
+
+      const btnRow = document.createElement('div')
+      btnRow.style.cssText = 'display:flex; gap:8px; justify-content:center; margin-top:8px;'
+
+      const talkBtn = document.createElement('button')
+      talkBtn.textContent = 'Talk'
+      talkBtn.style.cssText = 'padding:8px 12px;'
+      talkBtn.onclick = () => { this.attemptTalk() }
+
+      const fightBtn = document.createElement('button')
+      fightBtn.textContent = 'Fight'
+      fightBtn.style.cssText = 'padding:8px 12px;'
+      fightBtn.onclick = () => { this.acceptFight() }
+
+      btnRow.appendChild(talkBtn)
+      btnRow.appendChild(fightBtn)
+      overlay.appendChild(btnRow)
+
+      document.body.appendChild(overlay)
+      this.encounterOverlay = overlay
+    } catch (e) {}
+  }
+
+  private attemptTalk() {
+    if (!this.currentMonster) return
+    const chance = this.currentMonster.talkChance || 0
+    const roll = Math.random()
+    if (roll < chance) {
+      // success - end encounter peacefully
+      // narrative and log
+      try {
+        this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`The ${this.currentMonster.name} is convinced to leave peacefully.`)
+        this._battleCtrl && this._battleCtrl.finish && this._battleCtrl.finish('fled', { note: 'talk success' })
+      } catch (e) {}
+      if (this.encounterOverlay) {
+        this.encounterOverlay.innerHTML = `<div style="color:#9fe29f;font-weight:bold">The ${this.currentMonster.name} is convinced to leave.</div>`
+        setTimeout(() => this.endEncounter(), 1200)
+      } else this.endEncounter()
+    } else {
+      // talking failed -> start combat
+      try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`Talking failed — the ${this.currentMonster.name} prepares to fight.`) } catch (e) {}
+      if (this.encounterOverlay) this.encounterOverlay.parentElement?.removeChild(this.encounterOverlay)
+      this.encounterOverlay = undefined
+      this.inEncounter = false
+      this.startBattleWithCurrentMonster()
+    }
+  }
+
+  private acceptFight() {
+    if (this.encounterOverlay) this.encounterOverlay.parentElement?.removeChild(this.encounterOverlay)
+    this.encounterOverlay = undefined
+    this.inEncounter = false
+    this.startBattleWithCurrentMonster()
+  }
+
+  private startBattleWithCurrentMonster() {
+    if (!this.currentMonster) return
+    this.inBattle = true
+    this.battlePlayerHP = this.battlePlayerMaxHP
+    this.battleEnemyHP = this.currentMonster.hp
+    this.battleEnemyMaxHP = this.currentMonster.hp
+    // place enemy on small tactical grid near player
+    this.battlePlayerPos = { x: Math.floor(this.battleGridSize / 2), y: Math.floor(this.battleGridSize / 2) }
+    this.battleEnemyPos = { x: Math.min(this.battleGridSize - 2, this.battlePlayerPos.x + 2), y: this.battlePlayerPos.y }
+    // if a battle controller exists, start it for this monster
+    try {
+      if (this.battleLinker) {
+        this._battleCtrl = this.battleLinker.startBattle(this.storyChapterId, this.storyEncounterId, { battleId: this.currentMonster?.id || 'unknown', participants: ['player'] })
+        this._battleCtrl.narrative && this._battleCtrl.narrative(`A ${this.currentMonster?.name} appears!`)
+      }
+    } catch (e) {}
+  }
+
+  private endBattle(victory: boolean) {
+    this.inBattle = false
+    if (victory) {
+      // simple reward hook - remove monster and resume
+      // award XP and report narrative
+      try {
+        if (this._battleCtrl) {
+          this._battleCtrl.log && this._battleCtrl.log({ who: 'player', target: this.currentMonster?.name, dmg: this.battleEnemyMaxHP })
+          this._battleCtrl.awardXP && this._battleCtrl.awardXP(25)
+          this._battleCtrl.narrative && this._battleCtrl.narrative(`${this.currentMonster?.name} defeated!`) 
+          // final finish with casualty info
+          this._battleCtrl.finish && this._battleCtrl.finish('won', { casualties: [], xp: 25 })
+        }
+      } catch (e) {}
+      this.currentMonster = undefined
     }
   }
 
@@ -335,7 +576,11 @@ export class DungeonView {
   ctx.fillStyle = '#2b3a67'
   ctx.fillRect(0, 0, w, Math.floor(h / 2))
   const floorGray = 120
-  ctx.fillStyle = 'rgb(' + floorGray + ',' + floorGray + ',' + floorGray + ')'
+  if (this.floorPattern) {
+    ctx.fillStyle = this.floorPattern
+  } else {
+    ctx.fillStyle = 'rgb(' + floorGray + ',' + floorGray + ',' + floorGray + ')'
+  }
   ctx.fillRect(0, Math.floor(h / 2), w, Math.ceil(h / 2))
 
     // low-resolution column renderer for classic 16-bit look
@@ -420,6 +665,74 @@ export class DungeonView {
     ctx.stroke()
 
     this.drawMiniMap()
+
+    // battle overlay (tactical grid)
+    if (this.inBattle) {
+      const size = Math.min(w, h) * 0.6
+      const left = Math.floor((w - size) / 2)
+      const top = Math.floor((h - size) / 2)
+      const cell = Math.floor(size / this.battleGridSize)
+      // background panel
+      ctx.fillStyle = 'rgba(4,6,12,0.95)'
+      ctx.fillRect(left - 8, top - 8, cell * this.battleGridSize + 16, cell * this.battleGridSize + 64)
+      ctx.strokeStyle = '#666'
+      ctx.strokeRect(left - 8, top - 8, cell * this.battleGridSize + 16, cell * this.battleGridSize + 64)
+
+      // grid
+      for (let gy = 0; gy < this.battleGridSize; gy++) {
+        for (let gx = 0; gx < this.battleGridSize; gx++) {
+          const cx = left + gx * cell
+          const cy = top + gy * cell
+          ctx.fillStyle = '#17322a'
+          ctx.fillRect(cx, cy, cell - 1, cell - 1)
+        }
+      }
+
+      // player
+      ctx.fillStyle = '#ffd86b'
+      ctx.fillRect(left + this.battlePlayerPos.x * cell + 4, top + this.battlePlayerPos.y * cell + 4, cell - 8, cell - 8)
+      // enemy
+      ctx.fillStyle = '#e26868'
+      ctx.fillRect(left + this.battleEnemyPos.x * cell + 4, top + this.battleEnemyPos.y * cell + 4, cell - 8, cell - 8)
+
+      // HP bars
+      ctx.fillStyle = '#fff'
+      ctx.font = `${12}px monospace`
+      ctx.fillText(`Player HP: ${this.battlePlayerHP}/${this.battlePlayerMaxHP}`, left, top + cell * this.battleGridSize + 20)
+      ctx.fillText(`${this.currentMonster ? this.currentMonster.name : 'Enemy'} HP: ${this.battleEnemyHP}/${this.battleEnemyMaxHP}`, left, top + cell * this.battleGridSize + 36)
+
+      // hint
+      ctx.fillStyle = '#9fb0ff'
+      ctx.fillText('Move: WASD/Arrow · Attack: Space · Retreat: R', left, top + cell * this.battleGridSize + 54)
+    }
+  }
+
+  private battlePlayerAttack() {
+    if (!this.inBattle) return
+    // check adjacency
+    const dx = Math.abs(this.battlePlayerPos.x - this.battleEnemyPos.x)
+    const dy = Math.abs(this.battlePlayerPos.y - this.battleEnemyPos.y)
+    if (dx + dy > 1) return // not adjacent
+  let dmg = 1 + Math.floor(Math.random() * 6)
+  const crit = Math.random() < 0.08
+  if (crit) { dmg *= 2 }
+  this.battleEnemyHP -= dmg
+  try { if (this._battleCtrl) this._battleCtrl.log && this._battleCtrl.log({ who: 'player', target: this.currentMonster?.name, dmg, text: crit ? 'CRITICAL' : undefined }) } catch (e) {}
+  if (crit) try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative('Critical hit!') } catch (e) {}
+  if (this.battleEnemyHP <= 0) { this.endBattle(true); return }
+    // enemy turn
+    this.battleEnemyAttack()
+  }
+
+  private battleEnemyAttack() {
+    if (!this.inBattle) return
+  let dmg = 1 + Math.floor(Math.random() * 6)
+  const crit = Math.random() < 0.05
+  if (crit) { dmg += 2 }
+  this.battlePlayerHP -= dmg
+  try { if (this._battleCtrl) this._battleCtrl.log && this._battleCtrl.log({ who: this.currentMonster?.name, target: 'player', dmg, text: crit ? 'CRIT' : undefined }) } catch (e) {}
+  if (crit) try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`${this.currentMonster?.name} lands a crushing blow!`) } catch (e) {}
+  if (this.battlePlayerHP <= 0) { this.endBattle(false); return }
   }
 
   private drawMiniMap() {
