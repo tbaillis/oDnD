@@ -268,8 +268,8 @@ export class GoldBoxInterface {
   private createDungeonSlot(): HTMLElement {
     const slot = document.createElement('div')
     slot.className = 'dungeon-slot'
+    // remove decorative border and title to avoid redundant label in layout
     slot.style.cssText = `
-      border: 2px solid #00aaff;
       background: #04050a;
       padding: 6px;
       width: 440px;
@@ -279,10 +279,6 @@ export class GoldBoxInterface {
       flex-direction: column;
       align-items: stretch;
     `
-    const title = document.createElement('div')
-    title.textContent = 'Dungeon'
-    title.style.cssText = 'color: #ffd86b; font-weight: bold; text-align:center; margin-bottom:6px;'
-    slot.appendChild(title)
     return slot
   }
 

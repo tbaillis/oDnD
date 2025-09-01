@@ -109,6 +109,34 @@ export class DungeonView {
     info.innerHTML = 'Use Arrow keys / Numpad (8/2/4/6) to move. WASD supported.'
     this.container.appendChild(info)
 
+    // Navigation buttons (mirror keyboard controls) + Turn Around
+    try {
+      const btnRow = document.createElement('div')
+      btnRow.style.cssText = 'display:flex; gap:8px; justify-content:center; margin-top:8px;'
+
+      const makeBtn = (text: string, onClick: () => void) => {
+        const b = document.createElement('button')
+        b.textContent = text
+        b.style.cssText = 'padding:6px 10px; font-family: monospace; background:#1b263b; color:#fff; border:1px solid #444; cursor:pointer;'
+        b.onclick = () => { try { onClick(); } catch (e) {} }
+        return b
+      }
+
+      const btnForward = makeBtn('\u2191', () => { this.moveForward(1); this.frame() })
+      const btnBack = makeBtn('\u2193', () => { this.moveForward(-1); this.frame() })
+      const btnLeft = makeBtn('\u2190', () => { this.rotate(-Math.PI / 8); this.frame() })
+      const btnRight = makeBtn('\u2192', () => { this.rotate(Math.PI / 8); this.frame() })
+      const btnTurn = makeBtn('\u21bb', () => { this.rotate(Math.PI); this.frame() })
+
+  btnRow.appendChild(btnLeft)
+  btnRow.appendChild(btnForward)
+  btnRow.appendChild(btnRight)
+  btnRow.appendChild(btnBack)
+  btnRow.appendChild(btnTurn)
+
+      this.container.appendChild(btnRow)
+    } catch (e) {}
+
     // lighting controls (ambient and torch)
     try {
       const controls = document.createElement('div')

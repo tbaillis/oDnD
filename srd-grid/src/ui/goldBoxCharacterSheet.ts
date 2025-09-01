@@ -112,11 +112,11 @@ export class GoldBoxCharacterSheet {
           <!-- Token Selection -->
           <div class="token-selection section">
             <h3 class="section-title">PAWN TOKEN</h3>
-            <div class="token-selector">
-              <div class="current-token-preview">
+            <div class="token-selector" style="display:flex;align-items:center;gap:16px;">
+              <div class="current-token-preview" style="display:flex;flex-direction:column;align-items:center;">
                 <img class="token-preview-image" style="
-                  width: 64px;
-                  height: 64px;
+                  width: 160px;
+                  height: 160px;
                   border: 2px solid #0080FF;
                   border-radius: 4px;
                   object-fit: cover;
@@ -124,38 +124,39 @@ export class GoldBoxCharacterSheet {
                 " alt="Current token" />
                 <div class="token-info" style="
                   color: #0080FF;
-                  font-size: 11px;
-                  margin-top: 4px;
+                  font-size: 12px;
+                  margin-top: 8px;
                   text-align: center;
                 ">
                   <div class="token-name">No token</div>
                   <div class="pawn-mapping">Not mapped</div>
                 </div>
               </div>
+
               <div class="token-controls" style="
                 display: flex;
+                flex-direction: column;
                 gap: 8px;
-                margin-top: 8px;
-                flex-wrap: wrap;
+                align-items: stretch;
               ">
                 <button type="button" class="change-token-btn" style="
                   background: #0080FF;
                   color: #000;
                   border: 1px solid #0080FF;
-                  padding: 6px 12px;
+                  padding: 10px 14px;
                   cursor: pointer;
                   border-radius: 4px;
-                  font-size: 11px;
+                  font-size: 13px;
                   font-weight: bold;
                 ">Change Token</button>
                 <button type="button" class="map-to-pawn-btn" style="
                   background: #16a34a;
                   color: #fff;
                   border: 1px solid #16a34a;
-                  padding: 6px 12px;
+                  padding: 10px 14px;
                   cursor: pointer;
                   border-radius: 4px;
-                  font-size: 11px;
+                  font-size: 13px;
                   font-weight: bold;
                 ">Map to Pawn</button>
               </div>

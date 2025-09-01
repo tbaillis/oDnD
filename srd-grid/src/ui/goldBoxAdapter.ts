@@ -299,24 +299,16 @@ export class GoldBoxAdapter {
   }
 
   private setPawnM1Character(character: Character, suppressEvent: boolean = false): void {
-    this.addCharacter('pawn-m1', character)
-    
-    const applyCharacterToPawnM1 = (window as any).applyCharacterToPawnM1
-    if (typeof applyCharacterToPawnM1 === 'function') {
-      applyCharacterToPawnM1(character, suppressEvent)
-      console.log('Applied character to Pawn M1:', character.name, suppressEvent ? '(events suppressed)' : '')
-      
-      // Sync character data to ensure object reference consistency
-      const pawnM1 = (window as any).pawnM1
-      if (pawnM1) {
-        pawnM1.characterData = character
-        pawnM1.goldBoxId = 'pawn-m1'
-      }
-    }
-    
-    this.interface.addMessage(`${character.name} joins the party!`, 'System')
-    
-    // Only update display if not suppressing events
+    // Pawn M1 is reserved for Monster AI by design. Redirect any attempt to
+    // assign a player character to M1 over to Pawn B so player characters
+    // remain on character pawns and M1 remains available for monsters.
+    console.log('GoldBoxAdapter: Pawn M1 is reserved for Monster AI - assigning character to Pawn B instead')
+    // Ensure the character is added/registered as Pawn B in the Gold Box
+    this.setPawnBCharacter(character, suppressEvent)
+
+    // Provide feedback to the user
+    this.interface.addMessage(`${character.name} was assigned to Pawn B (M1 reserved for monsters).`, 'System')
+
     if (!suppressEvent) {
       this.updatePartyDisplay()
     }

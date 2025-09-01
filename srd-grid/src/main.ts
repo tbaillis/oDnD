@@ -625,54 +625,24 @@ function applyCharacterToPawnA(character: Character, suppressEvent: boolean = fa
 
 // Functions to apply character stats to all pawns
 function applyCharacterToPawnM1(character: Character, suppressEvent: boolean = false) {
-  pawnM1MaxHP = character.hitPoints.max
-  pawnM1.hp = character.hitPoints.current
-  pawnM1.speed = 30
-
-  if (character.race.toLowerCase().includes('halfling') || character.race.toLowerCase().includes('gnome')) {
-    pawnM1.size = 'medium'
-  } else if (character.race.toLowerCase().includes('half-giant') || 
-             character.classes.some(c => c.class === 'barbarian')) {
-    pawnM1.size = 'medium'
+  // By design Pawn M1 is reserved for Monster AI. Do not attach player
+  // character data to M1. Instead, delegate character application to Pawn B
+  // so characters remain on player pawns.
+  console.log('Main: applyCharacterToPawnM1 called, redirecting to applyCharacterToPawnB to keep M1 reserved for monsters')
+  try {
+    if (typeof (window as any).applyCharacterToPawnB === 'function') {
+      (window as any).applyCharacterToPawnB(character, suppressEvent)
+    } else {
+      // As a fallback, call internal function directly if available
+      try {
+        applyCharacterToPawnB(character, suppressEvent)
+      } catch (e) {
+        console.warn('applyCharacterToPawnB not available to redirect character assignment from M1', e)
+      }
+    }
+  } catch (err) {
+    console.error('Error redirecting character assignment from M1 to Pawn B:', err)
   }
-
-  const dexMod = getAbilityModifier(character.abilityScores.DEX)
-  
-  const newAC = {
-    base: 10,
-    armor: character.equipment.armor ? character.equipment.armor.acBonus : 0,
-    shield: character.equipment.shield ? character.equipment.shield.acBonus : 0,
-    natural: 0,
-    deflection: 0,
-    dodge: dexMod,
-    misc: 0
-  }
-  
-  defenderM1.ac = newAC
-  
-  const hasReachWeapon = character.equipment.weapons.some(weapon => 
-    weapon.properties?.includes('reach') || weapon.name.toLowerCase().includes('reach')
-  );
-  reachM1 = hasReachWeapon;
-  
-  (pawnM1 as any).name = character.name;
-  (pawnM1 as any).characterData = character;
-  (pawnM1 as any).goldBoxId = 'pawn-m1';
-  
-  if (!suppressEvent) {
-    const goldBoxEvent = new CustomEvent('goldbox-character-created', { 
-      detail: character 
-    });
-    document.dispatchEvent(goldBoxEvent);
-  }
-  
-  appendLogLine(`Pawn M1 updated with ${character.name} (${character.race} ${character.classes[0]?.class})`)
-  appendLogLine(`HP: ${pawnM1.hp}/${pawnM1MaxHP}, AC: ${computeAC(newAC)}, Speed: ${pawnM1.speed}ft${reachM1 ? ', Reach Weapon' : ''}`)
-  
-  // Update initiative display to show new character info
-  updateInitiativeDisplay()
-  
-  drawAll()
 }
 
 function applyCharacterToPawnC(character: Character, suppressEvent: boolean = false) {
@@ -1571,6 +1541,7 @@ function showCharacterAssignmentForPawn(pawnId: string) {
 function getPawnObject(pawnId: string): any {
   switch (pawnId) {
     case 'A': return pawnA
+  case 'B': return pawnB
     case 'M1': return pawnM1
     case 'C': return pawnC
     case 'D': return pawnD
@@ -2097,6 +2068,27 @@ async function setPawnTexture(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', url: string) {
       sp.texture = texture
       sp.visible = true
       console.log(`Successfully set texture for ${ref}`)
+      // Record token metadata on the pawn object so UI (character sheet) can show the current token
+      try {
+        let pawnObj: any = null
+        switch(ref) {
+          case 'A': pawnObj = pawnA; break
+          case 'B': pawnObj = pawnB; break
+          case 'C': pawnObj = pawnC; break
+          case 'D': pawnObj = pawnD; break
+          case 'E': pawnObj = pawnE; break
+          case 'F': pawnObj = pawnF; break
+          case 'M1': pawnObj = pawnM1; break
+        }
+        if (pawnObj) {
+          ;(pawnObj as any).tokenUrl = url
+          // Try to resolve a friendly name from availableTokens if present
+          const found = (availableTokens || []).find((t: any) => t.url === url)
+          ;(pawnObj as any).tokenName = found ? found.name : (url.split('/').pop() || url)
+        }
+      } catch (e) {
+        console.warn('Failed to write token metadata for', ref, e)
+      }
       drawAll()
       return
     }
@@ -2110,6 +2102,26 @@ async function setPawnTexture(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', url: string) {
     sp.texture = texture
     sp.visible = true
     console.log(`Fallback texture set for ${ref}:`, url)
+    // Record token metadata on fallback path as well
+    try {
+      let pawnObj: any = null
+      switch(ref) {
+        case 'A': pawnObj = pawnA; break
+        case 'B': pawnObj = pawnB; break
+        case 'C': pawnObj = pawnC; break
+        case 'D': pawnObj = pawnD; break
+        case 'E': pawnObj = pawnE; break
+        case 'F': pawnObj = pawnF; break
+        case 'M1': pawnObj = pawnM1; break
+      }
+      if (pawnObj) {
+        ;(pawnObj as any).tokenUrl = url
+        const found = (availableTokens || []).find((t: any) => t.url === url)
+        ;(pawnObj as any).tokenName = found ? found.name : (url.split('/').pop() || url)
+      }
+    } catch (e) {
+      console.warn('Failed to write token metadata for', ref, e)
+    }
     drawAll()
   } catch (e2) {
     console.error(`All texture loading methods failed for ${ref}:`, url, e2)
@@ -2117,27 +2129,33 @@ async function setPawnTexture(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', url: string) {
   }
 }
 
-// Default selection: prefer pawnC (custom or built-in) for Pawn A, and pawnD for Pawn M1.
-// This makes A use pawnC.svg and M1 use pawnD.svg by default as requested.
-const defCForA = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name))
-const defDForM1 = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnD\./i.test(t.name))
-const defA = defCForA || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0] || { url: '', name: 'unknown' }
-// Defaults: prefer explicit pawn filename matches, fall back to nearby slots or first asset
-const defB = availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || { url: '', name: 'unknown' }
-const defM1 = availableTokens.find(t => /pawnM1\./i.test(t.name)) || defDForM1 || availableTokens[1] || availableTokens[0] || { url: '', name: 'unknown' }
-// Keep defC as the C slot (custom pawn image) fallback
-const defC = availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || { url: '', name: 'unknown' }
-// Add defaults for D, E, F pawns
-const defD = availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0] || { url: '', name: 'unknown' }
-const defE = availableTokens.find(t => /pawnE\./i.test(t.name)) || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || { url: '', name: 'unknown' }
-const defF = availableTokens.find(t => /pawnF\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || { url: '', name: 'unknown' }
+// Default selection changed to support 'x' prefixed monster tokens.
+// Rule: M1 should use the first token whose filename begins with 'x' (case-insensitive).
+// Pawns A-F should select the first six tokens whose filenames do NOT begin with 'x'.
+// Fall back to previous heuristics when not enough tokens are available.
+const nonXTokens = availableTokens.filter(t => !/^x/i.test(t.name))
+const xTokens = availableTokens.filter(t => /^x/i.test(t.name))
+
+// Helper to provide a safe fallback object
+const unknownToken = { url: '', name: 'unknown' }
+
+const defA = nonXTokens[0] || availableTokens.find(t => /pawnA\./i.test(t.name)) || availableTokens[0] || unknownToken
+const defB = nonXTokens[1] || availableTokens.find(t => /pawnB\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || unknownToken
+const defC = nonXTokens[2] || availableTokens.find(t => /pawnC_custom\./i.test(t.name)) || availableTokens.find(t => /pawnC\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || unknownToken
+const defD = nonXTokens[3] || availableTokens.find(t => /pawnD\./i.test(t.name)) || availableTokens[0] || unknownToken
+const defE = nonXTokens[4] || availableTokens.find(t => /pawnE\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || unknownToken
+const defF = nonXTokens[5] || availableTokens.find(t => /pawnF\./i.test(t.name)) || availableTokens[2] || availableTokens[0] || unknownToken
+
+// M1 prefers an 'x' prefixed token; fall back to pawnM1 match or previous defaults
+const defM1 = xTokens[0] || availableTokens.find(t => /pawnM1\./i.test(t.name)) || availableTokens[1] || availableTokens[0] || unknownToken
 
 if (defA) setPawnTexture('A', defA.url)
 if (defB) setPawnTexture('B', defB.url)
-if (defM1) setPawnTexture('M1', defM1.url)
 if (defC) setPawnTexture('C', defC.url)
 if (defD) setPawnTexture('D', defD.url)
 if (defE) setPawnTexture('E', defE.url)
+if (defF) setPawnTexture('F', defF.url)
+if (defM1) setPawnTexture('M1', defM1.url)
 if (defF) setPawnTexture('F', defF.url)
 
 // Build compact token manager for the controls panel
