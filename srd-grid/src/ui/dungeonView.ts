@@ -390,6 +390,16 @@ export class DungeonView {
       this.py = ny
       // random encounter check on successful move
       this.maybeTriggerEncounter()
+      // notify MCP that the party moved (delta based)
+      try {
+        const w = window as any
+        if (w && w.dmAgent && typeof w.dmAgent.moveParty === 'function') {
+          // small delta movement
+          w.dmAgent.moveParty({ dx: Math.round(nx - this.px), dy: Math.round(ny - this.py) })
+            .then((r: any) => console.debug('moveParty result', r))
+            .catch((e: any) => console.warn('moveParty error', e))
+        }
+      } catch (e) {}
       // if story is attached, send a small exploration progress ping
       try {
         if (this.dungeonLinker) {
@@ -419,6 +429,15 @@ export class DungeonView {
       if (this.battleLinker) {
         this._battleCtrl = this.battleLinker.startBattle(this.storyChapterId, this.storyEncounterId, { battleId: this.currentMonster?.id || 'unknown', participants: ['player'] })
       }
+      // notify DM agent / MCP server about spawned monster
+      try {
+        const w = window as any
+        if (w && w.dmAgent && typeof w.dmAgent.spawnMonster === 'function') {
+          w.dmAgent.spawnMonster({ id: this.currentMonster?.id, name: this.currentMonster?.name, hp: this.currentMonster?.hp, x: Math.floor(this.px), y: Math.floor(this.py) })
+            .then((r: any) => console.debug('spawnMonster result', r))
+            .catch((e: any) => console.warn('spawnMonster error', e))
+        }
+      } catch (e) {}
     } catch (e) {}
   }
 
@@ -521,6 +540,19 @@ export class DungeonView {
       if (this.battleLinker) {
         this._battleCtrl = this.battleLinker.startBattle(this.storyChapterId, this.storyEncounterId, { battleId: this.currentMonster?.id || 'unknown', participants: ['player'] })
         this._battleCtrl.narrative && this._battleCtrl.narrative(`A ${this.currentMonster?.name} appears!`)
+        // Ask the DM agent / MCP to roll initiative for participants (player + enemy)
+        try {
+          const w = window as any
+          if (w && w.dmAgent && typeof w.dmAgent.rollInitiative === 'function') {
+            const participants = [
+              { id: 'player', name: 'Player', type: 'player', initiativeBonus: 0 },
+              { id: this.currentMonster?.id || 'enemy', name: this.currentMonster?.name || 'Enemy', type: 'monster', initiativeBonus: 0 }
+            ]
+            w.dmAgent.rollInitiative(participants)
+              .then((r: any) => console.debug('rollInitiative result', r))
+              .catch((e: any) => console.warn('rollInitiative error', e))
+          }
+        } catch (e) {}
       }
     } catch (e) {}
   }
@@ -718,6 +750,15 @@ export class DungeonView {
   if (crit) { dmg *= 2 }
   this.battleEnemyHP -= dmg
   try { if (this._battleCtrl) this._battleCtrl.log && this._battleCtrl.log({ who: 'player', target: this.currentMonster?.name, dmg, text: crit ? 'CRITICAL' : undefined }) } catch (e) {}
+  // notify MCP server of damage applied
+  try {
+    const w = window as any
+    if (w && w.dmAgent && typeof w.dmAgent.applyDamage === 'function') {
+      w.dmAgent.applyDamage({ targetId: this.currentMonster?.id, damage: dmg, source: 'player' })
+        .then((r: any) => console.debug('applyDamage result', r))
+        .catch((e: any) => console.warn('applyDamage error', e))
+    }
+  } catch (e) {}
   if (crit) try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative('Critical hit!') } catch (e) {}
   if (this.battleEnemyHP <= 0) { this.endBattle(true); return }
     // enemy turn
@@ -731,6 +772,16 @@ export class DungeonView {
   if (crit) { dmg += 2 }
   this.battlePlayerHP -= dmg
   try { if (this._battleCtrl) this._battleCtrl.log && this._battleCtrl.log({ who: this.currentMonster?.name, target: 'player', dmg, text: crit ? 'CRIT' : undefined }) } catch (e) {}
+  // notify MCP server of damage applied to player
+  try {
+    const w = window as any
+    if (w && w.dmAgent && typeof w.dmAgent.applyDamage === 'function') {
+      // assuming player id 'player'
+      w.dmAgent.applyDamage({ targetId: 'player', damage: dmg, source: this.currentMonster?.name })
+        .then((r: any) => console.debug('applyDamage result', r))
+        .catch((e: any) => console.warn('applyDamage error', e))
+    }
+  } catch (e) {}
   if (crit) try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`${this.currentMonster?.name} lands a crushing blow!`) } catch (e) {}
   if (this.battlePlayerHP <= 0) { this.endBattle(false); return }
   }

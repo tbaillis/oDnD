@@ -21,7 +21,12 @@ export class DebugLogger {
   private logPanel: HTMLElement | null = null;
 
   private constructor() {
-    this.setupLogPanel();
+    // Only set up a DOM panel when running in a browser-like environment
+    if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+      this.setupLogPanel();
+    } else {
+      this.logPanel = null;
+    }
   }
 
   public static getInstance(): DebugLogger {
@@ -52,8 +57,9 @@ export class DebugLogger {
   }
 
   private setupLogPanel(): void {
-    // Create floating log panel
-    this.logPanel = document.createElement('div');
+  // Create floating log panel
+  if (typeof document === 'undefined') return;
+  this.logPanel = document.createElement('div');
     this.logPanel.id = 'debug-log-panel';
     this.logPanel.style.cssText = `
       position: fixed;
@@ -330,5 +336,5 @@ export class DebugLogger {
 // Global instance
 export const debugLogger = DebugLogger.getInstance();
 
-// Make available globally for console access
-(window as any).debugLogger = debugLogger;
+// Make available globally for console access in browser environments
+if (typeof window !== 'undefined') (window as any).debugLogger = debugLogger;

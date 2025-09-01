@@ -7,11 +7,10 @@ import {
   ListPromptsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
-  Tool,
-  Prompt,
-  Resource
 } from '@modelcontextprotocol/sdk/types.js';
-import { z } from 'zod';
+import type { Tool, Prompt, Resource } from '@modelcontextprotocol/sdk/types.js';
+import http from 'http';
+import { URL } from 'url';
 
 // Game state and data types
 interface GameState {
@@ -77,6 +76,7 @@ interface StoryContext {
 // MCP Server implementation
 class DungeonMasterMCPServer {
   private server: Server;
+  private httpServer?: http.Server;
   private gameState: GameState;
 
   constructor() {
@@ -116,6 +116,136 @@ class DungeonMasterMCPServer {
     };
 
     this.setupHandlers();
+    // Start a tiny HTTP adapter so frontend can call MCP tools over HTTP
+    this.startHttpServer();
+  }
+
+  private startHttpServer() {
+  const port = Number(process.env.PORT || 3001);
+  const server = http.createServer(async (req, res) => {
+      try {
+        const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+        if (req.method === 'GET' && url.pathname === '/api/dm/config') {
+          const hasApiKey = !!process.env.OPENAI_API_KEY;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ hasApiKey }));
+          return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/dm/tool') {
+          let body = '';
+          for await (const chunk of req) body += chunk;
+          const data = JSON.parse(body || '{}');
+          const tool = data.tool || data.name;
+          const args = data.arguments || data.params || data.params || {};
+          const result = await this.handleToolCall(tool, args);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+
+        // simple 404 for other paths
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not found' }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: (err instanceof Error) ? err.message : String(err) }));
+      }
+    });
+
+    server.on('error', (err: any) => {
+      if (err && err.code === 'EADDRINUSE') {
+        console.error(`Port ${port} in use, retrying with ephemeral port`);
+        // try ephemeral
+        try {
+          server.listen(0);
+        } catch (e) {
+          console.error('Failed to listen on ephemeral port', e);
+        }
+      } else {
+        console.error('HTTP server error', err);
+      }
+    });
+
+    server.listen(port, () => {
+      const addr = server.address();
+      const boundPort = typeof addr === 'object' && addr ? (addr as any).port : port;
+      // ensure other code using process.env.PORT will pick up the actual port
+      process.env.PORT = String(boundPort);
+      console.error(`DM HTTP adapter listening on http://localhost:${boundPort}/api/dm`);
+    });
+    this.httpServer = server;
+  }
+
+  // allow tests to stop the HTTP adapter cleanly
+  public async stopHttpServer(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.httpServer) return resolve();
+      try {
+        this.httpServer.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  private async handleToolCall(name: string, args: any) {
+    // Mirror the CallToolRequestSchema switch to dispatch to internal methods
+    try {
+      switch (name) {
+        case 'start_encounter':
+          return await this.startEncounter(args);
+        case 'roll_initiative':
+          return await this.rollInitiative(args);
+        case 'apply_damage':
+          return await this.applyDamage(args);
+        case 'apply_healing':
+          return await this.applyHealing(args);
+        case 'apply_condition':
+          return await this.applyCondition(args);
+        case 'remove_condition':
+          return await this.removeCondition(args);
+        case 'set_environment':
+          return await this.setEnvironment(args);
+        case 'describe_scene':
+          return await this.describeScene(args);
+        case 'update_story_context':
+          return await this.updateStoryContext(args);
+        case 'manage_npc_relationship':
+          return await this.manageNPCRelationship(args);
+        case 'make_ability_check':
+          return await this.makeAbilityCheck(args);
+        case 'make_saving_throw':
+          return await this.makeSavingThrow(args);
+        case 'roll_dice':
+          return await this.rollDice(args);
+        case 'get_game_state':
+          return await this.getGameState(args);
+        case 'move_character':
+          return await this.moveCharacter(args);
+        case 'spawn_monster':
+          return await this.spawnMonster(args);
+        case 'remove_monster':
+          return await this.removeMonster(args);
+        case 'move_monster':
+          return await this.moveMonster(args);
+        case 'get_monster':
+          return await this.getMonster(args);
+        case 'move_pawn':
+          return await this.movePawn(args);
+        case 'move_party':
+          return await this.moveParty(args);
+        case 'end_turn':
+          return await this.endTurn(args);
+        default:
+          return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] };
+      }
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error executing ${name}: ${(err instanceof Error) ? err.message : String(err)}` }] };
+    }
   }
 
   private setupHandlers() {
@@ -367,6 +497,66 @@ class DungeonMasterMCPServer {
             }
           },
           {
+            name: 'spawn_monster',
+            description: 'Spawn a monster into the current encounter',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                data: { type: 'object' },
+                x: { type: 'number' },
+                y: { type: 'number' },
+                hp: { type: 'number' }
+              },
+              required: ['name']
+            }
+          },
+          {
+            name: 'remove_monster',
+            description: 'Remove a monster from the current encounter by id',
+            inputSchema: {
+              type: 'object',
+              properties: { monsterId: { type: 'string' } },
+              required: ['monsterId']
+            }
+          },
+          {
+            name: 'move_monster',
+            description: 'Move a monster within the encounter',
+            inputSchema: {
+              type: 'object',
+              properties: { monsterId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } },
+              required: ['monsterId', 'x', 'y']
+            }
+          },
+          {
+            name: 'get_monster',
+            description: 'Get monster details by id',
+            inputSchema: { type: 'object', properties: { monsterId: { type: 'string' } }, required: ['monsterId'] }
+          },
+          {
+            name: 'move_pawn',
+            description: 'Move a pawn (player or monster) by id',
+            inputSchema: {
+              type: 'object',
+              properties: { pawnId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } },
+              required: ['pawnId', 'x', 'y']
+            }
+          },
+          {
+            name: 'move_party',
+            description: 'Move the party (all players) as a group or to specified positions',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                positions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } } } },
+                dx: { type: 'number' },
+                dy: { type: 'number' }
+              }
+            }
+          },
+          {
             name: 'end_turn',
             description: 'End the current character\'s turn and advance initiative',
             inputSchema: {
@@ -414,6 +604,18 @@ class DungeonMasterMCPServer {
             return this.getGameState(args);
           case 'move_character':
             return this.moveCharacter(args);
+          case 'spawn_monster':
+            return this.spawnMonster(args);
+          case 'remove_monster':
+            return this.removeMonster(args);
+          case 'move_monster':
+            return this.moveMonster(args);
+          case 'get_monster':
+            return this.getMonster(args);
+          case 'move_pawn':
+            return this.movePawn(args);
+          case 'move_party':
+            return this.moveParty(args);
           case 'end_turn':
             return this.endTurn(args);
           default:
@@ -556,11 +758,28 @@ class DungeonMasterMCPServer {
   // Tool implementation methods
   private async startEncounter(args: any) {
     // Implementation would integrate with the existing game system
+    const encMonsters: Monster[] = (args.monsters || []).flatMap((m: any) => {
+      const count = m.count || 1;
+      const arr: Monster[] = [];
+      for (let i = 0; i < count; i++) {
+        arr.push({
+          id: m.id ? (count === 1 ? m.id : `${m.id}-${i}`) : `m-${Date.now()}-${i}`,
+          name: m.name || 'Monster',
+          data: m.data || {},
+          position: (m.positions && m.positions[i]) ? { x: m.positions[i].x, y: m.positions[i].y } : { x: (m.positions && m.positions[0] && m.positions[0].x) || 0, y: (m.positions && m.positions[0] && m.positions[0].y) || 0 },
+          currentHp: typeof m.hp === 'number' ? m.hp : (m.data && m.data.hp) ? m.data.hp : 10,
+          status: [],
+          initiative: 0
+        });
+      }
+      return arr;
+    });
+
     this.gameState.currentEncounter = {
       id: Date.now().toString(),
       name: args.name,
       description: args.description || '',
-      monsters: [], // Would populate from args.monsters
+      monsters: encMonsters,
       difficulty: 'medium', // Would calculate based on monsters
       environment: args.environment || 'dungeon'
     };
@@ -573,6 +792,99 @@ class DungeonMasterMCPServer {
         }
       ]
     };
+  }
+
+  private async spawnMonster(args: any) {
+    if (!this.gameState.currentEncounter) {
+      throw new Error('No active encounter to spawn into');
+    }
+
+    const monster: Monster = {
+      id: args.id || `m-${Date.now()}`,
+      name: args.name,
+      data: args.data || {},
+      position: { x: args.x || 0, y: args.y || 0 },
+      currentHp: typeof args.hp === 'number' ? args.hp : 10,
+      status: [],
+      initiative: 0
+    };
+
+    this.gameState.currentEncounter.monsters.push(monster);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Spawned monster ${monster.name} (id: ${monster.id}) at (${monster.position.x}, ${monster.position.y})`
+        }
+      ]
+    };
+  }
+
+  private async removeMonster(args: any) {
+    if (!this.gameState.currentEncounter) throw new Error('No active encounter');
+    const before = this.gameState.currentEncounter.monsters.length;
+    this.gameState.currentEncounter.monsters = this.gameState.currentEncounter.monsters.filter((m) => m.id !== args.monsterId);
+    const after = this.gameState.currentEncounter.monsters.length;
+    return {
+      content: [
+        { type: 'text', text: `Removed ${before - after} monster(s)` }
+      ]
+    };
+  }
+
+  private async moveMonster(args: any) {
+    if (!this.gameState.currentEncounter) throw new Error('No active encounter');
+    const m = this.gameState.currentEncounter.monsters.find((m) => m.id === args.monsterId);
+    if (!m) throw new Error('Monster not found');
+    m.position = { x: args.x, y: args.y };
+    return { content: [{ type: 'text', text: `Moved monster ${m.name} to (${args.x}, ${args.y})` }] };
+  }
+
+  private async getMonster(args: any) {
+    if (!this.gameState.currentEncounter) throw new Error('No active encounter');
+    const m = this.gameState.currentEncounter.monsters.find((m) => m.id === args.monsterId);
+    return { content: [{ type: 'text', text: JSON.stringify(m || null) }] };
+  }
+
+  private async movePawn(args: any) {
+    // Pawn can be player or monster. Try players first
+    const p = this.gameState.players.find((pl) => pl.id === args.pawnId);
+    if (p) {
+      p.position = { x: args.x, y: args.y };
+      return { content: [{ type: 'text', text: `Moved player ${p.name} to (${args.x}, ${args.y})` }] };
+    }
+
+    if (this.gameState.currentEncounter) {
+      const m = this.gameState.currentEncounter.monsters.find((m) => m.id === args.pawnId);
+      if (m) {
+        m.position = { x: args.x, y: args.y };
+        return { content: [{ type: 'text', text: `Moved monster ${m.name} to (${args.x}, ${args.y})` }] };
+      }
+    }
+
+    throw new Error('Pawn not found');
+  }
+
+  private async moveParty(args: any) {
+    if (Array.isArray(args.positions) && args.positions.length) {
+      args.positions.forEach((pos: any) => {
+        const pl = this.gameState.players.find((p) => p.id === pos.id);
+        if (pl) pl.position = { x: pos.x, y: pos.y };
+      });
+      return { content: [{ type: 'text', text: `Moved specified party members` }] };
+    }
+
+    if (typeof args.dx === 'number' || typeof args.dy === 'number') {
+      const dx = args.dx || 0;
+      const dy = args.dy || 0;
+      this.gameState.players.forEach((p) => {
+        p.position = { x: (p.position.x || 0) + dx, y: (p.position.y || 0) + dy };
+      });
+      return { content: [{ type: 'text', text: `Moved party by (${dx}, ${dy})` }] };
+    }
+
+    return { content: [{ type: 'text', text: 'No movement applied' }] };
   }
 
   private async rollInitiative(args: any) {
@@ -597,15 +909,27 @@ class DungeonMasterMCPServer {
   }
 
   private async applyDamage(args: any) {
-    // Implementation would integrate with existing damage system
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Applied ${args.damage} ${args.damageType || 'damage'} to ${args.targetId}`
-        }
-      ]
-    };
+    const targetId = args.targetId;
+    const damage = Number(args.damage || 0);
+
+    // Try players
+    const player = this.gameState.players.find((p) => p.id === targetId);
+    if (player) {
+      const hpObj = player.character?.hitPoints || { current: 0 };
+      hpObj.current = Math.max(0, (hpObj.current || 0) - damage);
+      return { content: [{ type: 'text', text: `Applied ${damage} damage to player ${player.name}. HP now ${hpObj.current}` }] };
+    }
+
+    // Try monsters
+    if (this.gameState.currentEncounter) {
+      const m = this.gameState.currentEncounter.monsters.find((m) => m.id === targetId);
+      if (m) {
+        m.currentHp = Math.max(0, (m.currentHp || 0) - damage);
+        return { content: [{ type: 'text', text: `Applied ${damage} damage to monster ${m.name}. HP now ${m.currentHp}` }] };
+      }
+    }
+
+    return { content: [{ type: 'text', text: `Target ${targetId} not found` }] };
   }
 
   private async applyHealing(args: any) {
@@ -757,7 +1081,7 @@ class DungeonMasterMCPServer {
     return total;
   }
 
-  private async getGameState(args: any) {
+  private async getGameState(_args: any) {
     return {
       content: [
         {
@@ -780,7 +1104,7 @@ class DungeonMasterMCPServer {
     };
   }
 
-  private async endTurn(args: any) {
+  private async endTurn(_args: any) {
     // Would integrate with existing turn system
     return {
       content: [

@@ -2,7 +2,14 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
     environment: 'node',
+    include: [
+      'src/**/*.test.ts',
+      'src/**/*.spec.ts',
+      'test/**/*.test.ts',
+      'test/**/*.spec.ts',
+      'mcp-server/test/**/*.test.ts',
+      'mcp-server/test/**/*.spec.ts'
+    ],
   },
 })

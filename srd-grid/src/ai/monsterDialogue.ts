@@ -12,7 +12,15 @@ export class MonsterDialogueUI {
   private monsterAI: MonsterAIAgent | null = null;
 
   constructor() {
-    this.createDialogueContainer();
+    // Only create DOM elements when a document exists (browser environment)
+    if (typeof document !== 'undefined') {
+      this.createDialogueContainer();
+    } else {
+      this.dialogueContainer = null;
+      this.messageContainer = null;
+      this.toggleButton = null;
+      this.personalityDisplay = null;
+    }
   }
 
   public async initialize(): Promise<void> {
@@ -46,6 +54,8 @@ export class MonsterDialogueUI {
    * Create the dialogue container UI
    */
   private createDialogueContainer(): void {
+    if (typeof document === 'undefined') return;
+
     // Remove existing container if it exists
     const existingContainer = document.getElementById('monster-dialogue-container');
     if (existingContainer) {
@@ -323,4 +333,4 @@ export class MonsterDialogueUI {
 /**
  * Global instance for easy access
  */
-export const monsterDialogueUI = new MonsterDialogueUI();
+export const monsterDialogueUI = (typeof document !== 'undefined') ? new MonsterDialogueUI() : ({} as MonsterDialogueUI);

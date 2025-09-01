@@ -16,6 +16,19 @@ export const srdSpells: Record<string, Spell> = {
     spellResistance: true,
     description: 'A missile of magical energy darts forth and strikes its target, dealing 1d4+1 points of force damage. Additional missiles at higher levels.'
   },
+  'fireball': {
+    name: 'Fireball',
+    school: 'evocation',
+    descriptors: ['fire'],
+    level: { 'sorcerer': 3, 'wizard': 3 },
+    components: { verbal: true, somatic: true, material: 'a tiny ball of bat guano and sulfur' },
+    castingTime: '1 standard action',
+    target: { type: 'area', range: 'Long (400 ft. + 40 ft./level)', area: { type: 'burst', size: '20-ft.-radius' } },
+    duration: { type: 'instantaneous' },
+    save: { type: 'Reflex', effect: 'half' },
+    spellResistance: true,
+    description: 'A bright streak flashes from your pointing finger to a point you choose, and then blossoms with a low roar into an explosion of flame that deals 6d6 fire damage (increases with level).'
+  },
   'animal-messenger': {
     name: 'Animal Messenger',
     school: 'enchantment',

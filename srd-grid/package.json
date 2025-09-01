@@ -11,7 +11,9 @@
     "build:server": "tsc api/server.ts --outDir dist-server --module esnext --target es2020",
     "preview": "vite preview",
     "start:server": "node dist-server/server.js",
-    "test": "vitest",
+  "test": "vitest",
+  "test:mcp": "tsx mcp-server/test/run_http_test.ts",
+  "test:mcp:vitest": "vitest run mcp-server/test/httpAdapter.test.ts --run",
     "coverage": "vitest run --coverage",
     "e2e": "playwright test"
   },

@@ -138,6 +138,64 @@ export class OpenAIDMAgent {
     console.log('Game context updated:', this.gameContext);
   }
 
+  // Generic helper to call MCP tools via DM server HTTP API (used in demo mode)
+  private async callTool(tool: string, parameters: any) {
+    try {
+      const res = await fetch('http://localhost:3001/api/dm/tool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool, arguments: parameters })
+      });
+      if (!res.ok) throw new Error(`Tool call failed: ${res.status}`);
+      return await res.json();
+    } catch (error) {
+      console.error(`Error calling tool ${tool}:`, error);
+      return { error: (error instanceof Error) ? error.message : String(error) };
+    }
+  }
+
+  // Convenience wrappers for the newly added MCP tools
+  public async spawnMonster(params: { id?: string; name: string; data?: any; x?: number; y?: number; hp?: number }) {
+    return this.callTool('spawn_monster', params);
+  }
+
+  public async removeMonster(monsterId: string) {
+    return this.callTool('remove_monster', { monsterId });
+  }
+
+  public async moveMonster(monsterId: string, x: number, y: number) {
+    return this.callTool('move_monster', { monsterId, x, y });
+  }
+
+  public async getMonster(monsterId: string) {
+    return this.callTool('get_monster', { monsterId });
+  }
+
+  public async movePawn(pawnId: string, x: number, y: number) {
+    return this.callTool('move_pawn', { pawnId, x, y });
+  }
+
+  public async moveParty(positionsOrDelta: any) {
+    return this.callTool('move_party', positionsOrDelta);
+  }
+
+  // Combat and utility tool wrappers (demo agent)
+  public async applyDamage(params: { targetId: string; damage: number; damageType?: string; source?: string }) {
+    return this.callTool('apply_damage', params);
+  }
+
+  public async rollInitiative(participants: Array<{ id: string; name: string; type: 'player' | 'monster'; initiativeBonus?: number }>) {
+    return this.callTool('roll_initiative', { participants });
+  }
+
+  public async applyHealing(params: { targetId: string; healing: number; source?: string }) {
+    return this.callTool('apply_healing', params);
+  }
+
+  public async applyCondition(params: { targetId: string; condition: string; duration?: number; source?: string }) {
+    return this.callTool('apply_condition', params);
+  }
+
   public getConversationHistory(): ChatMessage[] {
     return [...this.conversationHistory];
   }
