@@ -1,6 +1,7 @@
 import type { Character } from '../game/character'
 import { GoldBoxInterface, convertCharacterToStatus, type CharacterStatus } from './goldBoxInterface'
 import { GoldBoxCharacterSheet } from './goldBoxCharacterSheet'
+import { IntroScreen } from './introScreen'
 
 /**
  * Adapter to integrate Gold Box Interface with existing game systems
@@ -8,6 +9,7 @@ import { GoldBoxCharacterSheet } from './goldBoxCharacterSheet'
 export class GoldBoxAdapter {
   private interface: GoldBoxInterface
   private characterSheet: GoldBoxCharacterSheet
+  private introScreen?: IntroScreen
   private characters: Map<string, Character> = new Map()
   private gameState: 'exploration' | 'combat' | 'menu' = 'exploration'
   
@@ -30,11 +32,20 @@ export class GoldBoxAdapter {
       this.setupCharacterClickHandler()
       console.log('Gold Box Adapter: Character click handler setup complete')
       
-      console.log('Gold Box Adapter: Initializing demo...')
-      this.initializeDemo()
-      console.log('Gold Box Adapter: Demo initialization complete')
+      console.log('Gold Box Adapter: Preparing intro screen...')
+      // Show an introductory multi-scene Gold Box style screen before demo initialization
+      this.introScreen = new IntroScreen(() => {
+        try {
+          console.log('Gold Box Adapter: Intro finished, initializing demo...')
+          this.initializeDemo()
+          console.log('Gold Box Adapter: Demo initialization complete')
+        } catch (e) {
+          console.error('Gold Box Adapter: Error initializing demo after intro', e)
+        }
+      })
+      this.introScreen.show()
       
-      console.log('Gold Box Adapter: Setting up character creation listener...')
+  console.log('Gold Box Adapter: Setting up character creation listener...')
       this.setupCharacterCreationListener()
       console.log('Gold Box Adapter: Character creation listener setup complete')
 
@@ -42,6 +53,9 @@ export class GoldBoxAdapter {
       this.setupCharacterUpdateListeners()
       console.log('Gold Box Adapter: Character update listeners setup complete')
       
+  // Add save/load UI controls for character persistence
+  this.createSaveLoadControls()
+
       console.log('Gold Box Adapter: Constructor completed successfully!')
     } catch (error) {
       console.error('Gold Box Adapter: Error in constructor:', error)
@@ -933,6 +947,174 @@ export class GoldBoxAdapter {
 
   public getAllCharacters(): Map<string, Character> {
     return new Map(this.characters)
+  }
+
+  // --- Save / Load helpers -------------------------------------------------
+  // Export characters map to a downloadable JSON file
+  public exportCharactersToFile(): void {
+    try {
+      const exportObj: Record<string, any> = {}
+      Array.from(this.characters.entries()).forEach(([id, char]) => {
+        // Gather pawn metadata if present
+        const pawnMeta: any = {}
+        try {
+          const pawnMap: Record<string, string> = {
+            'pawn-a': 'A', 'pawn-b': 'B', 'pawn-c': 'C', 'pawn-d': 'D', 'pawn-e': 'E', 'pawn-f': 'F'
+          }
+          const pawnLetter = pawnMap[id]
+          if (pawnLetter) {
+            const pawnObj = (window as any)[`pawn${pawnLetter}`]
+            if (pawnObj) {
+              if ((pawnObj as any).tokenUrl) pawnMeta.tokenUrl = (pawnObj as any).tokenUrl
+              if ((pawnObj as any).tokenName) pawnMeta.tokenName = (pawnObj as any).tokenName
+              pawnMeta.pawnLetter = pawnLetter
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        // Export both character data and optional pawn metadata under a wrapper
+        exportObj[id] = { character: char, __pawn: Object.keys(pawnMeta).length ? pawnMeta : undefined }
+      })
+
+      const now = new Date()
+      const stamp = now.toISOString().replace(/[:.]/g, '-')
+      const filename = `oDnD_characters_${stamp}.json`
+
+      const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+
+      this.interface.addMessage(`Characters saved to ${filename}`, 'System')
+      console.log('Gold Box: Exported characters to file', filename)
+    } catch (err) {
+      console.error('Gold Box: Failed to export characters', err)
+      this.interface.addMessage('Failed to save characters', 'System')
+    }
+  }
+
+  // Import characters from a JSON file chosen by the user
+  public importCharactersFromFile(): void {
+    const input = document.createElement('input') as HTMLInputElement
+    input.type = 'file'
+    input.accept = 'application/json'
+    input.style.display = 'none'
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+
+        // Accept either an object mapping id -> character (legacy) or our wrapper { character, __pawn }
+        if (Array.isArray(parsed)) {
+          // Map array entries into pawn slots by finding goldBoxId or using sequential pawn ids
+          const candidateIds = ['pawn-a', 'pawn-b', 'pawn-c', 'pawn-d', 'pawn-e', 'pawn-f']
+          parsed.forEach((entry: any, i: number) => {
+            const id = entry?.goldBoxId || entry?.id || candidateIds[i] || `pawn-${i}`
+            this.addCharacter(id, entry)
+          })
+        } else if (typeof parsed === 'object' && parsed !== null) {
+          for (const [id, payload] of Object.entries(parsed)) {
+            let characterObj: any = null
+            let pawnMeta: any = null
+
+            // Handle both legacy (direct character) and wrapper formats
+            if (payload && typeof payload === 'object' && 'character' in (payload as any)) {
+              characterObj = (payload as any).character
+              pawnMeta = (payload as any).__pawn
+            } else {
+              characterObj = payload
+            }
+
+            this.addCharacter(id, characterObj as Character)
+
+            // If pawn metadata provided, apply it to pawn object and set token
+            try {
+              if (pawnMeta) {
+                const pawnLetter = pawnMeta.pawnLetter || (id.replace('pawn-', '').toUpperCase())
+                const pawnObj = (window as any)[`pawn${pawnLetter}`]
+                if (pawnObj) {
+                  pawnObj.characterData = characterObj
+                  pawnObj.goldBoxId = id
+                  // Restore HP if present on character
+                  if (characterObj?.hitPoints?.current !== undefined) pawnObj.hp = characterObj.hitPoints.current
+                  if (typeof characterObj?.hitPoints?.max === 'number') {
+                    const maxProp = `pawn${pawnLetter}MaxHP`
+                    if ((window as any)[maxProp] !== undefined) (window as any)[maxProp] = characterObj.hitPoints.max
+                  }
+
+                  if (pawnMeta.tokenUrl) {
+                    pawnObj.tokenUrl = pawnMeta.tokenUrl
+                    pawnObj.tokenName = pawnMeta.tokenName || pawnMeta.tokenUrl.split('/').pop()
+                    // Try to apply texture via global setter if available
+                    if (typeof (window as any).setPawnTexture === 'function') {
+                      try { (window as any).setPawnTexture(pawnLetter, pawnMeta.tokenUrl) } catch (e) { /* ignore */ }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('Gold Box: Failed to apply pawn metadata for', id, e)
+            }
+          }
+        } else {
+          throw new Error('Unsupported file format')
+        }
+
+        this.updatePartyDisplay()
+        this.interface.addMessage(`Loaded characters from ${file.name}`, 'System')
+        console.log('Gold Box: Imported characters from', file.name)
+      } catch (err) {
+        console.error('Gold Box: Failed to import characters', err)
+        this.interface.addMessage('Failed to load characters: invalid file', 'System')
+      } finally {
+        // cleanup
+        input.value = ''
+        if (input.parentElement) input.parentElement.removeChild(input)
+      }
+    })
+
+    // Append to DOM to make the file picker work in all browsers
+    document.body.appendChild(input)
+    input.click()
+  }
+
+  // Create small floating save/load UI so users can persist character lists
+  private createSaveLoadControls(): void {
+    try {
+      const existing = document.getElementById('goldbox-save-load')
+      if (existing) return
+
+      const container = document.createElement('div')
+      container.id = 'goldbox-save-load'
+      container.style.cssText = 'position:fixed;bottom:18px;right:18px;z-index:12000;display:flex;gap:8px;flex-direction:column;'
+
+      const saveBtn = document.createElement('button')
+      saveBtn.textContent = 'Save Characters'
+      saveBtn.title = 'Export Gold Box characters to JSON file'
+      saveBtn.style.cssText = 'background:#111;color:#00b4ff;border:2px solid #00b4ff;padding:8px 10px;border-radius:6px;cursor:pointer;font-weight:700'
+      saveBtn.addEventListener('click', () => this.exportCharactersToFile())
+
+      const loadBtn = document.createElement('button')
+      loadBtn.textContent = 'Load Characters'
+      loadBtn.title = 'Import Gold Box characters from JSON file'
+      loadBtn.style.cssText = 'background:#111;color:#16a34a;border:2px solid #16a34a;padding:8px 10px;border-radius:6px;cursor:pointer;font-weight:700'
+      loadBtn.addEventListener('click', () => this.importCharactersFromFile())
+
+      container.appendChild(saveBtn)
+      container.appendChild(loadBtn)
+      document.body.appendChild(container)
+    } catch (e) {
+      console.warn('Gold Box: Failed to create save/load controls', e)
+    }
   }
 
   // Method to sync HP changes from pawn back to character
