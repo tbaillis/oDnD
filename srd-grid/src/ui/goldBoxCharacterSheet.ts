@@ -553,7 +553,7 @@ export class GoldBoxCharacterSheet {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 20000;
+      z-index: 23000;
       font-family: 'Courier New', monospace;
     `
 
@@ -677,7 +677,7 @@ export class GoldBoxCharacterSheet {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 20000;
+      z-index: 23000;
       font-family: 'Courier New', monospace;
     `
 
@@ -988,10 +988,29 @@ export class GoldBoxCharacterSheet {
     
     console.log('Character saved:', this.character)
     
-    // Emit character update event for synchronization
-    this.emitCharacterUpdateEvent()
+    // Emit appropriate event based on mode
+    if (this.isCreationMode) {
+      this.emitCharacterCreationEvent()
+    } else {
+      this.emitCharacterUpdateEvent()
+    }
     
     this.hide()
+  }
+
+  private emitCharacterCreationEvent(): void {
+    if (!this.character) return
+
+    const event = new CustomEvent('character-sheet-saved', {
+      detail: {
+        character: this.character,
+        isNew: true,
+        source: 'character-sheet'
+      }
+    })
+    
+    document.dispatchEvent(event)
+    console.log('Character creation event emitted for:', this.character.name)
   }
 
   private emitCharacterUpdateEvent(): void {
@@ -1005,7 +1024,18 @@ export class GoldBoxCharacterSheet {
       }
     })
     
+    // Also emit the saved event for consistency
+    const savedEvent = new CustomEvent('character-sheet-saved', {
+      detail: {
+        characterId: this.characterId,
+        character: this.character,
+        isNew: false,
+        source: 'character-sheet'
+      }
+    })
+    
     document.dispatchEvent(event)
+    document.dispatchEvent(savedEvent)
     console.log('Character sheet update event emitted for:', this.character.name, 'ID:', this.characterId)
   }
 
@@ -1165,17 +1195,31 @@ export class GoldBoxCharacterSheet {
     })
   }
 
-  public show(character: Character, characterId?: string): void {
+  private isCreationMode = false
+
+  public show(character: Character, characterId?: string, creationMode: boolean = false): void {
     this.character = character
     this.characterId = characterId || null
+    this.isCreationMode = creationMode
     this.isVisible = true
     
     if (this.container) {
       this.container.style.display = 'block'
       this.populateForm()
+      
+      // Update sheet title and save button text for creation mode
+      const titleElement = this.container.querySelector('.character-sheet-title')
+      if (titleElement) {
+        titleElement.textContent = creationMode ? 'Create New Character' : 'Character Sheet'
+      }
+      
+      const saveButton = this.container.querySelector('button[title="Save character data"]')
+      if (saveButton) {
+        saveButton.textContent = creationMode ? 'Create Character' : 'Save Changes'
+      }
     }
     
-    console.log('Character sheet shown for:', character.name, 'ID:', this.characterId)
+    console.log('Character sheet shown for:', character.name || 'New Character', 'ID:', this.characterId, 'Creation mode:', creationMode)
   }
 
   public updateCharacter(character: Character, characterId?: string): void {

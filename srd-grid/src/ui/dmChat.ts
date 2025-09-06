@@ -173,7 +173,7 @@ export class DMChatPanel {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 10000;
+      z-index: 22000;
     `;
 
     const configStatus = checkConfigurationStatus();

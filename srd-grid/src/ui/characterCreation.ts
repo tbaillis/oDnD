@@ -283,7 +283,7 @@ export class CharacterCreationModal {
       bottom: 0;
       background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(4px);
-      z-index: 1300;
+      z-index: 21000;
       display: flex;
       align-items: center;
       justify-content: center;

@@ -2,6 +2,7 @@ import type { Character } from '../game/character'
 import { GoldBoxInterface, convertCharacterToStatus, type CharacterStatus } from './goldBoxInterface'
 import { GoldBoxCharacterSheet } from './goldBoxCharacterSheet'
 import { IntroScreen } from './introScreen'
+import { HomeScreen } from './homeScreen'
 
 /**
  * Adapter to integrate Gold Box Interface with existing game systems
@@ -10,6 +11,7 @@ export class GoldBoxAdapter {
   private interface: GoldBoxInterface
   private characterSheet: GoldBoxCharacterSheet
   private introScreen?: IntroScreen
+  private homeScreen?: HomeScreen
   private characters: Map<string, Character> = new Map()
   private gameState: 'exploration' | 'combat' | 'menu' = 'exploration'
   
@@ -36,11 +38,11 @@ export class GoldBoxAdapter {
       // Show an introductory multi-scene Gold Box style screen before demo initialization
       this.introScreen = new IntroScreen(() => {
         try {
-          console.log('Gold Box Adapter: Intro finished, initializing demo...')
-          this.initializeDemo()
-          console.log('Gold Box Adapter: Demo initialization complete')
+          console.log('Gold Box Adapter: Intro finished, showing home screen...')
+          this.showHomeScreen()
+          console.log('Gold Box Adapter: Home screen initialized')
         } catch (e) {
-          console.error('Gold Box Adapter: Error initializing demo after intro', e)
+          console.error('Gold Box Adapter: Error showing home screen after intro', e)
         }
       })
       this.introScreen.show()
@@ -1151,5 +1153,371 @@ export class GoldBoxAdapter {
     windowObj.findAvailablePawnSlot = () => {
       return this.findAvailablePawnSlot()
     }
+  }
+
+  private showHomeScreen(): void {
+    console.log('GoldBoxAdapter: Creating and showing home screen')
+    this.homeScreen = new HomeScreen({
+      onCreateCharacter: (character: Character) => this.handleCharacterCreation(character),
+      onSaveGame: () => this.exportCharactersToFile(),
+      onLoadGame: () => this.importCharactersFromFile(),
+      onLoadCharacter: () => this.openCharacterLoader(),
+      onEditGame: () => this.editGameSettings(),
+      onStartAdventure: () => this.startAdventure(),
+      onRemoveCharacter: (characterId: string) => this.removeCharacterFromParty(characterId),
+      getPartyMembers: () => this.characters
+    })
+    this.homeScreen.show()
+  }
+
+  private handleCharacterCreation(character: Character): void {
+    console.log('GoldBoxAdapter: Handling character creation:', character.name)
+    
+    // Find an available pawn slot
+    const availableSlot = this.findAvailablePawnSlot()
+    if (availableSlot) {
+      this.assignCharacterToPawn(character, availableSlot)
+      console.log(`Character ${character.name} assigned to ${availableSlot}`)
+      
+      // Update home screen display
+      if (this.homeScreen) {
+        this.homeScreen.refresh()
+      }
+    } else {
+      console.warn('No available pawn slots for new character')
+    }
+  }
+
+  private removeCharacterFromParty(characterId: string): void {
+    console.log('GoldBoxAdapter: Removing character from party:', characterId)
+    
+    // Remove from characters map
+    const character = this.characters.get(characterId)
+    if (character) {
+      this.characters.delete(characterId)
+      
+      // Clear the pawn data
+      const pawnMap: Record<string, string> = {
+        'pawn-a': 'A', 'pawn-b': 'B', 'pawn-c': 'C', 
+        'pawn-d': 'D', 'pawn-e': 'E', 'pawn-f': 'F'
+      }
+      const pawnLetter = pawnMap[characterId]
+      if (pawnLetter) {
+        const pawnObj = (window as any)[`pawn${pawnLetter}`]
+        if (pawnObj) {
+          pawnObj.characterData = null
+          pawnObj.goldBoxId = null
+          pawnObj.name = `Pawn ${pawnLetter}`
+          pawnObj.hp = 20
+          
+          // Clear token if set
+          if (pawnObj.tokenUrl) {
+            pawnObj.tokenUrl = null
+            pawnObj.tokenName = null
+          }
+        }
+      }
+      
+      console.log(`Character ${character.name} removed from party and pawn ${pawnLetter} reset`)
+      
+      // Update displays
+      this.updatePartyDisplay()
+      if (this.homeScreen) {
+        this.homeScreen.refresh()
+      }
+    }
+  }
+
+  private editGameSettings(): void {
+    console.log('GoldBoxAdapter: Edit game settings - not implemented yet')
+    // Placeholder for game settings editor
+  }
+
+  private startAdventure(): void {
+    console.log('GoldBoxAdapter: Starting adventure...')
+    if (this.homeScreen) {
+      this.homeScreen.hide()
+    }
+    this.initializeDemo()
+    this.show() // Show the main Gold Box interface
+  }
+
+  public openCharacterLoader(): void {
+    console.log('GoldBoxAdapter: Opening character loader')
+    const input = document.createElement('input') as HTMLInputElement
+    input.type = 'file'
+    input.accept = 'application/json'
+    input.style.display = 'none'
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        this.showCharacterSelectionDialog(parsed, file.name)
+      } catch (err) {
+        console.error('Failed to parse save file', err)
+        alert('Failed to load save file. Please ensure it is a valid oDnD save file.')
+      }
+    })
+    document.body.appendChild(input)
+    input.click()
+    input.remove()
+  }
+
+  private showCharacterSelectionDialog(saveData: any, filename: string): void {
+    const overlay = document.createElement('div')
+    overlay.style.cssText = [
+      'position:fixed',
+      'inset:0', 
+      'background:rgba(0,0,0,0.85)',
+      'z-index:25000',
+      'display:flex',
+      'align-items:center',
+      'justify-content:center',
+      'color:#ffd966',
+      'font-family:"Times New Roman", serif'
+    ].join(';')
+
+    const dialog = document.createElement('div')
+    dialog.style.cssText = [
+      'background:#1b1b1b',
+      'border:4px solid #c59b45',
+      'border-radius:8px',
+      'padding:24px',
+      'max-width:600px',
+      'max-height:80vh',
+      'overflow-y:auto',
+      'width:90%'
+    ].join(';')
+
+    const title = document.createElement('h2')
+    title.textContent = 'Load Characters'
+    title.style.cssText = 'margin:0 0 16px 0;color:#ffd966;text-align:center'
+
+    const subtitle = document.createElement('p')
+    subtitle.textContent = `From: ${filename}`
+    subtitle.style.cssText = 'margin:0 0 20px 0;color:#cfc09a;text-align:center;font-size:14px'
+
+    const characterList = document.createElement('div')
+    characterList.style.cssText = 'margin:16px 0'
+
+    // Parse characters from save data
+    const characters: Array<{id: string, character: Character, pawn?: any}> = []
+    
+    if (Array.isArray(saveData)) {
+      // Legacy array format
+      const candidateIds = ['pawn-a', 'pawn-b', 'pawn-c', 'pawn-d', 'pawn-e', 'pawn-f']
+      saveData.forEach((entry: any, i: number) => {
+        const id = entry?.goldBoxId || entry?.id || candidateIds[i] || `pawn-${i}`
+        characters.push({ id, character: entry })
+      })
+    } else if (typeof saveData === 'object' && saveData !== null) {
+      // Modern object format
+      for (const [id, payload] of Object.entries(saveData)) {
+        let characterObj: any = null
+        let pawnMeta: any = null
+
+        if (payload && typeof payload === 'object' && 'character' in (payload as any)) {
+          characterObj = (payload as any).character
+          pawnMeta = (payload as any).__pawn
+        } else {
+          characterObj = payload
+        }
+
+        if (characterObj && characterObj.name) {
+          characters.push({ id, character: characterObj as Character, pawn: pawnMeta })
+        }
+      }
+    }
+
+    if (characters.length === 0) {
+      const noChars = document.createElement('p')
+      noChars.textContent = 'No valid characters found in this save file.'
+      noChars.style.cssText = 'color:#999;text-align:center;font-style:italic'
+      characterList.appendChild(noChars)
+    } else {
+      // Character selection checkboxes
+      const selectAll = document.createElement('div')
+      selectAll.style.cssText = 'margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #444'
+      
+      const selectAllCheckbox = document.createElement('input')
+      selectAllCheckbox.type = 'checkbox'
+      selectAllCheckbox.id = 'select-all'
+      selectAllCheckbox.style.cssText = 'margin-right:8px'
+      
+      const selectAllLabel = document.createElement('label')
+      selectAllLabel.htmlFor = 'select-all'
+      selectAllLabel.textContent = 'Select All Characters'
+      selectAllLabel.style.cssText = 'cursor:pointer;font-weight:bold'
+      
+      selectAll.appendChild(selectAllCheckbox)
+      selectAll.appendChild(selectAllLabel)
+      characterList.appendChild(selectAll)
+
+      const checkboxes: HTMLInputElement[] = []
+
+      characters.forEach(({id, character, pawn: _pawn}) => {
+        const charItem = document.createElement('div')
+        charItem.style.cssText = [
+          'background:#333',
+          'border:2px solid #555',
+          'border-radius:6px',
+          'padding:12px',
+          'margin:8px 0',
+          'display:flex',
+          'align-items:center',
+          'gap:12px'
+        ].join(';')
+
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.value = id
+        checkbox.style.cssText = 'margin:0'
+        checkboxes.push(checkbox)
+
+        const charInfo = document.createElement('div')
+        charInfo.style.cssText = 'flex:1'
+
+        const charName = document.createElement('div')
+        charName.textContent = character.name
+        charName.style.cssText = 'font-weight:bold;color:#ffd966;font-size:16px'
+
+        const charDetails = document.createElement('div')
+        const race = character.race || 'Unknown'
+        const className = character.classes?.[0]?.class || 'Unknown'
+        const level = character.classes?.[0]?.level || 1
+        charDetails.textContent = `${race} ${className} (Level ${level})`
+        charDetails.style.cssText = 'color:#cfc09a;font-size:14px'
+
+        charInfo.appendChild(charName)
+        charInfo.appendChild(charDetails)
+
+        charItem.appendChild(checkbox)
+        charItem.appendChild(charInfo)
+        characterList.appendChild(charItem)
+      })
+
+      // Select all functionality
+      selectAllCheckbox.addEventListener('change', () => {
+        checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked)
+      })
+
+      // Update select all when individual checkboxes change
+      checkboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          const allChecked = checkboxes.every(c => c.checked)
+          const noneChecked = checkboxes.every(c => !c.checked)
+          selectAllCheckbox.checked = allChecked
+          selectAllCheckbox.indeterminate = !allChecked && !noneChecked
+        })
+      })
+    }
+
+    const buttons = document.createElement('div')
+    buttons.style.cssText = 'display:flex;gap:12px;justify-content:flex-end;margin-top:20px'
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.textContent = 'Cancel'
+    cancelBtn.style.cssText = [
+      'background:transparent',
+      'color:#ffd966',
+      'border:2px solid #ffd966',
+      'padding:8px 16px',
+      'border-radius:4px',
+      'cursor:pointer'
+    ].join(';')
+    cancelBtn.addEventListener('click', () => document.body.removeChild(overlay))
+
+    const loadBtn = document.createElement('button')
+    loadBtn.textContent = 'Load Selected'
+    loadBtn.style.cssText = [
+      'background:#ffd966',
+      'color:#1b1b1b',
+      'border:none',
+      'padding:8px 16px',
+      'border-radius:4px',
+      'cursor:pointer',
+      'font-weight:bold'
+    ].join(';')
+    
+    loadBtn.addEventListener('click', () => {
+      const selected = characters.filter(({id}) => {
+        const checkbox = characterList.querySelector(`input[value="${id}"]`) as HTMLInputElement
+        return checkbox?.checked
+      })
+
+      if (selected.length === 0) {
+        alert('Please select at least one character to load.')
+        return
+      }
+
+      // Load selected characters
+      let loadedCount = 0
+      selected.forEach(({character, pawn}) => {
+        // Find an available slot
+        const party = this.characters
+        if (party.size >= 6) {
+          // Party full - skip for now (could implement replacement dialog)
+          console.warn('Party is full, skipping character:', character.name)
+          return
+        }
+
+        // Find next available pawn slot
+        const availableSlot = this.findAvailablePawnSlot()
+        if (availableSlot) {
+          this.assignCharacterToPawn(character, availableSlot)
+          loadedCount++
+
+          // Apply pawn metadata if available
+          if (pawn) {
+            try {
+              const pawnLetter = availableSlot
+              const pawnObj = (window as any)[`pawn${pawnLetter}`]
+              if (pawnObj) {
+                Object.assign(pawnObj, pawn)
+                pawnObj.characterData = character
+                pawnObj.goldBoxId = `pawn-${pawnLetter.toLowerCase()}`
+                
+                if (character?.hitPoints?.current !== undefined) {
+                  pawnObj.hp = character.hitPoints.current
+                }
+                
+                if (pawn.tokenUrl && typeof (window as any).setPawnTexture === 'function') {
+                  try {
+                    (window as any).setPawnTexture(pawnLetter, pawn.tokenUrl)
+                  } catch (e) {
+                    console.warn('Failed to set pawn texture:', e)
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to apply pawn metadata:', e)
+            }
+          }
+        }
+      })
+
+      document.body.removeChild(overlay)
+      
+      if (loadedCount > 0) {
+        this.interface.addMessage(`Loaded ${loadedCount} character(s) successfully`, 'System')
+        if (this.homeScreen) {
+          this.homeScreen.refresh()
+        }
+      } else {
+        alert('No characters could be loaded (party may be full)')
+      }
+    })
+
+    buttons.appendChild(cancelBtn)
+    buttons.appendChild(loadBtn)
+
+    dialog.appendChild(title)
+    dialog.appendChild(subtitle)
+    dialog.appendChild(characterList)
+    dialog.appendChild(buttons)
+    overlay.appendChild(dialog)
+    document.body.appendChild(overlay)
   }
 }

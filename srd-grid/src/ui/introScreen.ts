@@ -27,7 +27,7 @@ export class IntroScreen {
     ].join(';')
 
     // Load StoryPanels images (Vite import.meta.glob). If none, fall back to Backgrounds/Dungeon.png
-    const panelEntries = Object.entries(import.meta.glob('../assets/StoryPanels/*', { as: 'url', eager: true })) as [string, string][]
+    const panelEntries = Object.entries(import.meta.glob('../assets/StoryPanels/*', { query: '?url', import: 'default', eager: true })) as [string, string][]
     const panels = panelEntries
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(e => e[1])
