@@ -37,7 +37,7 @@
         <h2>Quick Actions</h2>
         <button onclick="checkAIStatus()">Check AI Status</button>
         <button onclick="enableAI()">Enable AI</button>
-        <button onclick="setMonsterB()">Set B as Monster</button>
+        <button onclick="setMonsterM1()">Set M1 as Monster</button>
         <button onclick="triggerAITurn()">Test AI Turn</button>
         <button onclick="clearOutput()">Clear</button>
     </div>
@@ -85,7 +85,7 @@
                 if (window.monsterTurnManager) {
                     log(`✅ MonsterTurnManager found:`, 'success');
                     log(`   - Pawn A is Monster: ${window.monsterTurnManager.isMonsterPawn('A')}`);
-                    log(`   - Pawn B is Monster: ${window.monsterTurnManager.isMonsterPawn('B')}`);
+                    log(`   - Pawn M1 is Monster: ${window.monsterTurnManager.isMonsterPawn('M1')}`);
                 } else {
                     log('❌ MonsterTurnManager not found', 'error');
                 }
@@ -120,12 +120,12 @@
             }
         }
         
-        function setMonsterB() {
-            log('🔧 Setting Pawn B as Monster...', 'info');
+        function setMonsterM1() {
+            log('🔧 Setting Pawn M1 as Monster...', 'info');
             try {
                 if (window.setMonsterPawn) {
-                    window.setMonsterPawn('B');
-                    log('✅ Pawn B set as monster', 'success');
+                    window.setMonsterPawn('M1');
+                    log('✅ Pawn M1 set as monster', 'success');
                 } else {
                     log('❌ setMonsterPawn function not found', 'error');
                 }
@@ -135,10 +135,10 @@
         }
         
         async function triggerAITurn() {
-            log('🤖 Triggering AI Turn for Pawn B...', 'info');
+            log('🤖 Triggering AI Turn for Pawn M1...', 'info');
             try {
                 if (window.triggerMonsterTurn) {
-                    await window.triggerMonsterTurn('B');
+                    await window.triggerMonsterTurn('M1');
                     log('✅ AI Turn triggered', 'success');
                 } else {
                     log('❌ triggerMonsterTurn function not found', 'error');
@@ -152,17 +152,17 @@
             log('🎮 Starting Game Test Scenario...', 'info');
             
             // Position pawns for testing
-            if (window.pawnA && window.pawnB) {
+            if (window.pawnA && window.pawnM1) {
                 window.pawnA.x = 5;
                 window.pawnA.y = 5;
-                window.pawnB.x = 8;
-                window.pawnB.y = 5;
-                log('✅ Pawns positioned: A at (5,5), B at (8,5)', 'success');
+                window.pawnM1.x = 8;
+                window.pawnM1.y = 5;
+                log('✅ Pawns positioned: A at (5,5), M1 at (8,5)', 'success');
                 
-                // Make sure B has HP and is a monster
-                window.pawnB.hp = 50;
-                window.pawnB.maxHp = 50;
-                log('✅ Pawn B HP set to 50/50', 'success');
+                // Make sure M1 has HP and is a monster
+                window.pawnM1.hp = 50;
+                window.pawnM1.maxHp = 50;
+                log('✅ Pawn M1 HP set to 50/50', 'success');
                 
                 if (window.drawAll) {
                     window.drawAll();
@@ -195,8 +195,8 @@
                 if (window.pawnA) {
                     log(`   Pawn A: (${window.pawnA.x}, ${window.pawnA.y}) HP: ${window.pawnA.hp}/${window.pawnA.maxHp}`);
                 }
-                if (window.pawnB) {
-                    log(`   Pawn B: (${window.pawnB.x}, ${window.pawnB.y}) HP: ${window.pawnB.hp}/${window.pawnB.maxHp}`);
+                if (window.pawnM1) {
+                    log(`   Pawn M1: (${window.pawnM1.x}, ${window.pawnM1.y}) HP: ${window.pawnM1.hp}/${window.pawnM1.maxHp}`);
                 }
                 if (window.turns) {
                     log(`   Round: ${window.turns.round}, Active: ${window.turns.active?.id}`);

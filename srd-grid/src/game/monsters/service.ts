@@ -78,7 +78,7 @@ export class MonsterService {
   }
 
   /**
-   * Convert a monster to ECS entity components (for Pawn B)
+   * Convert a monster to ECS entity components (for Pawn M1)
    */
   createMonsterEntity(world: World, monster: MonsterData, x: number, y: number): number {
     const entity = addEntity(world.ecs)

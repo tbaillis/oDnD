@@ -442,6 +442,7 @@ export class GoldBoxInterface {
     this.isVisible = false
     this.container.style.display = 'none'
     console.log('Gold Box Interface hidden')
+    
     // destroy dungeon view instance if present and restore viewport placeholder
     try {
       const content = this.viewportElement.querySelector('.viewport-content') as HTMLElement | null

@@ -19,7 +19,7 @@ async function testMonsterAIComplete() {
         monsterTurnManager: !!window.monsterTurnManager,
         debugLogger: !!window.debugLogger,
         turns: !!window.turns,
-        pawns: !!(window.pawnA && window.pawnB)
+        pawns: !!(window.pawnA && window.pawnM1)
     };
     console.log('Systems:', systems);
     
@@ -31,38 +31,38 @@ async function testMonsterAIComplete() {
     // 2. Enable and configure AI
     console.log('\n2️⃣ Configuring Monster AI...');
     window.monsterAI.enable();
-    window.monsterTurnManager.setMonsterPawn('B', true);
+    window.monsterTurnManager.setMonsterPawn('M1', true);
     
     console.log('AI Status after configuration:', {
         enabled: window.monsterAI.isEnabled(),
         ready: window.monsterAI.isReady(),
-        pawnBIsMonster: window.monsterTurnManager.isMonsterPawn('B')
+        pawnM1IsMonster: window.monsterTurnManager.isMonsterPawn('M1')
     });
     
     // 3. Set up game state for testing
     console.log('\n3️⃣ Setting up test scenario...');
-    if (window.pawnA && window.pawnB) {
+    if (window.pawnA && window.pawnM1) {
         // Position pawns for combat test - make sure they need to move to attack
         window.pawnA.x = 5;
         window.pawnA.y = 5;
         window.pawnA.hp = 20;
         window.pawnA.maxHp = 20;
         
-        window.pawnB.x = 8;  // 3 squares away - requires movement to attack
-        window.pawnB.y = 5;
-        window.pawnB.hp = 30;
-        window.pawnB.maxHp = 30;
+        window.pawnM1.x = 8;  // 3 squares away - requires movement to attack
+        window.pawnM1.y = 5;
+        window.pawnM1.hp = 30;
+        window.pawnM1.maxHp = 30;
         
         console.log('✅ Pawns positioned for combat test');
         console.log(`   Pawn A (Player): (${window.pawnA.x}, ${window.pawnA.y}) HP: ${window.pawnA.hp}/${window.pawnA.maxHp}`);
-        console.log(`   Pawn B (Monster): (${window.pawnB.x}, ${window.pawnB.y}) HP: ${window.pawnB.hp}/${window.pawnB.maxHp}`);
-        console.log(`   Distance: ${Math.abs(window.pawnA.x - window.pawnB.x) + Math.abs(window.pawnA.y - window.pawnB.y)} squares`);
+        console.log(`   Pawn M1 (Monster): (${window.pawnM1.x}, ${window.pawnM1.y}) HP: ${window.pawnM1.hp}/${window.pawnM1.maxHp}`);
+        console.log(`   Distance: ${Math.abs(window.pawnA.x - window.pawnM1.x) + Math.abs(window.pawnA.y - window.pawnM1.y)} squares`);
     }
     
     // 4. Set up turn state with MOVEMENT AVAILABLE
     console.log('\n4️⃣ Setting up turn state...');
     if (window.turns) {
-        window.turns.active = { id: 'B' }; // Make B the active pawn
+        window.turns.active = { id: 'M1' }; // Make M1 the active pawn
         window.turns.budget = {
             move: true,
             standard: true,
@@ -73,7 +73,7 @@ async function testMonsterAIComplete() {
             fiveFootStepAvailable: true,
             freeCount: 99
         };
-        console.log('✅ Turn state configured for Pawn B with FULL action budget');
+        console.log('✅ Turn state configured for Pawn M1 with FULL action budget');
         console.log('Budget details:', window.turns.budget);
     }
     
@@ -84,7 +84,7 @@ async function testMonsterAIComplete() {
         const gameState = window.monsterTurnManager.buildGameState(
             window.turns, 
             window.pawnA, 
-            window.pawnB, 
+            window.pawnM1, 
             { grid: window.G, terrain: window.G, effects: window.effects }
         );
         
@@ -134,11 +134,11 @@ async function testMonsterAIComplete() {
         console.log('🚨 BEFORE TURN EXECUTION - Watch debug panel for step-by-step logs!');
         console.log('🤖 Executing complete Monster AI turn...');
         
-        const success = await window.monsterTurnManager.executeMonsterTurn('B', 
+        const success = await window.monsterTurnManager.executeMonsterTurn('M1', 
             window.monsterTurnManager.buildGameState(
                 window.turns, 
                 window.pawnA, 
-                window.pawnB, 
+                window.pawnM1, 
                 { grid: window.G, terrain: window.G, effects: window.effects }
             )
         );
@@ -148,11 +148,11 @@ async function testMonsterAIComplete() {
         // Check what happened
         console.log('Final positions:');
         console.log(`   Pawn A: (${window.pawnA.x}, ${window.pawnA.y}) HP: ${window.pawnA.hp}/${window.pawnA.maxHp}`);
-        console.log(`   Pawn B: (${window.pawnB.x}, ${window.pawnB.y}) HP: ${window.pawnB.hp}/${window.pawnB.maxHp}`);
-        console.log(`   Final distance: ${Math.abs(window.pawnA.x - window.pawnB.x) + Math.abs(window.pawnA.y - window.pawnB.y)} squares`);
+        console.log(`   Pawn M1: (${window.pawnM1.x}, ${window.pawnM1.y}) HP: ${window.pawnM1.hp}/${window.pawnM1.maxHp}`);
+        console.log(`   Final distance: ${Math.abs(window.pawnA.x - window.pawnM1.x) + Math.abs(window.pawnA.y - window.pawnM1.y)} squares`);
         console.log(`   Turn budget remaining:`, window.turns.budget);
         
-        if (window.pawnB.x === 8 && window.pawnB.y === 5) {
+        if (window.pawnM1.x === 8 && window.pawnM1.y === 5) {
             console.log('❌ MONSTER DID NOT MOVE! Check debug panel for the reason.');
         } else {
             console.log('✅ MONSTER MOVED successfully!');

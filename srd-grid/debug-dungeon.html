@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Dungeon Monsters</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Times New Roman', serif;
+            background: #1b1b1b;
+            color: #ffd966;
+        }
+        
+        .debug-button {
+            background: #c59b45;
+            color: #1b1b1b;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        
+        #debug-log {
+            background: #2a2a2a;
+            border: 1px solid #c59b45;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🐛 Debug Dungeon Monsters System</h1>
+    
+    <button class="debug-button" onclick="debugInitialization()">🔍 Check Initialization</button>
+    <button class="debug-button" onclick="testGoldBoxInterface()">📜 Test Gold Box Interface</button>
+    <button class="debug-button" onclick="createDungeonView()">🏰 Create Dungeon View</button>
+    <button class="debug-button" onclick="forceEncounter()">⚡ Force Encounter</button>
+    <button class="debug-button" onclick="clearLog()">🧹 Clear Log</button>
+    
+    <div id="debug-log"></div>
+    <div id="dungeon-container" style="margin-top: 20px;"></div>
+
+    <script type="module">
+        import './src/main.js'; // Initialize all systems
+        import { DungeonView } from './src/ui/dungeonView.js';
+        
+        let dungeonView = null;
+        
+        function log(message) {
+            const logDiv = document.getElementById('debug-log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        window.debugInitialization = function() {
+            log('=== INITIALIZATION DEBUG ===');
+            log('window.goldBox exists: ' + !!window.goldBox);
+            log('window.goldBox type: ' + typeof window.goldBox);
+            
+            if (window.goldBox) {
+                log('goldBox.addMessage exists: ' + !!window.goldBox.addMessage);
+                log('goldBox.setCommands exists: ' + !!window.goldBox.setCommands);
+                log('goldBox.setCommandCallback exists: ' + !!window.goldBox.setCommandCallback);
+                log('goldBox.show exists: ' + !!window.goldBox.show);
+            }
+            
+            log('window.goldBoxAdapter exists: ' + !!window.goldBoxAdapter);
+            log('DungeonView class exists: ' + !!DungeonView);
+        };
+        
+        window.testGoldBoxInterface = function() {
+            log('=== GOLD BOX INTERFACE TEST ===');
+            
+            try {
+                if (window.goldBox) {
+                    log('Attempting to show Gold Box interface...');
+                    window.goldBox.show();
+                    
+                    log('Attempting to add test message...');
+                    window.goldBox.addMessage('Test message from debug page', 'System');
+                    
+                    log('Gold Box interface test successful!');
+                } else {
+                    log('ERROR: Gold Box interface not available');
+                }
+            } catch (error) {
+                log('ERROR testing Gold Box: ' + error.message);
+                console.error(error);
+            }
+        };
+        
+        window.createDungeonView = function() {
+            log('=== DUNGEON VIEW CREATION ===');
+            
+            try {
+                const container = document.getElementById('dungeon-container');
+                log('Creating DungeonView...');
+                
+                if (dungeonView) {
+                    log('Destroying existing dungeon view...');
+                    dungeonView.destroy();
+                }
+                
+                dungeonView = new DungeonView(container);
+                log('DungeonView created successfully!');
+                log('Automatic encounter should trigger in 1 second...');
+                
+            } catch (error) {
+                log('ERROR creating DungeonView: ' + error.message);
+                console.error(error);
+            }
+        };
+        
+        window.forceEncounter = function() {
+            log('=== FORCE ENCOUNTER TEST ===');
+            
+            if (dungeonView) {
+                try {
+                    log('Attempting to trigger encounter manually...');
+                    dungeonView.forceEncounter();
+                } catch (error) {
+                    log('ERROR forcing encounter: ' + error.message);
+                    console.error(error);
+                }
+            } else {
+                log('ERROR: No dungeon view created yet');
+            }
+        };
+        
+        window.clearLog = function() {
+            document.getElementById('debug-log').textContent = '';
+        };
+        
+        // Add some global debugging
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('Page loaded, checking systems...');
+                window.debugInitialization();
+            }, 500);
+        });
+        
+        // Override console.log to capture dungeon view logs
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            if (args[0] && typeof args[0] === 'string') {
+                if (args[0].includes('encounter') || args[0].includes('Gold Box') || args[0].includes('monster')) {
+                    log('CONSOLE: ' + args.join(' '));
+                }
+            }
+        };
+    </script>
+</body>
+</html>

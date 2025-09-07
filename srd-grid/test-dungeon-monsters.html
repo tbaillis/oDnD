@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Dungeon Monsters with Grid Battle Integration</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Times New Roman', serif;
+            background: #1b1b1b;
+            color: #ffd966;
+        }
+        
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        
+        .test-button {
+            background: linear-gradient(135deg, #c59b45, #b8891e);
+            color: #1b1b1b;
+            border: 2px solid #c59b45;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Times New Roman', serif;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 10px;
+            transition: all 0.2s ease;
+        }
+        
+        .test-button:hover {
+            background: linear-gradient(135deg, #d4a952, #c59b45);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(197, 155, 69, 0.5);
+        }
+
+        .info-box {
+            background: #2a2a2a;
+            border: 2px solid #c59b45;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .monster-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .monster-card {
+            background: #333;
+            border: 1px solid #c59b45;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: left;
+        }
+
+        .monster-name {
+            color: #ffd966;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .monster-stats {
+            color: #cfc09a;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🗡️ Dungeon Monsters & Grid Battle Integration Test</h1>
+        <p>Test the enhanced dungeon with 10 monsters that spawn on the main grid battle when encountered.</p>
+        
+        <div class="info-box">
+            <h3>✨ New Features</h3>
+            <ul>
+                <li><strong>🚀 Instant Adventure:</strong> First encounter triggers immediately when starting</li>
+                <li><strong>🖼️ Monster Images:</strong> Encounters display monster images overlaid on 3D view</li>
+                <li><strong>📜 Message Window:</strong> Encounter text appears in Gold Box message window</li>
+                <li><strong>⌨️ Hotkey Controls:</strong> Use (T)alk and (C)ombat hotkeys during encounters</li>
+                <li><strong>🎯 Gold Box Combat:</strong> Uses existing Gold Box tactical combat system (Ctrl+G)</li>
+                <li><strong>10 Monster Types:</strong> Expanded from 3 to 10 diverse creatures</li>
+                <li><strong>Enhanced Encounters:</strong> Higher encounter rate (15% per move)</li>
+                <li><strong>Integrated Experience:</strong> Seamless dungeon exploration with tactical combat</li>
+            </ul>
+        </div>
+
+        <div class="monster-list">
+            <div class="monster-card">
+                <div class="monster-name">🏹 Goblin</div>
+                <div class="monster-stats">HP: 7, AC: 15, CR: 1/4<br>Talk Chance: 25%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">🗡️ Kobold</div>
+                <div class="monster-stats">HP: 5, AC: 12, CR: 1/8<br>Talk Chance: 20%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">⚔️ Orc</div>
+                <div class="monster-stats">HP: 15, AC: 13, CR: 1/2<br>Talk Chance: 15%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">💀 Skeleton</div>
+                <div class="monster-stats">HP: 13, AC: 13, CR: 1/4<br>Talk Chance: 5%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">🧟 Zombie</div>
+                <div class="monster-stats">HP: 22, AC: 8, CR: 1/4<br>Talk Chance: 0%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">🐺 Wolf</div>
+                <div class="monster-stats">HP: 11, AC: 13, CR: 1/4<br>Talk Chance: 10%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">🕷️ Giant Spider</div>
+                <div class="monster-stats">HP: 26, AC: 14, CR: 1<br>Talk Chance: 0%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">👹 Bugbear</div>
+                <div class="monster-stats">HP: 27, AC: 16, CR: 1<br>Talk Chance: 20%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">🏛️ Gnoll</div>
+                <div class="monster-stats">HP: 22, AC: 15, CR: 1/2<br>Talk Chance: 15%</div>
+            </div>
+            <div class="monster-card">
+                <div class="monster-name">⚒️ Hobgoblin</div>
+                <div class="monster-stats">HP: 11, AC: 18, CR: 1/2<br>Talk Chance: 30%</div>
+            </div>
+        </div>
+        
+        <button class="test-button" onclick="testDungeonMonsters()">🏰 Open Enhanced Dungeon</button>
+        <button class="test-button" onclick="showGoldBoxInterface()">📜 Open Gold Box Interface</button>
+        <button class="test-button" onclick="showMainGrid()">🗡️ Open Main Grid Battle</button>
+        <button class="test-button" onclick="forceEncounter()">⚡ Force Random Encounter</button>
+        
+        <div id="status" style="margin-top: 20px; font-style: italic; color: #cfc09a;"></div>
+        
+        <!-- Container for dungeon and main interface -->
+        <div id="dungeon-container" class="hidden"></div>
+    </div>
+
+    <script type="module">
+        import { DungeonView } from './src/ui/dungeonView.js';
+        import './src/main.js'; // Initialize Gold Box interface and other systems
+        
+        let dungeonView = null;
+        
+        window.testDungeonMonsters = function() {
+            document.getElementById('status').textContent = 'Opening enhanced dungeon with Gold Box combat integration...';
+            
+            // Wait a moment for Gold Box interface to initialize
+            setTimeout(() => {
+                // Create or show dungeon view
+                const container = document.getElementById('dungeon-container');
+                container.classList.remove('hidden');
+                
+                if (!dungeonView) {
+                    dungeonView = new DungeonView(container);
+                } else {
+                    dungeonView.show();
+                }
+                
+                document.getElementById('status').textContent = 'Dungeon active! Monster images overlay 3D view, uses Gold Box tactical combat (Ctrl+G)!';
+            }, 100);
+        };
+        
+        window.showGoldBoxInterface = function() {
+            document.getElementById('status').textContent = 'Opening Gold Box interface for message display...';
+            
+            // Wait a moment for Gold Box interface to initialize if needed
+            setTimeout(() => {
+                try {
+                    const goldBox = window.goldBox;
+                    if (goldBox && goldBox.addMessage) {
+                        goldBox.show();
+                        goldBox.addMessage('Gold Box Interface ready for dungeon encounters!', 'System');
+                        goldBox.addMessage('Messages will appear here during encounters.', 'Narration');
+                        goldBox.addMessage('Try clicking "Open Enhanced Dungeon" and moving around to trigger encounters!', 'System');
+                        document.getElementById('status').textContent = 'Gold Box interface active! Messages will appear in the message log.';
+                    } else {
+                        console.warn('Gold Box interface not available:', goldBox);
+                        alert('Gold Box interface not available. Make sure it\'s initialized.');
+                        document.getElementById('status').textContent = 'Gold Box interface not found. Check console for details.';
+                    }
+                } catch (error) {
+                    console.error('Error opening Gold Box interface:', error);
+                    document.getElementById('status').textContent = 'Error opening Gold Box interface: ' + error.message;
+                }
+            }, 200);
+        };
+        
+        window.showMainGrid = function() {
+            document.getElementById('status').textContent = 'The encounters now use the existing Gold Box tactical combat system...';
+            
+            // This would normally open the main grid battle interface
+            // For testing, we'll just explain the new system
+            alert('Encounters now use the Gold Box tactical combat system!\n\n' +
+                  '1. Press Ctrl+G to open Gold Box interface\n' +
+                  '2. Encounters trigger from within the dungeon\n' +
+                  '3. Combat uses the built-in tactical grid\n' +
+                  '4. No separate external grid needed!');
+            
+            document.getElementById('status').textContent = 'Gold Box system integration explained. Use Ctrl+G to access it.';
+        };
+        
+        window.forceEncounter = function() {
+            if (!dungeonView) {
+                document.getElementById('status').textContent = 'Please open the dungeon first!';
+                return;
+            }
+            
+            document.getElementById('status').textContent = 'Forcing a random encounter...';
+            
+            try {
+                console.log('🎲 Forcing encounter for testing...');
+                dungeonView.forceEncounter();
+                document.getElementById('status').textContent = 'Encounter triggered! Look for monster image overlay and Gold Box messages.';
+            } catch (error) {
+                console.error('Error forcing encounter:', error);
+                document.getElementById('status').textContent = 'Error forcing encounter. Check console.';
+            }
+        };
+        
+        // Global helper functions for integration testing
+        window.testIntegration = {
+            listMonsters: () => {
+                const monsters = [
+                    { id: 'goblin', name: 'Goblin', hp: 7, ac: 15, cr: 1/4, talkChance: 0.25 },
+                    { id: 'kobold', name: 'Kobold', hp: 5, ac: 12, cr: 1/8, talkChance: 0.20 },
+                    { id: 'orc', name: 'Orc', hp: 15, ac: 13, cr: 1/2, talkChance: 0.15 },
+                    { id: 'skeleton', name: 'Skeleton', hp: 13, ac: 13, cr: 1/4, talkChance: 0.05 },
+                    { id: 'zombie', name: 'Zombie', hp: 22, ac: 8, cr: 1/4, talkChance: 0.0 },
+                    { id: 'wolf', name: 'Wolf', hp: 11, ac: 13, cr: 1/4, talkChance: 0.10 },
+                    { id: 'spider', name: 'Giant Spider', hp: 26, ac: 14, cr: 1, talkChance: 0.0 },
+                    { id: 'bugbear', name: 'Bugbear', hp: 27, ac: 16, cr: 1, talkChance: 0.20 },
+                    { id: 'gnoll', name: 'Gnoll', hp: 22, ac: 15, cr: 1/2, talkChance: 0.15 },
+                    { id: 'hobgoblin', name: 'Hobgoblin', hp: 11, ac: 18, cr: 1/2, talkChance: 0.30 }
+                ];
+                console.table(monsters);
+                return monsters;
+            },
+            
+            testMonsterConversion: (monsterId) => {
+                console.log(`Testing monster conversion for: ${monsterId}`);
+                // This would test the conversion from simple to full monster data
+                document.getElementById('status').textContent = `Testing ${monsterId} conversion to full monster data...`;
+            },
+            
+            simulateGridBattle: (monsterName) => {
+                console.log(`🗡️ Simulating grid battle with ${monsterName} as M1`);
+                document.getElementById('status').textContent = `Grid battle simulation: ${monsterName} spawned as M1`;
+                alert(`Grid Battle Simulation:\n\n1. ${monsterName} spawns as M1 on main grid\n2. Monster AI takes control of M1\n3. Tactical combat with full D&D rules\n4. Return to dungeon when battle ends`);
+            }
+        };
+        
+        console.log('🗡️ Dungeon Monster Integration Test Ready!');
+        console.log('Commands:');
+        console.log('- testIntegration.listMonsters() - Show all 10 monsters');
+        console.log('- testIntegration.testMonsterConversion("goblin") - Test conversion');
+        console.log('- testIntegration.simulateGridBattle("Orc") - Simulate grid battle');
+    </script>
+</body>
+</html>

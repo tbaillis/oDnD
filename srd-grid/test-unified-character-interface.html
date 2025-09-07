@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Unified Character Interface</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Times New Roman', serif;
+            background: #1b1b1b;
+            color: #ffd966;
+        }
+        
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        
+        .test-button {
+            background: linear-gradient(135deg, #c59b45, #b8891e);
+            color: #1b1b1b;
+            border: 2px solid #c59b45;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Times New Roman', serif;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 10px;
+            transition: all 0.2s ease;
+        }
+        
+        .test-button:hover {
+            background: linear-gradient(135deg, #d4a952, #c59b45);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(197, 155, 69, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Test Unified Character Interface</h1>
+        <p>Click the buttons below to test the unified character interface with the new gold theme:</p>
+        
+        <button class="test-button" onclick="testCreateCharacter()">Create New Character</button>
+        <button class="test-button" onclick="testEditCharacter()">Edit Existing Character</button>
+        
+        <div id="status" style="margin-top: 20px; color: #cfc09a;"></div>
+    </div>
+
+    <script type="module">
+        import { UnifiedCharacterInterface } from './src/ui/unifiedCharacterInterface.js';
+        
+        window.testCreateCharacter = function() {
+            document.getElementById('status').textContent = 'Opening character creation interface...';
+            
+            const ui = new UnifiedCharacterInterface();
+            ui.showForCreation();
+        };
+        
+        window.testEditCharacter = function() {
+            document.getElementById('status').textContent = 'Opening character editing interface...';
+            
+            // Create a sample character for editing
+            const sampleCharacter = {
+                id: 'test-character',
+                name: 'Test Character',
+                race: 'human',
+                classes: [{ name: 'fighter', level: 1 }],
+                abilities: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+                hp: 10,
+                description: 'A brave warrior ready for adventure!'
+            };
+            
+            const ui = new UnifiedCharacterInterface();
+            ui.showForEdit(sampleCharacter);
+        };
+    </script>
+</body>
+</html>

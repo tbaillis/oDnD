@@ -1,7 +1,7 @@
 import { monsterService } from './service'
 import type { MonsterData } from './types'
 
-// Monster selection UI for choosing Pawn B creature
+// Monster selection UI for choosing Pawn M1 creature
 export class MonsterSelectionUI {
   private container: HTMLElement | null = null
   private searchInput: HTMLInputElement | null = null
@@ -39,7 +39,7 @@ export class MonsterSelectionUI {
       <div class="monster-selection">
         <div class="monster-controls">
           <div class="monster-header">
-            <h3>Select Monster for Pawn B</h3>
+            <h3>Select Monster for Pawn M1</h3>
             <button id="close-monster-selection" class="close-button" title="Close">×</button>
           </div>
           <div class="search-bar">

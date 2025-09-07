@@ -3,6 +3,7 @@ import { GoldBoxInterface, convertCharacterToStatus, type CharacterStatus } from
 import { GoldBoxCharacterSheet } from './goldBoxCharacterSheet'
 import { IntroScreen } from './introScreen'
 import { HomeScreen } from './homeScreen'
+import { characterManager } from '../game/characterManager'
 
 /**
  * Adapter to integrate Gold Box Interface with existing game systems
@@ -12,8 +13,12 @@ export class GoldBoxAdapter {
   private characterSheet: GoldBoxCharacterSheet
   private introScreen?: IntroScreen
   private homeScreen?: HomeScreen
-  private characters: Map<string, Character> = new Map()
   private gameState: 'exploration' | 'combat' | 'menu' = 'exploration'
+  
+  // Compatibility layer - make characters getter that returns characterManager data
+  private get characters(): Map<string, Character> {
+    return characterManager.getAllCharacters()
+  }
   
   constructor() {
     console.log('Gold Box Adapter: Constructor starting...')
@@ -74,7 +79,7 @@ export class GoldBoxAdapter {
   private setupCharacterClickHandler(): void {
     this.interface.setOnCharacterClick((characterId: string) => {
       console.log('Gold Box: Character clicked:', characterId)
-      const character = this.characters.get(characterId)
+      const character = characterManager.getCharacter(characterId)
       if (character) {
         console.log('Gold Box: Opening character sheet for:', character.name)
         this.characterSheet.show(character, characterId)
@@ -91,8 +96,8 @@ export class GoldBoxAdapter {
       const { characterId, character } = customEvent.detail
       console.log('Gold Box: Received character sheet update for:', character.name, 'ID:', characterId)
       
-      if (characterId && this.characters.has(characterId)) {
-        this.characters.set(characterId, character)
+      if (characterId && characterManager.getCharacter(characterId)) {
+        characterManager.storeCharacter(characterId, character)
         
         // Update the pawn if it's pawn-a (suppressEvent prevents loops)
         if (characterId === 'pawn-a') {
@@ -112,9 +117,9 @@ export class GoldBoxAdapter {
       const { characterId, character, source } = customEvent.detail
       console.log('Gold Box: Received external character update for:', character?.name || 'unknown', 'ID:', characterId, 'Source:', source)
       
-      if (characterId && character && this.characters.has(characterId)) {
+      if (characterId && character && characterManager.getCharacter(characterId)) {
         // Update our character data
-        this.characters.set(characterId, character)
+        characterManager.storeCharacter(characterId, character)
         
         // Update the character sheet if it's currently showing this character
         this.characterSheet.updateCharacter(character, characterId)
@@ -217,21 +222,22 @@ export class GoldBoxAdapter {
 
   // Method to find an available pawn slot (excluding pawns with 'M' in their names)
   public findAvailablePawnSlot(): 'A' | 'C' | 'D' | 'E' | 'F' | 'B' | null {
-    // Exclude pawnM1 (has 'M' in name) and add pawnB as the sixth character slot
-  const pawnIds = ['pawn-a', 'pawn-b', 'pawn-c', 'pawn-d', 'pawn-e', 'pawn-f']
-  const pawnLetters: ('A' | 'B' | 'C' | 'D' | 'E' | 'F')[] = ['A', 'B', 'C', 'D', 'E', 'F']
-    
-    for (let i = 0; i < pawnIds.length; i++) {
-      if (!this.characters.has(pawnIds[i])) {
-        return pawnLetters[i]
+    // Use the unified character manager
+    const availableSlot = characterManager.findAvailablePawnSlot()
+    if (availableSlot) {
+      // Convert to letter format
+      const pawnMap: Record<string, 'A' | 'C' | 'D' | 'E' | 'F' | 'B'> = {
+        'pawn-a': 'A', 'pawn-b': 'B', 'pawn-c': 'C', 
+        'pawn-d': 'D', 'pawn-e': 'E', 'pawn-f': 'F'
       }
+      return pawnMap[availableSlot] || null
     }
-    
-    return null // All slots occupied
+    return null
   }
 
   private setPawnACharacter(character: Character, suppressEvent: boolean = false): void {
-    this.addCharacter('pawn-a', character)
+    // Store in unified character manager
+    characterManager.storeCharacter('pawn-a', character)
     
     // Apply to the actual Pawn A in the game
     const applyCharacterToPawnA = (window as any).applyCharacterToPawnA
@@ -239,10 +245,10 @@ export class GoldBoxAdapter {
       applyCharacterToPawnA(character, suppressEvent)
       console.log('Applied character to Pawn A:', character.name, suppressEvent ? '(events suppressed)' : '')
       
-      // CRITICAL: Ensure the pawn uses the same character object reference as the GoldBoxAdapter
+      // CRITICAL: Ensure the pawn uses the same character object reference as the CharacterManager
       const pawnA = (window as any).pawnA
       if (pawnA) {
-        console.log('Syncing Pawn A character data with GoldBoxAdapter reference')
+        console.log('Syncing Pawn A character data with CharacterManager reference')
         pawnA.characterData = character  // Use the exact same object reference
         pawnA.goldBoxId = 'pawn-a'
         console.log('Pawn A character data set to:', character.name)
@@ -739,18 +745,23 @@ export class GoldBoxAdapter {
     return this.interface.isShowing()
   }
 
+  public returnToHomeScreen(): void {
+    console.log('Gold Box: Returning to home screen')
+    this.showHomeScreen()
+  }
+
   public addCharacter(id: string, character: Character): void {
     console.log(`Gold Box: addCharacter called with id '${id}', character '${character.name}'`)
-    this.characters.set(id, character)
+    characterManager.storeCharacter(id, character)
     console.log(`Gold Box: Character stored. Current character count: ${this.characters.size}`)
     this.updatePartyDisplay()
   }
 
   public showCharacterSheet(characterId: string): void {
     console.log(`=== SHOWING CHARACTER SHEET FOR: ${characterId} ===`)
-    const character = this.characters.get(characterId)
+    const character = characterManager.getCharacter(characterId)
     console.log('Found character:', character ? character.name : 'NOT FOUND')
-    console.log('Available characters:', Array.from(this.characters.keys()))
+    console.log('Available characters:', Array.from(characterManager.getAllCharacters().keys()))
     
     if (character && this.characterSheet) {
       this.characterSheet.show(character, characterId)
@@ -820,13 +831,14 @@ export class GoldBoxAdapter {
 
   private updatePartyDisplay(): void {
     console.log('Gold Box: updatePartyDisplay called')
-    console.log('Gold Box: Current characters:', Array.from(this.characters.entries()).map(([id, char]) => `${id}: ${char.name}`))
+    const allCharacters = characterManager.getAllCharacters()
+    console.log('Gold Box: Current characters:', Array.from(allCharacters.entries()).map(([id, char]) => `${id}: ${char.name}`))
     
     // Get current active turn from the global turns object
     const turns = (window as any).turns
     const activeId = turns?.active?.id
     
-    const partyStatus: CharacterStatus[] = Array.from(this.characters.entries()).map(([id, character]) => {
+    const partyStatus: CharacterStatus[] = Array.from(allCharacters.entries()).map(([id, character]) => {
       // Map gold box character IDs to pawn IDs for turn tracking
       const pawnIdMap: Record<string, string> = {
         'pawn-a': 'A',
@@ -904,7 +916,26 @@ export class GoldBoxAdapter {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'g' && e.ctrlKey) {
         e.preventDefault()
-        this.toggle()
+        
+        // Check if we're in dungeon combat mode
+        const inDungeonCombat = (window as any).inDungeonCombat
+        if (inDungeonCombat && this.interface.isShowing()) {
+          // If Gold Box is showing and we're in dungeon combat, return to dungeon
+          console.log('Returning to dungeon from tactical combat...')
+          this.interface.hide()
+          
+          // Call the dungeon battle end callback to return to dungeon view
+          const dungeonCallback = (window as any).dungeonBattleEndCallback
+          if (dungeonCallback && typeof dungeonCallback === 'function') {
+            dungeonCallback()
+          }
+          
+          // Clear the dungeon combat flag
+          delete (window as any).inDungeonCombat
+        } else {
+          // Normal toggle behavior
+          this.toggle()
+        }
       }
     })
     
@@ -944,11 +975,11 @@ export class GoldBoxAdapter {
   }
 
   public getCharacter(characterId: string): Character | undefined {
-    return this.characters.get(characterId)
+    return characterManager.getCharacter(characterId) || undefined
   }
 
   public getAllCharacters(): Map<string, Character> {
-    return new Map(this.characters)
+    return characterManager.getAllCharacters()
   }
 
   // --- Save / Load helpers -------------------------------------------------
@@ -1165,7 +1196,7 @@ export class GoldBoxAdapter {
       onEditGame: () => this.editGameSettings(),
       onStartAdventure: () => this.startAdventure(),
       onRemoveCharacter: (characterId: string) => this.removeCharacterFromParty(characterId),
-      getPartyMembers: () => this.characters
+      getPartyMembers: () => characterManager.getAllCharacters()
     })
     this.homeScreen.show()
   }
@@ -1191,10 +1222,10 @@ export class GoldBoxAdapter {
   private removeCharacterFromParty(characterId: string): void {
     console.log('GoldBoxAdapter: Removing character from party:', characterId)
     
-    // Remove from characters map
-    const character = this.characters.get(characterId)
+    // Remove from character manager
+    const character = characterManager.getCharacter(characterId)
     if (character) {
-      this.characters.delete(characterId)
+      characterManager.removeCharacter(characterId)
       
       // Clear the pawn data
       const pawnMap: Record<string, string> = {

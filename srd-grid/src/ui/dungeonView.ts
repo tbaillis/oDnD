@@ -30,21 +30,20 @@ export class DungeonView {
   private ambientLevel = 0.15
   private torchLevel = 1.0
   private inEncounter = false
-  private inBattle = false
-  private encounterChance = 0.1 // 10% per move by default
+  private encounterChance = 0.15 // 15% per move (increased from 10% due to more monsters)
   private currentMonster?: Monster
-  private battlePlayerHP = 18
-  private battlePlayerMaxHP = 18
-  private battleEnemyHP = 0
-  private battleEnemyMaxHP = 0
-  private battleGridSize = 7 // tactical grid (odd -> center player)
-  private battlePlayerPos = { x: 3, y: 3 }
-  private battleEnemyPos = { x: 5, y: 3 }
   private encounterOverlay?: HTMLElement
   private monsterTable: Monster[] = [
     { id: 'goblin', name: 'Goblin', hp: 7, ac: 15, cr: 1 / 4, talkChance: 0.25 },
     { id: 'kobold', name: 'Kobold', hp: 5, ac: 12, cr: 1 / 8, talkChance: 0.20 },
-    { id: 'orc', name: 'Orc', hp: 15, ac: 13, cr: 1 / 2, talkChance: 0.15 }
+    { id: 'orc', name: 'Orc', hp: 15, ac: 13, cr: 1 / 2, talkChance: 0.15 },
+    { id: 'skeleton', name: 'Skeleton', hp: 13, ac: 13, cr: 1 / 4, talkChance: 0.05 },
+    { id: 'zombie', name: 'Zombie', hp: 22, ac: 8, cr: 1 / 4, talkChance: 0.0 },
+    { id: 'wolf', name: 'Wolf', hp: 11, ac: 13, cr: 1 / 4, talkChance: 0.10 },
+    { id: 'spider', name: 'Giant Spider', hp: 26, ac: 14, cr: 1, talkChance: 0.0 },
+    { id: 'bugbear', name: 'Bugbear', hp: 27, ac: 16, cr: 1, talkChance: 0.20 },
+    { id: 'gnoll', name: 'Gnoll', hp: 22, ac: 15, cr: 1 / 2, talkChance: 0.15 },
+    { id: 'hobgoblin', name: 'Hobgoblin', hp: 11, ac: 18, cr: 1 / 2, talkChance: 0.30 }
   ]
 
   // Player state
@@ -213,6 +212,17 @@ export class DungeonView {
         this.storyEncounterId = options.encounterId
       }
     } catch (e) {}
+
+    // Trigger the first encounter when characters start the adventure
+    setTimeout(() => {
+      console.log('Checking for auto-encounter trigger...', { inEncounter: this.inEncounter });
+      if (!this.inEncounter) {
+        console.log('Triggering first encounter automatically...');
+        this.startEncounter()
+      } else {
+        console.log('Skipping auto-encounter - already in encounter');
+      }
+    }, 1000) // Small delay to ensure dungeon is fully rendered
   }
 
   // optional story linking fields
@@ -344,11 +354,6 @@ export class DungeonView {
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || (active as HTMLElement).isContentEditable)) return
 
     const key = e.key.toLowerCase()
-    if (this.inBattle) {
-      this.handleBattleKey(key)
-      this.frame()
-      return
-    }
     switch (key) {
       case 'arrowup':
       case '8':
@@ -380,32 +385,11 @@ export class DungeonView {
     this.frame()
   }
 
-  // battle input handling
-  private handleBattleKey(key: string) {
-    if (!this.inBattle) return
-    switch (key) {
-      case 'arrowup':
-      case 'w':
-        if (this.battlePlayerPos.y > 0) this.battlePlayerPos.y--
-        break
-      case 'arrowdown':
-      case 's':
-        if (this.battlePlayerPos.y < this.battleGridSize - 1) this.battlePlayerPos.y++
-        break
-      case 'arrowleft':
-      case 'a':
-        if (this.battlePlayerPos.x > 0) this.battlePlayerPos.x--
-        break
-      case 'arrowright':
-      case 'd':
-        if (this.battlePlayerPos.x < this.battleGridSize - 1) this.battlePlayerPos.x++
-        break
-      case ' ': // space = attack if adjacent
-        this.battlePlayerAttack()
-        break
-      case 'r': // try to retreat (50% chance)
-        if (Math.random() < 0.5) { this.endBattle(false); this.currentMonster = undefined } else { /* fail */ }
-        break
+  // encounter logic
+  private maybeTriggerEncounter() {
+    if (this.inEncounter) return
+    if (Math.random() < this.encounterChance) {
+      this.startEncounter()
     }
   }
 
@@ -439,18 +423,12 @@ export class DungeonView {
     }
   }
 
-  // encounter logic
-  private maybeTriggerEncounter() {
-    if (this.inEncounter || this.inBattle) return
-    if (Math.random() < this.encounterChance) {
-      this.startEncounter()
-    }
-  }
-
-  private startEncounter() {
+  public startEncounter() {
+    console.log('Starting encounter...');
     this.inEncounter = true
     const m = this.monsterTable[Math.floor(Math.random() * this.monsterTable.length)]
     this.currentMonster = { ...m }
+    console.log('Selected monster:', this.currentMonster);
     this.createEncounterOverlay()
     // inform story that a battle is starting
     try {
@@ -472,8 +450,31 @@ export class DungeonView {
   private endEncounter() {
     this.inEncounter = false
     this.currentMonster = undefined
-    if (this.encounterOverlay && this.encounterOverlay.parentElement) this.encounterOverlay.parentElement.removeChild(this.encounterOverlay)
-    this.encounterOverlay = undefined
+    
+    // Clean up encounter overlay (monster image)
+    if (this.encounterOverlay && this.encounterOverlay.parentElement) {
+      // Fade out the monster image
+      this.encounterOverlay.style.opacity = '0'
+      setTimeout(() => {
+        if (this.encounterOverlay && this.encounterOverlay.parentElement) {
+          this.encounterOverlay.parentElement.removeChild(this.encounterOverlay)
+        }
+        this.encounterOverlay = undefined
+      }, 500)
+    } else {
+      this.encounterOverlay = undefined
+    }
+    
+    // Reset Gold Box interface commands
+    try {
+      const goldBox = (window as any).goldBox
+      if (goldBox) {
+        goldBox.setCommands({ talk: false, combat: true }) // Keep combat available for general use
+        goldBox.setCommandCallback(() => {}) // Clear command callback
+        goldBox.addMessage('Encounter resolved.', 'System')
+      }
+    } catch (e) {}
+    
     // report a minor progress/completion to the story if attached
     try {
       if (this._battleCtrl) {
@@ -487,120 +488,360 @@ export class DungeonView {
   }
 
   private createEncounterOverlay() {
+    console.log('Creating encounter overlay for:', this.currentMonster);
     try {
+      // Instead of creating a popup overlay, create a monster image overlay on the 3D view
       const overlay = document.createElement('div')
-      overlay.style.cssText = 'position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:#0b1020; border:2px solid #666; padding:12px; color:#fff; z-index:1300; width:320px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,0.7); font-family: "Courier New", monospace;'
-      const title = document.createElement('div')
-      title.style.cssText = 'font-weight:bold; color:#ffd86b; margin-bottom:8px;'
-      title.textContent = 'Encounter'
-      overlay.appendChild(title)
-
-      const info = document.createElement('div')
-      info.style.marginBottom = '8px'
-      info.textContent = this.currentMonster ? `You encounter a ${this.currentMonster.name}!` : 'You encounter something...'
-      overlay.appendChild(info)
-
-      const btnRow = document.createElement('div')
-      btnRow.style.cssText = 'display:flex; gap:8px; justify-content:center; margin-top:8px;'
-
-      const talkBtn = document.createElement('button')
-      talkBtn.textContent = 'Talk'
-      talkBtn.style.cssText = 'padding:8px 12px;'
-      talkBtn.onclick = () => { this.attemptTalk() }
-
-      const fightBtn = document.createElement('button')
-      fightBtn.textContent = 'Fight'
-      fightBtn.style.cssText = 'padding:8px 12px;'
-      fightBtn.onclick = () => { this.acceptFight() }
-
-      btnRow.appendChild(talkBtn)
-      btnRow.appendChild(fightBtn)
-      overlay.appendChild(btnRow)
-
-      document.body.appendChild(overlay)
+      overlay.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1250; pointer-events:none; opacity:0; transition:opacity 0.5s ease-in-out;'
+      
+      // Create monster image
+      const monsterImage = document.createElement('img')
+      const monsterImagePath = this.getMonsterImagePath(this.currentMonster?.id || 'monster')
+      monsterImage.src = monsterImagePath
+      monsterImage.style.cssText = 'width:200px; height:200px; object-fit:contain; filter:drop-shadow(0 0 20px rgba(255,255,255,0.8));'
+      
+      overlay.appendChild(monsterImage)
+      
+      // Add overlay to the canvas container (relative positioned)
+      if (this.canvas.parentElement) {
+        this.canvas.parentElement.style.position = 'relative'
+        this.canvas.parentElement.appendChild(overlay)
+        
+        // Fade in the monster image
+        setTimeout(() => {
+          overlay.style.opacity = '1'
+        }, 100)
+      }
+      
       this.encounterOverlay = overlay
-    } catch (e) {}
+      
+      // Send encounter message to Gold Box interface instead of popup
+      try {
+        const goldBox = (window as any).goldBox
+        console.log('Gold Box interface check:', goldBox, 'has addMessage:', goldBox?.addMessage);
+        if (goldBox && goldBox.addMessage) {
+          console.log('Using Gold Box interface for encounter messages');
+          goldBox.addMessage(`🗡️ You encounter a ${this.currentMonster?.name}!`, 'Narration')
+          goldBox.addMessage('Choose your action: (T)alk or (C)ombat', 'System')
+          
+          // Enable talk and combat commands
+          goldBox.setCommands({ talk: true, combat: true })
+          
+          // Set up command callback to handle talk/fight choices
+          goldBox.setCommandCallback((command: string) => {
+            if (command === 'talk') {
+              this.attemptTalk()
+            } else if (command === 'combat') {
+              this.acceptFight()
+            }
+          })
+        } else {
+          console.warn('Gold Box interface not available, falling back to basic encounter')
+          this.createBasicEncounter()
+        }
+      } catch (e) {
+        console.warn('Error with Gold Box interface, falling back to basic encounter:', e)
+        this.createBasicEncounter()
+      }
+    } catch (e) {
+      console.error('Error creating encounter overlay:', e)
+    }
+  }
+
+  private getMonsterImagePath(monsterId: string): string {
+    // Map monster IDs to available pawn images
+    const imageMap: { [key: string]: string } = {
+      'goblin': '/src/assets/pawns/xGoblin.png',
+      'orc': '/src/assets/pawns/xOrc.png',
+      'skeleton': '/src/assets/pawns/xMonster.png',
+      'zombie': '/src/assets/pawns/xMonster.png',
+      'wolf': '/src/assets/pawns/xMonster.png',
+      'spider': '/src/assets/pawns/xMonster.png',
+      'bugbear': '/src/assets/pawns/xOrc.png',
+      'gnoll': '/src/assets/pawns/xMonster.png',
+      'hobgoblin': '/src/assets/pawns/xGoblin.png',
+      'kobold': '/src/assets/pawns/xGoblin.png',
+      'demon': '/src/assets/pawns/xDemon.png',
+      'horror': '/src/assets/pawns/xHorror.png',
+      'owlbear': '/src/assets/pawns/xOwlBear.png',
+      'dragon': '/src/assets/pawns/xdragon.png'
+    }
+    
+    return imageMap[monsterId] || '/src/assets/pawns/xMonster.png'
+  }
+
+  private createBasicEncounter() {
+    // Fallback to original popup system if Gold Box interface is not available
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:#0b1020; border:2px solid #666; padding:12px; color:#fff; z-index:1300; width:320px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,0.7); font-family: "Courier New", monospace;'
+    const title = document.createElement('div')
+    title.style.cssText = 'font-weight:bold; color:#ffd86b; margin-bottom:8px;'
+    title.textContent = 'Encounter'
+    overlay.appendChild(title)
+
+    const info = document.createElement('div')
+    info.style.marginBottom = '8px'
+    info.textContent = this.currentMonster ? `You encounter a ${this.currentMonster.name}!` : 'You encounter something...'
+    overlay.appendChild(info)
+
+    const btnRow = document.createElement('div')
+    btnRow.style.cssText = 'display:flex; gap:8px; justify-content:center; margin-top:8px;'
+
+    const talkBtn = document.createElement('button')
+    talkBtn.textContent = 'Talk'
+    talkBtn.style.cssText = 'padding:8px 12px;'
+    talkBtn.onclick = () => { this.attemptTalk() }
+
+    const fightBtn = document.createElement('button')
+    fightBtn.textContent = 'Fight'
+    fightBtn.style.cssText = 'padding:8px 12px;'
+    fightBtn.onclick = () => { this.acceptFight() }
+
+    btnRow.appendChild(talkBtn)
+    btnRow.appendChild(fightBtn)
+    overlay.appendChild(btnRow)
+
+    document.body.appendChild(overlay)
+    this.encounterOverlay = overlay
   }
 
   private attemptTalk() {
     if (!this.currentMonster) return
     const chance = this.currentMonster.talkChance || 0
     const roll = Math.random()
+    
+    // Send message to Gold Box interface
+    const goldBox = (window as any).goldBox
+    
     if (roll < chance) {
       // success - end encounter peacefully
-      // narrative and log
       try {
+        if (goldBox && goldBox.addMessage) {
+          goldBox.addMessage(`💬 You successfully negotiate with the ${this.currentMonster.name}.`, 'Skill')
+          goldBox.addMessage(`The ${this.currentMonster.name} decides to leave peacefully.`, 'Narration')
+        }
         this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`The ${this.currentMonster.name} is convinced to leave peacefully.`)
         this._battleCtrl && this._battleCtrl.finish && this._battleCtrl.finish('fled', { note: 'talk success' })
       } catch (e) {}
-      if (this.encounterOverlay) {
-        this.encounterOverlay.innerHTML = `<div style="color:#9fe29f;font-weight:bold">The ${this.currentMonster.name} is convinced to leave.</div>`
-        setTimeout(() => this.endEncounter(), 1200)
-      } else this.endEncounter()
+      
+      setTimeout(() => this.endEncounter(), 1500)
     } else {
       // talking failed -> start combat
-      try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`Talking failed — the ${this.currentMonster.name} prepares to fight.`) } catch (e) {}
-      if (this.encounterOverlay) this.encounterOverlay.parentElement?.removeChild(this.encounterOverlay)
-      this.encounterOverlay = undefined
+      try {
+        if (goldBox && goldBox.addMessage) {
+          goldBox.addMessage(`💥 Negotiation failed! The ${this.currentMonster.name} becomes hostile!`, 'Warning')
+          goldBox.addMessage('Combat begins!', 'Combat')
+        }
+        this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`Talking failed — the ${this.currentMonster.name} prepares to fight.`)
+      } catch (e) {}
+      
+      // Clean up encounter overlay
+      if (this.encounterOverlay && this.encounterOverlay.parentElement) {
+        this.encounterOverlay.style.opacity = '0'
+        setTimeout(() => {
+          if (this.encounterOverlay && this.encounterOverlay.parentElement) {
+            this.encounterOverlay.parentElement.removeChild(this.encounterOverlay)
+          }
+          this.encounterOverlay = undefined
+        }, 500)
+      }
+      
       this.inEncounter = false
       this.startBattleWithCurrentMonster()
     }
   }
 
   private acceptFight() {
-    if (this.encounterOverlay) this.encounterOverlay.parentElement?.removeChild(this.encounterOverlay)
-    this.encounterOverlay = undefined
+    // Send message to Gold Box interface
+    try {
+      const goldBox = (window as any).goldBox
+      if (goldBox && goldBox.addMessage) {
+        goldBox.addMessage(`⚔️ You choose to fight the ${this.currentMonster?.name}!`, 'Combat')
+        goldBox.addMessage('Entering tactical combat...', 'System')
+      }
+    } catch (e) {}
+    
+    // Clean up encounter overlay
+    if (this.encounterOverlay && this.encounterOverlay.parentElement) {
+      this.encounterOverlay.style.opacity = '0'
+      setTimeout(() => {
+        if (this.encounterOverlay && this.encounterOverlay.parentElement) {
+          this.encounterOverlay.parentElement.removeChild(this.encounterOverlay)
+        }
+        this.encounterOverlay = undefined
+      }, 500)
+    }
+    
     this.inEncounter = false
     this.startBattleWithCurrentMonster()
   }
 
   private startBattleWithCurrentMonster() {
     if (!this.currentMonster) return
-    this.inBattle = true
-    this.battlePlayerHP = this.battlePlayerMaxHP
-    this.battleEnemyHP = this.currentMonster.hp
-    this.battleEnemyMaxHP = this.currentMonster.hp
-    // place enemy on small tactical grid near player
-    this.battlePlayerPos = { x: Math.floor(this.battleGridSize / 2), y: Math.floor(this.battleGridSize / 2) }
-    this.battleEnemyPos = { x: Math.min(this.battleGridSize - 2, this.battlePlayerPos.x + 2), y: this.battlePlayerPos.y }
-    // if a battle controller exists, start it for this monster
+    
+    // Send message to Gold Box interface about entering combat
     try {
-      if (this.battleLinker) {
-        this._battleCtrl = this.battleLinker.startBattle(this.storyChapterId, this.storyEncounterId, { battleId: this.currentMonster?.id || 'unknown', participants: ['player'] })
-        this._battleCtrl.narrative && this._battleCtrl.narrative(`A ${this.currentMonster?.name} appears!`)
-        // Ask the DM agent / MCP to roll initiative for participants (player + enemy)
-        try {
-          const w = window as any
-          if (w && w.dmAgent && typeof w.dmAgent.rollInitiative === 'function') {
-            const participants = [
-              { id: 'player', name: 'Player', type: 'player', initiativeBonus: 0 },
-              { id: this.currentMonster?.id || 'enemy', name: this.currentMonster?.name || 'Enemy', type: 'monster', initiativeBonus: 0 }
-            ]
-            w.dmAgent.rollInitiative(participants)
-              .then((r: any) => console.debug('rollInitiative result', r))
-              .catch((e: any) => console.warn('rollInitiative error', e))
-          }
-        } catch (e) {}
+      const goldBox = (window as any).goldBox
+      if (goldBox && goldBox.addMessage) {
+        goldBox.addMessage(`⚔️ Combat begins with the ${this.currentMonster.name}!`, 'Combat')
+        goldBox.addMessage('Use Gold Box tactical combat system.', 'System')
       }
     } catch (e) {}
+    
+    // Use the existing dungeon tactical battle system (no external grid needed)
+    this.fallbackToDungeonBattle()
   }
 
-  private endBattle(victory: boolean) {
-    this.inBattle = false
-    if (victory) {
-      // simple reward hook - remove monster and resume
-      // award XP and report narrative
-      try {
-        if (this._battleCtrl) {
-          this._battleCtrl.log && this._battleCtrl.log({ who: 'player', target: this.currentMonster?.name, dmg: this.battleEnemyMaxHP })
-          this._battleCtrl.awardXP && this._battleCtrl.awardXP(25)
-          this._battleCtrl.narrative && this._battleCtrl.narrative(`${this.currentMonster?.name} defeated!`) 
-          // final finish with casualty info
-          this._battleCtrl.finish && this._battleCtrl.finish('won', { casualties: [], xp: 25 })
+  private fallbackToDungeonBattle() {
+    // Convert simple monster to full MonsterData and apply to M1 pawn
+    try {
+      const monster = this.currentMonster
+      if (!monster) return
+      
+      console.log('Converting monster to full data and applying to M1:', monster)
+      
+      // Convert simple monster to full MonsterData
+      const fullMonsterData = this.convertToFullMonsterData(monster)
+      
+      // Access the global applyMonsterToPawnM1 function
+      const applyMonsterToPawnM1 = (window as any).applyMonsterToPawnM1
+      if (applyMonsterToPawnM1) {
+        console.log('Applying monster to M1 pawn...')
+        applyMonsterToPawnM1(fullMonsterData)
+        
+        // Hide the Gold Box interface (we're going to the main grid)
+        const goldBox = (window as any).goldBox
+        if (goldBox) {
+          goldBox.hide()
+          goldBox.addMessage(`⚔️ Combat begins! ${monster.name} has been placed as M1 on the tactical grid.`, 'Combat')
+          goldBox.addMessage('Tactical combat is now active on the main grid.', 'System')
         }
-      } catch (e) {}
-      this.currentMonster = undefined
+        
+        // Hide the dungeon view to show the main tactical grid
+        this.hide()
+        
+        // Set up a callback to return to dungeon after battle
+        this.setupBattleEndCallback()
+        
+        console.log('Transitioned to main tactical grid interface')
+        
+      } else {
+        console.warn('applyMonsterToPawnM1 function not available')
+        this.fallbackToBasicMessage()
+      }
+    } catch (e) {
+      console.error('Error setting up tactical combat:', e)
+      this.fallbackToBasicMessage()
     }
+  }
+  
+  private convertToFullMonsterData(monster: Monster): any {
+    // Convert the simple Monster type to full MonsterData type
+    const cr = monster.cr || 1
+    const hd = Math.max(1, Math.floor(monster.hp / 6)) // Estimate hit dice from HP
+    
+    return {
+      id: monster.id,
+      name: monster.name,
+      size: 'Medium' as const,
+      type: 'Humanoid' as const,
+      hitDice: `${hd}d8`,
+      hitPoints: { average: monster.hp, roll: `${hd}d8+${Math.floor(hd/2)}` },
+      initiative: 0,
+      speed: { land: 30 },
+      armorClass: {
+        total: monster.ac || 10,
+        touch: 10,
+        flatFooted: monster.ac || 10,
+        size: 0,
+        dex: 0,
+        natural: (monster.ac || 10) - 10
+      },
+      baseAttack: Math.max(1, Math.floor(hd * 0.75)),
+      grapple: Math.max(1, Math.floor(hd * 0.75)),
+      attacks: [{
+        name: 'Claw',
+        attackBonus: Math.max(1, Math.floor(hd * 0.75)),
+        damage: '1d6',
+        type: 'melee' as const
+      }],
+      space: '5 ft.',
+      reach: '5 ft.',
+      abilities: {
+        STR: 13,
+        DEX: 10,
+        CON: 12,
+        INT: 8,
+        WIS: 11,
+        CHA: 9
+      },
+      saves: {
+        fortitude: Math.floor(hd / 3) + 1,
+        reflex: Math.floor(hd / 3),
+        will: Math.floor(hd / 3)
+      },
+      skills: {},
+      feats: ['Weapon Focus (Claw)'],
+      specialAttacks: [],
+      specialQualities: [],
+      challengeRating: cr,
+      environment: 'Any',
+      organization: 'Solitary',
+      treasure: 'Standard',
+      alignment: 'Chaotic Neutral' as const
+    }
+  }
+  
+  private setupBattleEndCallback() {
+    // Set up a global callback for when battle ends
+    const originalBattleEndCallback = (window as any).dungeonBattleEndCallback
+    
+    ;(window as any).dungeonBattleEndCallback = () => {
+      console.log('Battle ended, returning to dungeon view...')
+      
+      // Show the dungeon view again
+      this.show()
+      
+      // End the encounter
+      this.endEncounter()
+      
+      // Restore original callback if it existed
+      if (originalBattleEndCallback) {
+        ;(window as any).dungeonBattleEndCallback = originalBattleEndCallback
+      } else {
+        delete (window as any).dungeonBattleEndCallback
+      }
+    }
+    
+    // Set a flag to indicate we're in dungeon combat mode
+    ;(window as any).inDungeonCombat = true
+    
+    // Add a message to the Gold Box interface with instructions
+    try {
+      const goldBox = (window as any).goldBox
+      if (goldBox) {
+        goldBox.addMessage('💡 Press Ctrl+G to return to dungeon after combat.', 'System')
+      }
+    } catch (e) {
+      console.warn('Could not add return instruction to Gold Box:', e)
+    }
+  }
+  
+  private fallbackToBasicMessage() {
+    // Fallback if tactical interface isn't available
+    try {
+      const goldBox = (window as any).goldBox
+      if (goldBox && goldBox.addMessage) {
+        goldBox.addMessage(`🎯 Entering tactical combat with ${this.currentMonster?.name}!`, 'Combat')
+        goldBox.addMessage('Use Ctrl+G to access the tactical combat system.', 'System')
+        goldBox.addMessage('Combat will be handled by the main tactical interface.', 'System')
+      }
+    } catch (e) {
+      console.warn('Error accessing Gold Box for combat message:', e)
+    }
+    
+    // Clear the encounter state since combat is now handled externally
+    this.endEncounter()
   }
 
   private rotate(a: number) { this.pa = (this.pa + a) % (Math.PI * 2) }
@@ -725,93 +966,6 @@ export class DungeonView {
     ctx.stroke()
 
     this.drawMiniMap()
-
-    // battle overlay (tactical grid)
-    if (this.inBattle) {
-      const size = Math.min(w, h) * 0.6
-      const left = Math.floor((w - size) / 2)
-      const top = Math.floor((h - size) / 2)
-      const cell = Math.floor(size / this.battleGridSize)
-      // background panel
-      ctx.fillStyle = 'rgba(4,6,12,0.95)'
-      ctx.fillRect(left - 8, top - 8, cell * this.battleGridSize + 16, cell * this.battleGridSize + 64)
-      ctx.strokeStyle = '#666'
-      ctx.strokeRect(left - 8, top - 8, cell * this.battleGridSize + 16, cell * this.battleGridSize + 64)
-
-      // grid
-      for (let gy = 0; gy < this.battleGridSize; gy++) {
-        for (let gx = 0; gx < this.battleGridSize; gx++) {
-          const cx = left + gx * cell
-          const cy = top + gy * cell
-          ctx.fillStyle = '#17322a'
-          ctx.fillRect(cx, cy, cell - 1, cell - 1)
-        }
-      }
-
-      // player
-      ctx.fillStyle = '#ffd86b'
-      ctx.fillRect(left + this.battlePlayerPos.x * cell + 4, top + this.battlePlayerPos.y * cell + 4, cell - 8, cell - 8)
-      // enemy
-      ctx.fillStyle = '#e26868'
-      ctx.fillRect(left + this.battleEnemyPos.x * cell + 4, top + this.battleEnemyPos.y * cell + 4, cell - 8, cell - 8)
-
-      // HP bars
-      ctx.fillStyle = '#fff'
-      ctx.font = `${12}px monospace`
-      ctx.fillText(`Player HP: ${this.battlePlayerHP}/${this.battlePlayerMaxHP}`, left, top + cell * this.battleGridSize + 20)
-      ctx.fillText(`${this.currentMonster ? this.currentMonster.name : 'Enemy'} HP: ${this.battleEnemyHP}/${this.battleEnemyMaxHP}`, left, top + cell * this.battleGridSize + 36)
-
-      // hint
-      ctx.fillStyle = '#9fb0ff'
-      ctx.fillText('Move: WASD/Arrow · Attack: Space · Retreat: R', left, top + cell * this.battleGridSize + 54)
-    }
-  }
-
-  private battlePlayerAttack() {
-    if (!this.inBattle) return
-    // check adjacency
-    const dx = Math.abs(this.battlePlayerPos.x - this.battleEnemyPos.x)
-    const dy = Math.abs(this.battlePlayerPos.y - this.battleEnemyPos.y)
-    if (dx + dy > 1) return // not adjacent
-  let dmg = 1 + Math.floor(Math.random() * 6)
-  const crit = Math.random() < 0.08
-  if (crit) { dmg *= 2 }
-  this.battleEnemyHP -= dmg
-  try { if (this._battleCtrl) this._battleCtrl.log && this._battleCtrl.log({ who: 'player', target: this.currentMonster?.name, dmg, text: crit ? 'CRITICAL' : undefined }) } catch (e) {}
-  // notify MCP server of damage applied
-  try {
-    const w = window as any
-    if (w && w.dmAgent && typeof w.dmAgent.applyDamage === 'function') {
-      w.dmAgent.applyDamage({ targetId: this.currentMonster?.id, damage: dmg, source: 'player' })
-        .then((r: any) => console.debug('applyDamage result', r))
-        .catch((e: any) => console.warn('applyDamage error', e))
-    }
-  } catch (e) {}
-  if (crit) try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative('Critical hit!') } catch (e) {}
-  if (this.battleEnemyHP <= 0) { this.endBattle(true); return }
-    // enemy turn
-    this.battleEnemyAttack()
-  }
-
-  private battleEnemyAttack() {
-    if (!this.inBattle) return
-  let dmg = 1 + Math.floor(Math.random() * 6)
-  const crit = Math.random() < 0.05
-  if (crit) { dmg += 2 }
-  this.battlePlayerHP -= dmg
-  try { if (this._battleCtrl) this._battleCtrl.log && this._battleCtrl.log({ who: this.currentMonster?.name, target: 'player', dmg, text: crit ? 'CRIT' : undefined }) } catch (e) {}
-  // notify MCP server of damage applied to player
-  try {
-    const w = window as any
-    if (w && w.dmAgent && typeof w.dmAgent.applyDamage === 'function') {
-      // assuming player id 'player'
-      w.dmAgent.applyDamage({ targetId: 'player', damage: dmg, source: this.currentMonster?.name })
-        .then((r: any) => console.debug('applyDamage result', r))
-        .catch((e: any) => console.warn('applyDamage error', e))
-    }
-  } catch (e) {}
-  if (crit) try { this._battleCtrl && this._battleCtrl.narrative && this._battleCtrl.narrative(`${this.currentMonster?.name} lands a crushing blow!`) } catch (e) {}
-  if (this.battlePlayerHP <= 0) { this.endBattle(false); return }
   }
 
   private drawMiniMap() {
@@ -852,6 +1006,27 @@ export class DungeonView {
     mctx.lineTo(rightX, rightY)
     mctx.closePath()
     mctx.fill()
+  }
+
+  public hide(): void {
+    if (this.container && this.container.parentElement) {
+      this.container.style.display = 'none'
+    }
+  }
+
+  public show(): void {
+    if (this.container) {
+      this.container.style.display = 'block'
+    }
+  }
+
+  public forceEncounter(): void {
+    console.log('Forcing encounter via public method...');
+    if (!this.inEncounter) {
+      this.startEncounter();
+    } else {
+      console.log('Cannot force encounter - already in encounter');
+    }
   }
 }
 

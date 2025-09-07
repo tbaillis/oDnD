@@ -38,6 +38,20 @@ export class MonsterTurnManager implements MonsterTurnManager {
     } else {
       this.monsterPawns.delete(pawnId);
     }
+    
+    // Ensure B-F pawns are never accidentally marked as monsters
+    this.ensurePlayerPawnsNotMonsters();
+  }
+  
+  private ensurePlayerPawnsNotMonsters(): void {
+    // Clear any invalid monster pawn assignments (this method prevents legacy bugs)
+    const validMonsterPawns = new Set<'A' | 'M1'>();
+    for (const pawnId of this.monsterPawns) {
+      if (pawnId === 'A' || pawnId === 'M1') {
+        validMonsterPawns.add(pawnId);
+      }
+    }
+    this.monsterPawns = validMonsterPawns;
   }
 
   public isMonsterPawn(pawnId: 'A' | 'M1'): boolean {
@@ -125,10 +139,8 @@ export class MonsterTurnManager implements MonsterTurnManager {
 
     // For single actions, we might have more to do - but let's add a fallback to end turn
     // to prevent the old infinite loop behavior
-    console.log(`Monster ${pawnId} completed single action, ending turn`);
-    if (typeof (window as any).commitEndTurn === 'function') {
-      (window as any).commitEndTurn();
-    }
+    console.log(`Monster ${pawnId} completed single action, turn will be ended by main game loop`);
+    // Note: Turn ending is handled by main game loop after successful execution
   }
 
   private async executeAction(
@@ -185,8 +197,8 @@ export class MonsterTurnManager implements MonsterTurnManager {
 
     try {
       // Resolve various shapes for game state and helpers (some callers pass top-level budget/activePawnId)
-      const allPawns = gameState?.allPawns ?? (window as any).allPawns ?? [(window as any).pawnA, (window as any).pawnB];
-      const pawn = (allPawns || []).find((p: any) => p && (p.id === pawnId || p.id === String(pawnId))) ?? ((pawnId === 'A') ? (window as any).pawnA : (window as any).pawnB);
+      const allPawns = gameState?.allPawns ?? (window as any).allPawns ?? [(window as any).pawnA, (window as any).pawnM1];
+      const pawn = (allPawns || []).find((p: any) => p && (p.id === pawnId || p.id === String(pawnId))) ?? ((pawnId === 'A') ? (window as any).pawnA : (window as any).pawnM1);
 
       const activeId = gameState?.activePawnId ?? (gameState?.turns?.active?.id) ?? (window as any).turns?.active?.id;
       const budget = gameState?.budget ?? gameState?.turns?.budget ?? (window as any).turns?.budget;
@@ -276,8 +288,8 @@ export class MonsterTurnManager implements MonsterTurnManager {
       }
 
       // Get attacker and target pawns - prefer gameState actors if present
-      const attacker = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id === pawnId)) ?? (pawnId === 'A' ? (window as any).pawnA : (window as any).pawnB);
-      const target = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id !== pawnId)) ?? (pawnId === 'A' ? (window as any).pawnB : (window as any).pawnA);
+      const attacker = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id === pawnId)) ?? (pawnId === 'A' ? (window as any).pawnA : (window as any).pawnM1);
+      const target = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id !== pawnId)) ?? (pawnId === 'A' ? (window as any).pawnM1 : (window as any).pawnA);
       
       // Verify target is at the expected position
       if (!target || target.x !== action.target.x || target.y !== action.target.y) {
@@ -286,7 +298,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
       }
 
       // Check reach distance
-  const attackerReach = (gameState && gameState.reach && gameState.reach[pawnId]) ?? (pawnId === 'A' ? (window as any).reachA : (window as any).reachB);
+  const attackerReach = (gameState && gameState.reach && gameState.reach[pawnId]) ?? (pawnId === 'A' ? (window as any).reachA : (window as any).reachM1);
   const rangedMode = ((gameState && gameState.rangedMode) ?? (window as any).rangedMode) || false;
       
       const reachCheck = isWithinAttackReach(
@@ -358,12 +370,9 @@ export class MonsterTurnManager implements MonsterTurnManager {
   }
 
   private async executeEndTurn(pawnId: 'A' | 'M1', action: MonsterCombatAction): Promise<boolean> {
-    // Use existing end turn functionality
-    if (typeof (window as any).commitEndTurn === 'function') {
-      (window as any).commitEndTurn();
-      console.log(`Monster ${pawnId} ends turn: ${action.reasoning}`);
-      return true;
-    }
+    // Note: Turn ending is handled by main game loop after successful execution
+    console.log(`Monster ${pawnId} end turn action completed: ${action.reasoning}`);
+    return true;
 
     console.warn(`Monster ${pawnId} failed to end turn`);
     return false;
@@ -422,11 +431,8 @@ export class MonsterTurnManager implements MonsterTurnManager {
 
     console.log(`Monster ${pawnId} completed multi-action sequence`);
     
-    // Automatically end turn after completing multi-action sequence
-    console.log(`Monster ${pawnId} ending turn after multi-action completion`);
-    if (typeof (window as any).commitEndTurn === 'function') {
-      (window as any).commitEndTurn();
-    }
+    // Note: Turn ending is handled by main game loop after successful execution
+    console.log(`Monster ${pawnId} multi-action sequence completed, turn will be ended by main game loop`);
     
     return true;
   }

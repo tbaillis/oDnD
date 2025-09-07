@@ -5,26 +5,7 @@
  */
 
 import { FantasyNameGenerator } from './nameGenerator.js'
-
-interface CharacterData {
-  name: string
-  race: string
-  characterClass: string
-  abilityGenerationMethod: 'pointBuy' | 'eliteArray' | 'roll4d6'
-  abilities: {
-    strength: number
-    dexterity: number
-    constitution: number
-    intelligence: number
-    wisdom: number
-    charisma: number
-  }
-  rolledAbilities?: number[] // For 4d6 method - stores rolled values before assignment
-  hitPoints: number
-  skills: string[]
-  feats: string[]
-  equipment: string[]
-}
+import { type CharacterCreationData, convertCreationDataToCharacter } from '../game/characterManager'
 
 interface FormValidation {
   isValid: boolean
@@ -43,9 +24,9 @@ interface StepConfig {
 export class CharacterCreationModal {
   private modal: HTMLElement | null = null
   private currentStep: Step = 'basics'
-  private characterData: Partial<CharacterData> = {}
+  private characterData: Partial<CharacterCreationData> = {}
   private completedSteps: Set<Step> = new Set()
-  private onComplete?: (character: CharacterData) => void
+  private onComplete?: (character: any) => void // Will receive unified Character object
   private onCancel?: () => void
 
   private readonly steps: StepConfig[] = [
@@ -206,7 +187,7 @@ export class CharacterCreationModal {
     }
   ]
 
-  constructor(options: { onComplete?: (character: CharacterData) => void; onCancel?: () => void } = {}) {
+  constructor(options: { onComplete?: (character: any) => void; onCancel?: () => void } = {}) {
     console.log('CharacterCreationModal constructor called with options:', options)
     this.onComplete = options.onComplete
     this.onCancel = options.onCancel
@@ -1500,27 +1481,27 @@ export class CharacterCreationModal {
     
     // Always create character, even with validation issues
     // Apply defaults for missing required fields
-    const character = { ...this.characterData } as CharacterData
+    const creationData = { ...this.characterData } as CharacterCreationData
     
     // Ensure required fields have defaults
-    if (!character.name?.trim()) {
-      character.name = 'Unnamed Character'
+    if (!creationData.name?.trim()) {
+      creationData.name = 'Unnamed Character'
       console.warn('CharacterCreationModal: No name provided, using default')
     }
     
-    if (!character.race) {
-      character.race = 'human'
+    if (!creationData.race) {
+      creationData.race = 'human'
       console.warn('CharacterCreationModal: No race selected, defaulting to human')
     }
     
-    if (!character.characterClass) {
-      character.characterClass = 'fighter'
+    if (!creationData.characterClass) {
+      creationData.characterClass = 'fighter'
       console.warn('CharacterCreationModal: No class selected, defaulting to fighter')
     }
     
     // Ensure abilities are properly initialized
-    if (!character.abilities) {
-      character.abilities = {
+    if (!creationData.abilities) {
+      creationData.abilities = {
         strength: 10,
         dexterity: 10,
         constitution: 10,
@@ -1532,28 +1513,30 @@ export class CharacterCreationModal {
     }
     
     // Ensure arrays are initialized
-    character.skills = character.skills || []
-    character.equipment = character.equipment || []
-    character.feats = character.feats || []
+    creationData.skills = creationData.skills || []
+    creationData.equipment = creationData.equipment || []
+    creationData.feats = creationData.feats || []
     
     // Calculate final hit points with error handling
     try {
-      const characterClass = this.classData.find(c => c.id === character.characterClass)
-      const conModifier = this.getModifier(character.abilities.constitution)
+      const characterClass = this.classData.find(c => c.id === creationData.characterClass)
+      const conModifier = this.getModifier(creationData.abilities.constitution)
       const hitDieSize = parseInt(characterClass?.hitDie?.substring(1) || '8')
-      character.hitPoints = Math.max(1, hitDieSize + conModifier) // Ensure at least 1 HP
-      console.log('CharacterCreationModal: Calculated HP:', character.hitPoints)
+      creationData.hitPoints = Math.max(1, hitDieSize + conModifier) // Ensure at least 1 HP
+      console.log('CharacterCreationModal: Calculated HP:', creationData.hitPoints)
     } catch (error) {
       console.error('CharacterCreationModal: Error calculating HP, using default:', error)
-      character.hitPoints = 8 // Default HP
+      creationData.hitPoints = 8 // Default HP
     }
     
-    // Always complete character creation
-    console.log('CharacterCreationModal: Final character data:', character)
+    // Convert to unified Character format
+    const unifiedCharacter = convertCreationDataToCharacter(creationData)
+    console.log('CharacterCreationModal: Converted to unified character format:', unifiedCharacter)
     
+    // Always complete character creation
     if (this.onComplete) {
       try {
-        this.onComplete(character)
+        this.onComplete(unifiedCharacter)
         console.log('CharacterCreationModal: Character creation callback completed successfully')
       } catch (error) {
         console.error('CharacterCreationModal: Error in completion callback:', error)

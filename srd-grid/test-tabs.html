@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Character Interface Tabs</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Times New Roman', serif;
+            background: #1b1b1b;
+            color: #ffd966;
+        }
+        
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        
+        .test-button {
+            background: linear-gradient(135deg, #c59b45, #b8891e);
+            color: #1b1b1b;
+            border: 2px solid #c59b45;
+            padding: 16px 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Times New Roman', serif;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 20px;
+            transition: all 0.2s ease;
+            display: inline-block;
+            text-decoration: none;
+        }
+        
+        .test-button:hover {
+            background: linear-gradient(135deg, #d4a952, #c59b45);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(197, 155, 69, 0.5);
+        }
+        
+        #debug-info {
+            margin-top: 30px;
+            padding: 20px;
+            background: #2a2a2a;
+            border: 2px solid #c59b45;
+            border-radius: 8px;
+            text-align: left;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Test Character Interface Tabs</h1>
+        <p>Click the button below to test the unified character interface with working tabs:</p>
+        
+        <button class="test-button" onclick="testCharacterInterface()">Open Character Interface</button>
+        
+        <div id="debug-info" style="display: none;">
+            <h3>Debug Information:</h3>
+            <div id="debug-log"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { UnifiedCharacterInterface } from './src/ui/unifiedCharacterInterface.js';
+        
+        window.testCharacterInterface = function() {
+            const debugInfo = document.getElementById('debug-info');
+            const debugLog = document.getElementById('debug-log');
+            
+            debugInfo.style.display = 'block';
+            debugLog.innerHTML = 'Initializing character interface...<br>';
+            
+            try {
+                const ui = new UnifiedCharacterInterface();
+                debugLog.innerHTML += 'Character interface created successfully<br>';
+                
+                ui.open();
+                debugLog.innerHTML += 'Character interface opened<br>';
+                
+                // Add some debug listeners
+                setTimeout(() => {
+                    const modal = document.querySelector('.character-interface-modal');
+                    if (modal) {
+                        debugLog.innerHTML += 'Modal found in DOM<br>';
+                        
+                        const tabs = modal.querySelectorAll('.tab-button');
+                        debugLog.innerHTML += `Found ${tabs.length} tab buttons<br>`;
+                        
+                        tabs.forEach((tab, index) => {
+                            const tabId = tab.dataset.tab;
+                            debugLog.innerHTML += `Tab ${index}: ${tabId}<br>`;
+                            
+                            // Add click listener for debugging
+                            tab.addEventListener('click', (e) => {
+                                debugLog.innerHTML += `Tab clicked: ${tabId} at ${new Date().toLocaleTimeString()}<br>`;
+                            });
+                        });
+                    } else {
+                        debugLog.innerHTML += 'ERROR: Modal not found in DOM<br>';
+                    }
+                }, 100);
+                
+            } catch (error) {
+                debugLog.innerHTML += `ERROR: ${error.message}<br>`;
+                console.error('Character interface error:', error);
+            }
+        };
+    </script>
+</body>
+</html>

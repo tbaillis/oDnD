@@ -1,5 +1,5 @@
 import type { Character } from '../game/character'
-import { GoldBoxCharacterSheet } from './goldBoxCharacterSheet'
+import { UnifiedCharacterInterface } from './unifiedCharacterInterface'
 
 interface HomeScreenCallbacks {
   onCreateCharacter: (character: Character) => void
@@ -14,13 +14,16 @@ interface HomeScreenCallbacks {
 
 export class HomeScreen {
   private container: HTMLDivElement
-  private characterSheet: GoldBoxCharacterSheet
+  private unifiedInterface: UnifiedCharacterInterface
   private partyContainer: HTMLDivElement
   private callbacks: HomeScreenCallbacks
 
   constructor(callbacks: HomeScreenCallbacks) {
     this.callbacks = callbacks
-    this.characterSheet = new GoldBoxCharacterSheet()
+    this.unifiedInterface = new UnifiedCharacterInterface({
+      onComplete: (character) => this.handleCharacterCreated(character),
+      onCancel: () => console.log('Character creation cancelled')
+    })
     
     this.container = document.createElement('div')
     this.container.id = 'home-screen'
@@ -250,34 +253,8 @@ export class HomeScreen {
   }
 
   private openCharacterCreation(): void {
-    console.log('HomeScreen: Opening character creation')
-    // Create a new blank character for creation
-    const newCharacter: Character = {
-      name: '',
-      race: 'Human',
-      classes: [{ class: 'fighter', level: 1, hitPointsRolled: 10, skillPointsSpent: {}, featsGained: [] }],
-      abilityScores: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
-      hitPoints: { current: 10, max: 10, temporary: 0 },
-      armorClass: { base: 10, total: 10, touch: 10, flatFooted: 10 },
-      savingThrows: { fortitude: 0, reflex: 0, will: 0 },
-      skills: {},
-      feats: [],
-      equipment: { weapons: [], items: [] }
-    }
-
-    this.characterSheet.show(newCharacter, 'new-character', true) // true = creation mode
-    
-    // Listen for character creation completion
-    const handleCreation = (e: CustomEvent) => {
-      const { character, isNew } = e.detail
-      if (isNew) {
-        console.log('HomeScreen: Character created:', character.name)
-        this.handleCharacterCreated(character)
-        document.removeEventListener('character-sheet-saved', handleCreation as EventListener)
-      }
-    }
-    
-    document.addEventListener('character-sheet-saved', handleCreation as EventListener)
+    console.log('HomeScreen: Opening unified character creation')
+    this.unifiedInterface.showForCreation()
   }
 
   private openCharacterLoader(): void {
@@ -381,7 +358,7 @@ export class HomeScreen {
 
   private editCharacter(id: string, character: Character): void {
     console.log('HomeScreen: Editing character:', character.name)
-    this.characterSheet.show(character, id, false) // false = edit mode
+    this.unifiedInterface.showForEdit(character, id)
     
     // Update display when edit is complete
     const handleEdit = () => {

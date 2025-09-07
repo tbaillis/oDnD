@@ -266,6 +266,7 @@ if (goldBoxAdapter) {
   ;(window as any).syncPawnToGoldBox = syncPawnToGoldBox
   ;(window as any).applyDamageToPawn = applyDamageToPawn
   ;(window as any).healPawn = healPawn
+  ;(window as any).applyMonsterToPawnM1 = applyMonsterToPawnM1
 
   // Expose new pawn assignment methods
   goldBoxAdapter.exposeGlobalMethods()
@@ -1070,15 +1071,74 @@ const turns = createTurnState()
 // Initialize default pawn names before starting encounter
 initializeDefaultPawnNames()
 
-startEncounter(turns, [
-  { id: 'A', dexMod: 2, initiative: 15 },
-  { id: 'M1', dexMod: 0, initiative: 12 },
-  { id: 'C', dexMod: 1, initiative: 14 },
-  { id: 'D', dexMod: 3, initiative: 16 },
-  { id: 'E', dexMod: 1, initiative: 13 },
-  { id: 'F', dexMod: 2, initiative: 11 },
-])
+// Listen for character assignment changes to update display
+document.addEventListener('goldbox-character-created', () => {
+  console.log('Character created - updating tactical display and encounter list')
+  setTimeout(() => {
+    // Rebuild encounter list with new party composition
+    const newEncounterList = buildEncounterList()
+    startEncounter(turns, newEncounterList)
+    
+    drawAll()
+    updateInitiativeDisplay()
+  }, 100)
+})
+
+document.addEventListener('character-sheet-updated', () => {
+  console.log('Character updated - updating tactical display and encounter list')
+  setTimeout(() => {
+    // Rebuild encounter list in case party composition changed
+    const newEncounterList = buildEncounterList()
+    startEncounter(turns, newEncounterList)
+    
+    drawAll()
+    updateInitiativeDisplay()
+  }, 100)
+})
+
+// Build dynamic encounter list based on active party members
+function buildEncounterList(): Array<{ id: string, dexMod: number, initiative: number }> {
+  const activeParty = getActivePartyCharacters()
+  const encounterList: Array<{ id: string, dexMod: number, initiative: number }> = []
+  
+  // Always include M1 (monster pawn)
+  encounterList.push({ id: 'M1', dexMod: 0, initiative: 12 })
+  
+  // Add character pawns based on active party OR include basic user pawns A and B if no characters assigned
+  if (activeParty.has('A')) encounterList.push({ id: 'A', dexMod: 2, initiative: 15 })
+  if (activeParty.has('B')) encounterList.push({ id: 'B', dexMod: 1, initiative: 12 })
+  if (activeParty.has('C')) encounterList.push({ id: 'C', dexMod: 1, initiative: 14 })
+  if (activeParty.has('D')) encounterList.push({ id: 'D', dexMod: 3, initiative: 16 })
+  if (activeParty.has('E')) encounterList.push({ id: 'E', dexMod: 1, initiative: 13 })
+  if (activeParty.has('F')) encounterList.push({ id: 'F', dexMod: 2, initiative: 11 })
+  
+  // If no characters are assigned to any pawns, include basic user pawns A and B for gameplay
+  if (activeParty.size === 0) {
+    console.log('🎮 No characters assigned, including basic user pawns A and B for gameplay')
+    encounterList.push({ id: 'A', dexMod: 2, initiative: 15 })
+    encounterList.push({ id: 'B', dexMod: 1, initiative: 12 })
+  }
+  
+  return encounterList
+}
+
+const dynamicEncounterList = buildEncounterList()
+startEncounter(turns, dynamicEncounterList)
 uiManager.combatLog.addMessage(`Encounter start: Round ${turns.round}, Active=${getPawnName(turns.active?.id || '')} (${turns.active?.id})`, 'info')
+
+// Restart encounter to ensure user pawns are included if no characters assigned
+console.log('🔄 Checking if encounter needs restart for basic gameplay...')
+setTimeout(() => {
+  const currentList = buildEncounterList()
+  console.log('🎮 Current encounter list:', currentList.map(e => e.id))
+  if (currentList.length > 1 && currentList.some(e => e.id === 'A' || e.id === 'B')) {
+    console.log('🔄 Restarting encounter to include user pawns...')
+    startEncounter(turns, currentList)
+    drawAll()
+    updateActionHUD(hudText())
+    updateInitiativeDisplay()
+  }
+}, 100)
 
 // Update gold box display with encounter start
 if ((window as any).goldBoxAdapter) {
@@ -1630,6 +1690,14 @@ function updateInitiativeDisplay() {
     ]
   }
   
+  // Get active party members to filter initiative list
+  const activeParty = getActivePartyCharacters()
+  
+  // Filter to only show pawns with characters (plus M1 always)
+  const filteredInitiative = sortedInitiative.filter(entry => {
+    return entry.id === 'M1' || activeParty.has(entry.id)
+  })
+  
   // Helper function to get pawn data (excluding pawns with 'M' in names)
   function getPawnData(pawnId: string) {
     switch (pawnId) {
@@ -1663,7 +1731,7 @@ function updateInitiativeDisplay() {
     return '#7f1d1d'                       // Dark red - dead/unconscious
   }
   
-  sortedInitiative.forEach(entry => {
+  filteredInitiative.forEach(entry => {
     const isActive = turns.active?.id === entry.id
     const pawnData = getPawnData(entry.id)
     const pawnName = getPawnName(entry.id)
@@ -1861,6 +1929,62 @@ function isWithinAttackReach(attackerX: number, attackerY: number, targetX: numb
   return { inRange, distance, maxReach }
 }
 
+// Helper function to check if a pawn has a character assigned
+function pawnHasCharacter(pawnId: string): boolean {
+  const pawn = getPawnObject(pawnId)
+  return !!(pawn && pawn.characterData)
+}
+
+// Helper function to get the character image for a pawn (same system as dungeon encounters)
+function getCharacterImageForPawn(pawnId: string): string | null {
+  const pawn = getPawnObject(pawnId)
+  if (!pawn || !pawn.characterData) return null
+  
+  const character = pawn.characterData
+  const race = character.race?.toLowerCase() || ''
+  const classes = character.classes?.[0]?.class?.toLowerCase() || ''
+  
+  // Map character to available pawn images (diverse mapping based on character traits)
+  const imageMap: { [key: string]: string } = {
+    // Race-based mapping (primary)
+    'elf': '/src/assets/pawns/xGoblin.png', // Use goblin for elves (agile)
+    'dwarf': '/src/assets/pawns/xOrc.png',  // Use orc for dwarves (stout)
+    'halfling': '/src/assets/pawns/xGoblin.png', // Small size like goblins
+    'human': '/src/assets/pawns/xMonster.png', // Default humanoid
+    // Class-based mapping (secondary)
+    'fighter': '/src/assets/pawns/xOrc.png', // Warriors
+    'cleric': '/src/assets/pawns/xMonster.png', // Robed figure
+    'wizard': '/src/assets/pawns/xMonster.png', // Mystical appearance
+    'rogue': '/src/assets/pawns/xGoblin.png', // Sneaky/agile
+    'ranger': '/src/assets/pawns/xOrc.png', // Rugged outdoorsman
+    'monk': '/src/assets/pawns/xMonster.png', // Disciplined martial artist
+    'barbarian': '/src/assets/pawns/xOrc.png', // Fierce warrior
+    'paladin': '/src/assets/pawns/xOrc.png', // Noble warrior
+    'sorcerer': '/src/assets/pawns/xMonster.png', // Magical user
+    'warlock': '/src/assets/pawns/xDemon.png', // Dark magic user
+    'bard': '/src/assets/pawns/xGoblin.png' // Charismatic performer
+  }
+  
+  // Try race first, then class, then default
+  return imageMap[race] || imageMap[classes] || '/src/assets/pawns/xMonster.png'
+}
+
+// Helper function to get active party characters from goldBoxAdapter
+function getActivePartyCharacters(): Set<string> {
+  const activeCharacters = new Set<string>()
+  
+  // Check each pawn for character assignment
+  const pawnIds = ['A', 'B', 'C', 'D', 'E', 'F']
+  
+  pawnIds.forEach(pawnId => {
+    if (pawnHasCharacter(pawnId)) {
+      activeCharacters.add(pawnId)
+    }
+  })
+  
+  return activeCharacters
+}
+
 function drawAll() {
   tokens.clear()
   overlay.clear()
@@ -1871,6 +1995,9 @@ function drawAll() {
   const threatA = threatenedSquares(pawnA.x, pawnA.y, pawnA.size, reachA)
   for (const [x,y] of threatA) drawCell(overlay, x, y, 0x4488ff)
 
+  // Get active party members
+  const activeParty = getActivePartyCharacters()
+
   // Tokens: sprites if available, otherwise draw vector circles
   const center = (n: number) => n*CELL + CELL/2
   const scaleToCell = (s: Sprite) => {
@@ -1880,89 +2007,172 @@ function drawAll() {
     const sy = target / (s.texture.height || target)
     s.scale.set(Math.min(sx, sy))
   }
-  if (pawnASprite && pawnASprite.texture && pawnASprite.texture.width > 0 && pawnASprite.texture.height > 0) {
-    pawnASprite.x = center(pawnA.x)
-    pawnASprite.y = center(pawnA.y)
-    scaleToCell(pawnASprite)
-    pawnASprite.visible = true
+  
+  // Pawn A rendering - only if has character
+  if (activeParty.has('A')) {
+    // Try to auto-assign character image if not already set
+    if (pawnASprite && (!pawnASprite.texture || pawnASprite.texture.width === 0)) {
+      const characterImage = getCharacterImageForPawn('A')
+      if (characterImage) {
+        setPawnTexture('A', characterImage).catch(() => {})
+      }
+    }
+    
+    if (pawnASprite && pawnASprite.texture && pawnASprite.texture.width > 0 && pawnASprite.texture.height > 0) {
+      pawnASprite.x = center(pawnA.x)
+      pawnASprite.y = center(pawnA.y)
+      scaleToCell(pawnASprite)
+      pawnASprite.visible = true
+    } else {
+      if (pawnASprite) pawnASprite.visible = false
+      tokens.circle(center(pawnA.x), center(pawnA.y), CELL*0.35).fill(0x5aa9e6)
+    }
   } else {
+    // Hide pawn A if no character assigned
     if (pawnASprite) pawnASprite.visible = false
-    tokens.circle(center(pawnA.x), center(pawnA.y), CELL*0.35).fill(0x5aa9e6)
   }
+  
+  // Pawn M1 rendering - always show (monster pawn)
   if (pawnM1Sprite && pawnM1Sprite.texture && pawnM1Sprite.texture.width > 0 && pawnM1Sprite.texture.height > 0) {
     pawnM1Sprite.x = center(pawnM1.x)
     pawnM1Sprite.y = center(pawnM1.y)
-  scaleToCell(pawnM1Sprite)
-  // Scale M1 width to 170% (x axis only) for better visibility
-  pawnM1Sprite.scale.x = (pawnM1Sprite.scale.x || 1) * 1.7
-  pawnM1Sprite.scale.y = (pawnM1Sprite.scale.y || 1) * 1.7
-  pawnM1Sprite.visible = true
+    scaleToCell(pawnM1Sprite)
+    // Scale M1 width to 170% (x axis only) for better visibility
+    pawnM1Sprite.scale.x = (pawnM1Sprite.scale.x || 1) * 1.7
+    pawnM1Sprite.scale.y = (pawnM1Sprite.scale.y || 1) * 1.7
+    pawnM1Sprite.visible = true
   } else {
     if (pawnM1Sprite) pawnM1Sprite.visible = false
-  // Fallback: draw a slightly wider ellipse for M1 (170% width)
-  const cx = center(pawnM1.x)
-  const cy = center(pawnM1.y)
-  const ry = CELL * 0.4
-  const rx = ry * 1.7
-  tokens.beginFill(0xe65a5a)
-  tokens.drawEllipse(cx, cy, rx, ry)
-  tokens.endFill()
-  }
-  // Pawn C rendering (optional third pawn)
-  if (pawnCSprite && pawnCSprite.texture && pawnCSprite.texture.width > 0 && pawnCSprite.texture.height > 0) {
-    pawnCSprite.x = center((window as any).pawnC?.x ?? 0)
-    pawnCSprite.y = center((window as any).pawnC?.y ?? 0)
-    scaleToCell(pawnCSprite)
-    pawnCSprite.visible = true
-  } else {
-    if (pawnCSprite) pawnCSprite.visible = false
-    if ((window as any).pawnC) tokens.circle(center((window as any).pawnC.x), center((window as any).pawnC.y), CELL*0.35).fill(0x6d28d9)
+    // Fallback: draw a slightly wider ellipse for M1 (170% width)
+    const cx = center(pawnM1.x)
+    const cy = center(pawnM1.y)
+    const ry = CELL * 0.4
+    const rx = ry * 1.7
+    tokens.beginFill(0xe65a5a)
+    tokens.drawEllipse(cx, cy, rx, ry)
+    tokens.endFill()
   }
   
-  // Pawn B rendering (place near the front of the party)
-  if (pawnBSprite && pawnBSprite.texture && pawnBSprite.texture.width > 0 && pawnBSprite.texture.height > 0) {
-    pawnBSprite.x = center(pawnB.x)
-    pawnBSprite.y = center(pawnB.y)
-    scaleToCell(pawnBSprite)
-    pawnBSprite.visible = true
+  // Pawn B rendering - only if has character
+  if (activeParty.has('B')) {
+    // Try to auto-assign character image if not already set
+    if (pawnBSprite && (!pawnBSprite.texture || pawnBSprite.texture.width === 0)) {
+      const characterImage = getCharacterImageForPawn('B')
+      if (characterImage) {
+        setPawnTexture('B', characterImage).catch(() => {})
+      }
+    }
+    
+    if (pawnBSprite && pawnBSprite.texture && pawnBSprite.texture.width > 0 && pawnBSprite.texture.height > 0) {
+      pawnBSprite.x = center(pawnB.x)
+      pawnBSprite.y = center(pawnB.y)
+      scaleToCell(pawnBSprite)
+      pawnBSprite.visible = true
+    } else {
+      if (pawnBSprite) pawnBSprite.visible = false
+      tokens.circle(center(pawnB.x), center(pawnB.y), CELL*0.35).fill(0x94a3b8)
+    }
   } else {
+    // Hide pawn B if no character assigned
     if (pawnBSprite) pawnBSprite.visible = false
-    if ((window as any).pawnB) tokens.circle(center((window as any).pawnB.x), center((window as any).pawnB.y), CELL*0.35).fill(0x94a3b8)
   }
   
-  // Pawn D rendering
-  if (pawnDSprite && pawnDSprite.texture && pawnDSprite.texture.width > 0 && pawnDSprite.texture.height > 0) {
-    pawnDSprite.x = center(pawnD.x)
-    pawnDSprite.y = center(pawnD.y)
-    scaleToCell(pawnDSprite)
-    pawnDSprite.visible = true
+  // Pawn C rendering - only if has character
+  if (activeParty.has('C')) {
+    // Try to auto-assign character image if not already set
+    if (pawnCSprite && (!pawnCSprite.texture || pawnCSprite.texture.width === 0)) {
+      const characterImage = getCharacterImageForPawn('C')
+      if (characterImage) {
+        setPawnTexture('C', characterImage).catch(() => {})
+      }
+    }
+    
+    if (pawnCSprite && pawnCSprite.texture && pawnCSprite.texture.width > 0 && pawnCSprite.texture.height > 0) {
+      pawnCSprite.x = center((window as any).pawnC?.x ?? 0)
+      pawnCSprite.y = center((window as any).pawnC?.y ?? 0)
+      scaleToCell(pawnCSprite)
+      pawnCSprite.visible = true
+    } else {
+      if (pawnCSprite) pawnCSprite.visible = false
+      if ((window as any).pawnC) tokens.circle(center((window as any).pawnC.x), center((window as any).pawnC.y), CELL*0.35).fill(0x6d28d9)
+    }
   } else {
+    // Hide pawn C if no character assigned
+    if (pawnCSprite) pawnCSprite.visible = false
+  }
+
+  // Pawn D rendering - only if has character
+  if (activeParty.has('D')) {
+    // Try to auto-assign character image if not already set
+    if (pawnDSprite && (!pawnDSprite.texture || pawnDSprite.texture.width === 0)) {
+      const characterImage = getCharacterImageForPawn('D')
+      if (characterImage) {
+        setPawnTexture('D', characterImage).catch(() => {})
+      }
+    }
+    
+    if (pawnDSprite && pawnDSprite.texture && pawnDSprite.texture.width > 0 && pawnDSprite.texture.height > 0) {
+      pawnDSprite.x = center(pawnD.x)
+      pawnDSprite.y = center(pawnD.y)
+      scaleToCell(pawnDSprite)
+      pawnDSprite.visible = true
+    } else {
+      if (pawnDSprite) pawnDSprite.visible = false
+      tokens.circle(center(pawnD.x), center(pawnD.y), CELL*0.35).fill(0x9333ea)
+    }
+  } else {
+    // Hide pawn D if no character assigned
     if (pawnDSprite) pawnDSprite.visible = false
-    tokens.circle(center(pawnD.x), center(pawnD.y), CELL*0.35).fill(0x9333ea)
   }
-  
-  // Pawn E rendering
-  if (pawnESprite && pawnESprite.texture && pawnESprite.texture.width > 0 && pawnESprite.texture.height > 0) {
-    pawnESprite.x = center(pawnE.x)
-    pawnESprite.y = center(pawnE.y)
-    scaleToCell(pawnESprite)
-    pawnESprite.visible = true
+
+  // Pawn E rendering - only if has character
+  if (activeParty.has('E')) {
+    // Try to auto-assign character image if not already set
+    if (pawnESprite && (!pawnESprite.texture || pawnESprite.texture.width === 0)) {
+      const characterImage = getCharacterImageForPawn('E')
+      if (characterImage) {
+        setPawnTexture('E', characterImage).catch(() => {})
+      }
+    }
+    
+    if (pawnESprite && pawnESprite.texture && pawnESprite.texture.width > 0 && pawnESprite.texture.height > 0) {
+      pawnESprite.x = center(pawnE.x)
+      pawnESprite.y = center(pawnE.y)
+      scaleToCell(pawnESprite)
+      pawnESprite.visible = true
+    } else {
+      if (pawnESprite) pawnESprite.visible = false
+      tokens.circle(center(pawnE.x), center(pawnE.y), CELL*0.35).fill(0x059669)
+    }
   } else {
+    // Hide pawn E if no character assigned
     if (pawnESprite) pawnESprite.visible = false
-    tokens.circle(center(pawnE.x), center(pawnE.y), CELL*0.35).fill(0x059669)
   }
-  
-  // Pawn F rendering
-  if (pawnFSprite && pawnFSprite.texture && pawnFSprite.texture.width > 0 && pawnFSprite.texture.height > 0) {
-    pawnFSprite.x = center(pawnF.x)
-    pawnFSprite.y = center(pawnF.y)
-    scaleToCell(pawnFSprite)
-    pawnFSprite.visible = true
+
+  // Pawn F rendering - only if has character
+  if (activeParty.has('F')) {
+    // Try to auto-assign character image if not already set
+    if (pawnFSprite && (!pawnFSprite.texture || pawnFSprite.texture.width === 0)) {
+      const characterImage = getCharacterImageForPawn('F')
+      if (characterImage) {
+        setPawnTexture('F', characterImage).catch(() => {})
+      }
+    }
+    
+    if (pawnFSprite && pawnFSprite.texture && pawnFSprite.texture.width > 0 && pawnFSprite.texture.height > 0) {
+      pawnFSprite.x = center(pawnF.x)
+      pawnFSprite.y = center(pawnF.y)
+      scaleToCell(pawnFSprite)
+      pawnFSprite.visible = true
+    } else {
+      if (pawnFSprite) pawnFSprite.visible = false
+      tokens.circle(center(pawnF.x), center(pawnF.y), CELL*0.35).fill(0xf59e0b)
+    }
   } else {
+    // Hide pawn F if no character assigned
     if (pawnFSprite) pawnFSprite.visible = false
-    tokens.circle(center(pawnF.x), center(pawnF.y), CELL*0.35).fill(0xf59e0b)
   }
-  // HP bars
+  // HP bars - only for pawns with characters (and M1 always)
   const barW = CELL*0.7
   const barH = 6
   function drawHP(px: number, py: number, hp: number, max: number, color: number) {
@@ -1972,14 +2182,34 @@ function drawAll() {
     const w = Math.max(0, Math.min(1, hp/max)) * barW
     tokens.rect(x, y, w, barH).fill(color)
   }
-  drawHP(pawnA.x, pawnA.y, pawnA.hp, 20, 0x5aa9e6)
+  
+  // Only draw HP bars for pawns with characters
+  if (activeParty.has('A')) {
+    drawHP(pawnA.x, pawnA.y, pawnA.hp, 20, 0x5aa9e6)
+  }
+  
+  // Always draw M1 HP bar (monster pawn)
   drawHP(pawnM1.x, pawnM1.y, pawnM1.hp, 25, 0xe65a5a)
-  // Pawn B HP bar (same rules as other character pawns)
-  drawHP(pawnB.x, pawnB.y, pawnB.hp, pawnBMaxHP || 24, 0x94a3b8)
-  if ((window as any).pawnC) drawHP((window as any).pawnC.x, (window as any).pawnC.y, (window as any).pawnC.hp, (window as any).pawnC.maxHp || 20, 0x6d28d9)
-  drawHP(pawnD.x, pawnD.y, pawnD.hp, pawnD.maxHp || 20, 0x9333ea)
-  drawHP(pawnE.x, pawnE.y, pawnE.hp, pawnE.maxHp || 20, 0x059669)
-  drawHP(pawnF.x, pawnF.y, pawnF.hp, pawnF.maxHp || 20, 0xf59e0b)
+  
+  if (activeParty.has('B')) {
+    drawHP(pawnB.x, pawnB.y, pawnB.hp, pawnBMaxHP || 24, 0x94a3b8)
+  }
+  
+  if (activeParty.has('C') && (window as any).pawnC) {
+    drawHP((window as any).pawnC.x, (window as any).pawnC.y, (window as any).pawnC.hp, (window as any).pawnC.maxHp || 20, 0x6d28d9)
+  }
+  
+  if (activeParty.has('D')) {
+    drawHP(pawnD.x, pawnD.y, pawnD.hp, pawnD.maxHp || 20, 0x9333ea)
+  }
+  
+  if (activeParty.has('E')) {
+    drawHP(pawnE.x, pawnE.y, pawnE.hp, pawnE.maxHp || 20, 0x059669)
+  }
+  
+  if (activeParty.has('F')) {
+    drawHP(pawnF.x, pawnF.y, pawnF.hp, pawnF.maxHp || 20, 0xf59e0b)
+  }
   if (gameOver) {
     // simple banner rectangle
     tokens.rect(WIDTH/2-160, HEIGHT/2-30, 320, 60).fill(0x111111).stroke({ color: 0xffffff, width: 2 })
@@ -2508,7 +2738,7 @@ function commitEndTurn() {
   // Expire effects at round transitions
   effects.onRoundChanged(turns.round)
   if (turns.round !== before) (turns as any).aooUsed = {}
-  // skip defeated
+  // skip defeated and pawns without characters
   let safety = 0
   while (safety++ < 10) {
     const activeId = turns.active?.id
@@ -2523,7 +2753,13 @@ function commitEndTurn() {
       case 'F': ap = pawnF; break;
       default: ap = { hp: 0 }; break;
     }
-    if (ap.hp > 0) break
+    
+    // Check if pawn has HP and (for player pawns) has a character assigned
+    // OR allow basic user pawns A and B if no characters are assigned to any pawns
+    const activePartySize = getActivePartyCharacters().size
+    const hasCharacter = activeId === 'M1' || pawnHasCharacter(activeId as string) || 
+                        (activePartySize === 0 && (activeId === 'A' || activeId === 'B'))
+    if (ap.hp > 0 && hasCharacter) break
     endTurn(turns)
   }
   appendLogLine(`End Turn -> Round ${turns.round}, Active=${getPawnName(turns.active?.id || '')} (${turns.active?.id})`)
@@ -2591,8 +2827,11 @@ async function executeMonsterTurn(pawnId: 'A' | 'M1') {
     
     if (success) {
       // Update display after monster action
-  drawAll()
+      drawAll()
       updateActionHUD(hudText())
+      // Ensure turn ends after successful monster action
+      console.log(`🤖 Ending turn after successful monster action for ${pawnId}`)
+      commitEndTurn()
     } else {
       // Fallback: just end turn if AI fails
       appendLogLine(`Monster AI failed for Pawn ${pawnId}, ending turn`)
@@ -2602,6 +2841,223 @@ async function executeMonsterTurn(pawnId: 'A' | 'M1') {
     console.error('Error executing monster turn:', error)
     // Fallback: end turn on error
     commitEndTurn()
+  }
+}
+
+function checkVictoryCondition() {
+  console.log('🏆 Checking victory condition...')
+  
+  // Check if all monsters are defeated (M1 is the main monster)
+  const allMonstersDefeated = pawnM1.hp <= 0
+  
+  if (allMonstersDefeated) {
+    console.log('🎉 All monsters defeated! Showing victory screen...')
+    appendLogLine('Victory! All monsters have been defeated.')
+    
+    // Show victory screen with treasure chest and award gold
+    showVictoryScreen()
+  }
+}
+
+function showVictoryScreen() {
+  // Create victory modal
+  const victoryModal = document.createElement('div')
+  victoryModal.className = 'victory-modal'
+  victoryModal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30000;
+    font-family: 'Courier New', monospace;
+    backdrop-filter: blur(5px);
+  `
+
+  const victoryContent = document.createElement('div')
+  victoryContent.style.cssText = `
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 4px solid #ffd700;
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    max-width: 600px;
+    box-shadow: 0 0 50px rgba(255, 215, 0, 0.5);
+    animation: victoryPulse 2s ease-in-out infinite alternate;
+  `
+
+  // Add CSS animation
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes victoryPulse {
+      0% { box-shadow: 0 0 50px rgba(255, 215, 0, 0.5); }
+      100% { box-shadow: 0 0 80px rgba(255, 215, 0, 0.8); }
+    }
+    @keyframes treasureGlow {
+      0% { filter: brightness(1) drop-shadow(0 0 10px #ffd700); }
+      50% { filter: brightness(1.2) drop-shadow(0 0 20px #ffd700); }
+      100% { filter: brightness(1) drop-shadow(0 0 10px #ffd700); }
+    }
+  `
+  document.head.appendChild(style)
+
+  victoryContent.innerHTML = `
+    <h1 style="
+      color: #ffd700;
+      font-size: 36px;
+      margin-bottom: 20px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      animation: victoryPulse 1.5s ease-in-out infinite alternate;
+    ">🏆 VICTORY! 🏆</h1>
+    
+    <div style="margin: 30px 0;">
+      <div id="treasure-display" style="
+        font-size: 64px;
+        color: #ffd700;
+        text-shadow: 3px 3px 6px rgba(0,0,0,0.8);
+        animation: treasureGlow 2s ease-in-out infinite;
+        margin: 20px 0;
+      ">💰🎁💎</div>
+    </div>
+    
+    <p style="
+      color: #ffffff;
+      font-size: 18px;
+      margin: 20px 0;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    ">All monsters have been defeated!</p>
+    
+    <div id="gold-award" style="
+      background: rgba(255, 215, 0, 0.1);
+      border: 2px solid #ffd700;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+      color: #ffd700;
+      font-size: 16px;
+      font-weight: bold;
+    ">
+      <div style="font-size: 20px; margin-bottom: 10px;">💰 TREASURE FOUND! 💰</div>
+      <div id="gold-details">Awarding 10 GP to each party member...</div>
+    </div>
+    
+    <button id="continue-button" style="
+      background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+      color: #ffffff;
+      border: 3px solid #ffffff;
+      padding: 15px 30px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-top: 20px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      transition: all 0.3s ease;
+    " 
+    onmouseover="this.style.transform='scale(1.05)'"
+    onmouseout="this.style.transform='scale(1)'">
+      Continue to Home Base
+    </button>
+  `
+
+  victoryModal.appendChild(victoryContent)
+  document.body.appendChild(victoryModal)
+
+  // Award gold to each character
+  awardGoldToParty()
+
+  // Continue button handler
+  const continueBtn = document.getElementById('continue-button')
+  if (continueBtn) {
+    continueBtn.addEventListener('click', () => {
+      // Remove victory modal
+      document.body.removeChild(victoryModal)
+      document.head.removeChild(style)
+      
+      // Return to 3D interface
+      if (goldBoxAdapter) {
+        console.log('🔄 Showing Gold Box home screen...')
+        gameOver = null
+        goldBoxAdapter.returnToHomeScreen()
+        goldBoxAdapter.show()
+        appendLogLine('Returned to home base. Your party celebrates the victory!')
+      } else {
+        console.warn('Gold Box adapter not available for victory transition')
+      }
+    })
+  }
+}
+
+function awardGoldToParty() {
+  const goldPerCharacter = 10
+  const activeParty = getActivePartyCharacters()
+  let awardedCharacters: string[] = []
+
+  console.log('💰 Awarding gold to party members...')
+
+  // Award gold to each character that has a pawn assignment
+  activeParty.forEach(pawnId => {
+    const pawn = getPawnObject(pawnId)
+    if (pawn && (pawn as any).characterData && (pawn as any).goldBoxId) {
+      const character = (pawn as any).characterData
+      const characterId = (pawn as any).goldBoxId
+      
+      // Add gold to character's inventory
+      if (!character.inventory) {
+        character.inventory = []
+      }
+      
+      // Look for existing gold entry or create new one
+      let goldEntry = character.inventory.find((item: any) => 
+        item.name?.toLowerCase().includes('gold') || 
+        item.name?.toLowerCase().includes('gp') ||
+        item.type === 'currency'
+      )
+      
+      if (goldEntry) {
+        goldEntry.quantity = (goldEntry.quantity || 0) + goldPerCharacter
+      } else {
+        character.inventory.push({
+          name: 'Gold Pieces',
+          type: 'currency',
+          quantity: goldPerCharacter,
+          description: 'Standard currency'
+        })
+      }
+      
+      // Update character in the character manager
+      if (goldBoxAdapter) {
+        goldBoxAdapter.addCharacter(characterId, character)
+      }
+      
+      awardedCharacters.push(character.name)
+      console.log(`💰 Awarded ${goldPerCharacter} GP to ${character.name}`)
+    }
+  })
+
+  // Update the gold display in the victory screen
+  const goldDetails = document.getElementById('gold-details')
+  if (goldDetails) {
+    if (awardedCharacters.length > 0) {
+      goldDetails.innerHTML = `
+        ${awardedCharacters.map(name => `✨ ${name}: +${goldPerCharacter} GP`).join('<br>')}
+        <div style="margin-top: 10px; font-size: 14px; opacity: 0.9;">
+          Gold has been added to character inventories
+        </div>
+      `
+    } else {
+      goldDetails.innerHTML = `
+        No characters found to award gold to.<br>
+        <span style="font-size: 14px; opacity: 0.8;">
+          Assign characters to pawns to receive treasure!
+        </span>
+      `
+    }
   }
 }
 
@@ -2618,15 +3074,21 @@ function cycleCoverAt(x: number, y: number) {
   G.set(x,y,{ cover: next })
 }
 
-// Check if a click position is on a pawn
+// Check if a click position is on a pawn (only visible pawns with characters)
 function getPawnAtPosition(x: number, y: number): 'A' | 'B' | 'M1' | 'C' | 'D' | 'E' | 'F' | null {
-  if (pawnA.x === x && pawnA.y === y) return 'A'
+  const activeParty = getActivePartyCharacters()
+  
+  // Always check M1 (monster pawn)
   if (pawnM1.x === x && pawnM1.y === y) return 'M1'
-  if (pawnB.x === x && pawnB.y === y) return 'B'
-  if (pawnC.x === x && pawnC.y === y) return 'C'
-  if (pawnD.x === x && pawnD.y === y) return 'D'
-  if (pawnE.x === x && pawnE.y === y) return 'E'
-  if (pawnF.x === x && pawnF.y === y) return 'F'
+  
+  // Only check character pawns if they have characters assigned
+  if (activeParty.has('A') && pawnA.x === x && pawnA.y === y) return 'A'
+  if (activeParty.has('B') && pawnB.x === x && pawnB.y === y) return 'B'
+  if (activeParty.has('C') && pawnC.x === x && pawnC.y === y) return 'C'
+  if (activeParty.has('D') && pawnD.x === x && pawnD.y === y) return 'D'
+  if (activeParty.has('E') && pawnE.x === x && pawnE.y === y) return 'E'
+  if (activeParty.has('F') && pawnF.x === x && pawnF.y === y) return 'F'
+  
   return null
 }
 
@@ -3469,7 +3931,7 @@ app.canvas.addEventListener('click', (ev) => {
           const taken = applied.taken
           tgt.hp = Math.max(0, tgt.hp - taken)
           appendLogLine(`${otherId} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${tgt.hp}.`)
-          if (tgt.hp <= 0) { gameOver = otherId; appendLogLine(`${otherId} wins!`); }
+          if (tgt.hp <= 0) { gameOver = otherId; appendLogLine(`${otherId} wins!`); checkVictoryCondition(); }
         }
           (turns as any).aooUsed![otherId] = used + 1
         }
@@ -3511,7 +3973,7 @@ app.canvas.addEventListener('click', (ev) => {
         const taken = applied.taken
         tgt.hp = Math.max(0, tgt.hp - taken)
         appendLogLine(`${otherIdNow} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Target HP ${tgt.hp}.`)
-        if (tgt.hp <= 0) { gameOver = otherIdNow as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${otherIdNow} wins!`) }
+        if (tgt.hp <= 0) { gameOver = otherIdNow as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${otherIdNow} wins!`); checkVictoryCondition(); }
       }
     }
   }
@@ -3601,7 +4063,7 @@ app.canvas.addEventListener('click', (ev) => {
               const pawnRef = attackerKey as 'A'|'B'|'C'|'D'|'E'|'F'
               const damageResult = applyDamageToPawn(pawnRef, taken, 'attack_of_opportunity')
               appendLogLine(`${defenderKey} deals ${taken} damage${applied.preventedByDR?` (DR -${applied.preventedByDR})`:''}${applied.preventedByER?` (ER)`:''}${applied.vulnerabilityBonus?` (+${applied.vulnerabilityBonus} vuln)`:''}. Attacker HP ${damageResult.newHP}.`)
-              if (damageResult.newHP <= 0) { gameOver = defenderKey as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); return }
+              if (damageResult.newHP <= 0) { gameOver = defenderKey as 'A'|'M1'|'C'|'D'|'E'|'F'; appendLogLine(`${defenderKey} wins!`); drawAll(); commitEndTurn(); checkVictoryCondition(); return }
             }
           }
             (turns as any).aooUsed![defenderKey] = used + 1
@@ -3667,7 +4129,9 @@ app.canvas.addEventListener('click', (ev) => {
   } catch (e) { }
   if (targetPawn.hp <= 0) { 
     gameOver = activeId as 'A'|'M1'|'C'|'D'|'E'|'F' || null; 
-    appendLogLine(`${activeId || 'Unknown'} wins!`) 
+    appendLogLine(`${activeId || 'Unknown'} wins!`)
+    // Check if all monsters are defeated and return to 3D interface
+    checkVictoryCondition()
   }
       }
   drawAll()
@@ -4253,7 +4717,7 @@ try {
       // Show helpful console message
       console.log('🐲 Monster AI Ready! Try these commands:');
       console.log('   - showMonsterUI() - Show Monster AI interface');
-      console.log('   - setMonsterPawn("A") or setMonsterPawn("B") - Designate monster');
+      console.log('   - setMonsterPawn("A") or setMonsterPawn("M1") - Designate monster');
       console.log('   - testMonsterAI() - Test AI decision making');
       console.log('   - monsterAIHelp() - Show all commands');
     } else {
@@ -4339,8 +4803,8 @@ try {
 - showMonsterUI() - Show the Monster AI dialogue interface
 - testMonsterAI() - Test AI decision making (no actions)
 - toggleMonsterAI() - Enable/disable Monster AI
-- setMonsterPawn('A') or setMonsterPawn('B') - Designate a pawn as monster
-- triggerMonsterTurn('A'/'B') - Manually execute a full Monster AI turn
+- setMonsterPawn('A') or setMonsterPawn('M1') - Designate a pawn as monster
+- triggerMonsterTurn('A'/'M1') - Manually execute a full Monster AI turn
 - monsterAIHelp() - Show this help message
 
 Current Status:

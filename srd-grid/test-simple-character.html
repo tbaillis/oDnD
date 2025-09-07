@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Character Test</title>
+    <style>
+        body {
+            margin: 20px;
+            background: #1a1a2e;
+            color: #0080FF;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .test-output {
+            background: #0a0a1a;
+            border: 2px solid #0080FF;
+            border-radius: 8px;
+            padding: 15px;
+            white-space: pre-wrap;
+            font-size: 12px;
+            margin: 10px 0;
+        }
+        
+        button {
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Character System Test</h1>
+    <button onclick="testCreation()">Test Creation</button>
+    <button onclick="testManager()">Test Manager</button>
+    <div id="output" class="test-output"></div>
+
+    <script type="module">
+        import { convertCreationDataToCharacter, characterManager } from './src/game/characterManager.js'
+
+        function log(message) {
+            const output = document.getElementById('output')
+            output.textContent += new Date().toLocaleTimeString() + ': ' + message + '\n'
+        }
+
+        window.testCreation = function() {
+            log('Testing character creation...')
+            
+            const testData = {
+                name: 'Test Hero',
+                race: 'human',
+                characterClass: 'fighter',
+                abilityGenerationMethod: 'pointBuy',
+                abilities: {
+                    strength: 15,
+                    dexterity: 14,
+                    constitution: 13,
+                    intelligence: 12,
+                    wisdom: 10,
+                    charisma: 8
+                },
+                hitPoints: 12,
+                skills: [],
+                feats: [],
+                equipment: []
+            }
+            
+            try {
+                const character = convertCreationDataToCharacter(testData)
+                log('SUCCESS: Character created')
+                log('Name: ' + character.name)
+                log('Race: ' + character.race)
+                log('Class: ' + character.classes[0]?.class)
+                log('STR: ' + character.abilityScores.STR)
+                
+            } catch (error) {
+                log('ERROR: ' + error.message)
+                console.error('Full error:', error)
+            }
+        }
+
+        window.testManager = function() {
+            log('Testing character manager...')
+            
+            try {
+                const allChars = characterManager.getAllCharacters()
+                log('Current characters: ' + allChars.size)
+                
+                // Test party export
+                const partyData = characterManager.exportPartyData()
+                log('Party export success: ' + JSON.stringify(partyData).slice(0, 100) + '...')
+                
+            } catch (error) {
+                log('ERROR: ' + error.message)
+                console.error('Full error:', error)
+            }
+        }
+
+        log('Character test page loaded successfully')
+    </script>
+</body>
+</html>
