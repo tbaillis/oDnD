@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🔍 Battle Grid Diagnostic</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a1a; color: #fff; }
+        .diagnostic-section { margin: 20px 0; padding: 15px; background: #2a2a2a; border-radius: 5px; }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+        .warning { color: #ff9800; }
+        button { padding: 10px 15px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        #results { margin-top: 20px; padding: 10px; background: #333; border-radius: 3px; max-height: 400px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Battle Grid Diagnostic Tool</h1>
+    
+    <div class="diagnostic-section">
+        <h3>Quick Diagnostics</h3>
+        <button onclick="checkGameRoot()">🎯 Check Game Root</button>
+        <button onclick="checkCanvas()">🖼️ Check Canvas</button>
+        <button onclick="checkPixiJS()">🎮 Check PIXI.js</button>
+        <button onclick="checkMonsters()">🐉 Check Monsters</button>
+        <button onclick="runFullDiagnostic()">🔍 Full Diagnostic</button>
+    </div>
+    
+    <div class="diagnostic-section">
+        <h3>Diagnostic Results</h3>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info';
+            results.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            results.scrollTop = results.scrollHeight;
+            console.log(message);
+        }
+
+        function checkGameRoot() {
+            log('🎯 Checking game root element...', 'info');
+            
+            const gameRoot = document.getElementById('game-root');
+            if (gameRoot) {
+                log('✅ Game root element found', 'success');
+                log(`   Element tag: ${gameRoot.tagName}`, 'info');
+                log(`   Element ID: ${gameRoot.id}`, 'info');
+                log(`   Child count: ${gameRoot.children.length}`, 'info');
+                
+                const styles = window.getComputedStyle(gameRoot);
+                log(`   Visibility: ${styles.visibility}`, 'info');
+                log(`   Display: ${styles.display}`, 'info');
+                log(`   Width: ${styles.width}`, 'info');
+                log(`   Height: ${styles.height}`, 'info');
+                
+                if (gameRoot.children.length > 0) {
+                    log('✅ Game root has child elements', 'success');
+                    for (let i = 0; i < gameRoot.children.length; i++) {
+                        const child = gameRoot.children[i];
+                        log(`   Child ${i}: ${child.tagName} (${child.className || 'no class'})`, 'info');
+                    }
+                } else {
+                    log('⚠️ Game root has no child elements', 'warning');
+                }
+            } else {
+                log('❌ Game root element not found', 'error');
+            }
+        }
+
+        function checkCanvas() {
+            log('🖼️ Checking canvas elements...', 'info');
+            
+            const canvases = document.getElementsByTagName('canvas');
+            log(`Found ${canvases.length} canvas element(s)`, canvases.length > 0 ? 'success' : 'error');
+            
+            for (let i = 0; i < canvases.length; i++) {
+                const canvas = canvases[i];
+                log(`Canvas ${i}:`, 'info');
+                log(`   Width: ${canvas.width}px`, 'info');
+                log(`   Height: ${canvas.height}px`, 'info');
+                log(`   Style width: ${canvas.style.width}`, 'info');
+                log(`   Style height: ${canvas.style.height}`, 'info');
+                
+                const styles = window.getComputedStyle(canvas);
+                log(`   Computed display: ${styles.display}`, 'info');
+                log(`   Computed visibility: ${styles.visibility}`, 'info');
+                log(`   Parent: ${canvas.parentElement?.tagName || 'none'} (${canvas.parentElement?.id || 'no id'})`, 'info');
+                
+                const rect = canvas.getBoundingClientRect();
+                log(`   Position: ${rect.left}, ${rect.top}`, 'info');
+                log(`   Size: ${rect.width} x ${rect.height}`, 'info');
+                
+                if (rect.width === 0 || rect.height === 0) {
+                    log(`⚠️ Canvas ${i} has zero size`, 'warning');
+                } else {
+                    log(`✅ Canvas ${i} has proper size`, 'success');
+                }
+            }
+        }
+
+        function checkPixiJS() {
+            log('🎮 Checking PIXI.js integration...', 'info');
+            
+            if (window.PIXI) {
+                log('✅ PIXI.js is available', 'success');
+                log(`   Version: ${window.PIXI.VERSION || 'unknown'}`, 'info');
+            } else {
+                log('❌ PIXI.js not found', 'error');
+            }
+            
+            // Check for game functions
+            const gameFunctions = ['drawAll', 'applyMonsterToPawn', 'buildEncounterList', 'startEncounter'];
+            for (const func of gameFunctions) {
+                if (window[func]) {
+                    log(`✅ ${func} function available`, 'success');
+                } else {
+                    log(`❌ ${func} function missing`, 'error');
+                }
+            }
+        }
+
+        function checkMonsters() {
+            log('🐉 Checking monster system...', 'info');
+            
+            let activeMonsters = 0;
+            let totalMonsters = 0;
+            
+            for (let i = 1; i <= 10; i++) {
+                const pawnId = `M${i}`;
+                const pawn = window[`pawn${pawnId}`];
+                
+                if (pawn) {
+                    totalMonsters++;
+                    const isActive = pawn.active && pawn.hp > 0;
+                    if (isActive) activeMonsters++;
+                    
+                    const name = pawn.name || 'Unnamed';
+                    log(`   ${pawnId}: ${name} - HP: ${pawn.hp} - ${isActive ? '🟢' : '🔴'}`, isActive ? 'success' : 'info');
+                } else {
+                    log(`   ${pawnId}: ❌ Pawn not found`, 'error');
+                }
+            }
+            
+            log(`Monster Summary: ${activeMonsters} active, ${totalMonsters} total`, 'info');
+        }
+
+        function runFullDiagnostic() {
+            log('🔍 Running full diagnostic...', 'info');
+            log('='.repeat(50), 'info');
+            
+            checkGameRoot();
+            log('', 'info');
+            checkCanvas();
+            log('', 'info');
+            checkPixiJS();
+            log('', 'info');
+            checkMonsters();
+            
+            log('='.repeat(50), 'info');
+            log('🔍 Full diagnostic complete', 'info');
+        }
+
+        // Auto-run on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('🔍 Battle Grid Diagnostic Tool Ready', 'info');
+                runFullDiagnostic();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

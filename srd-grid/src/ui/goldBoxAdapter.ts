@@ -60,9 +60,6 @@ export class GoldBoxAdapter {
       this.setupCharacterUpdateListeners()
       console.log('Gold Box Adapter: Character update listeners setup complete')
       
-  // Add save/load UI controls for character persistence
-  this.createSaveLoadControls()
-
       console.log('Gold Box Adapter: Constructor completed successfully!')
     } catch (error) {
       console.error('Gold Box Adapter: Error in constructor:', error)
@@ -632,6 +629,15 @@ export class GoldBoxAdapter {
     this.interface.addMessage('Press N in the main game to create a new character.', 'System')
     
     this.updateCommandsForExploration()
+    
+    // CRITICAL: After all characters are initialized with suppressEvent: true,
+    // we need to trigger the character mapping system to assign tokens to all characters
+    console.log('🎭 Gold Box initialization complete - triggering character mapping for all party members')
+    setTimeout(() => {
+      const initCompleteEvent = new CustomEvent('goldbox-party-initialized')
+      document.dispatchEvent(initCompleteEvent)
+      console.log('🎭 Dispatched goldbox-party-initialized event')
+    }, 500) // Small delay to ensure all pawn assignments are complete
   }
 
   private createCharacterFromPawn(pawn: any): Character {
@@ -982,6 +988,31 @@ export class GoldBoxAdapter {
     return characterManager.getAllCharacters()
   }
 
+  /**
+   * Update monster display in Gold Box UI to match the M1 pawn image
+   */
+  public updateMonsterDisplay(monster: any, imageUrl: string): void {
+    console.log(`🐉 Gold Box Adapter: Updating monster display for ${monster.name} with image ${imageUrl}`)
+    
+    try {
+      // Store monster info for consistent display
+      ;(window as any).goldBoxCurrentMonster = {
+        monster: monster,
+        imageUrl: imageUrl,
+        pawnId: 'M1'
+      }
+      
+      // Add a message to the interface about the monster encounter with consistent image
+      if (this.interface) {
+        this.interface.addMessage(`⚔️ ${monster.name} appears! (using image from M1 pawn)`, 'Combat')
+      }
+      
+      console.log(`✅ Gold Box Adapter: Monster display updated for ${monster.name}`)
+    } catch (error) {
+      console.error('Gold Box Adapter: Error updating monster display:', error)
+    }
+  }
+
   // --- Save / Load helpers -------------------------------------------------
   // Export characters map to a downloadable JSON file
   public exportCharactersToFile(): void {
@@ -1118,36 +1149,6 @@ export class GoldBoxAdapter {
     // Append to DOM to make the file picker work in all browsers
     document.body.appendChild(input)
     input.click()
-  }
-
-  // Create small floating save/load UI so users can persist character lists
-  private createSaveLoadControls(): void {
-    try {
-      const existing = document.getElementById('goldbox-save-load')
-      if (existing) return
-
-      const container = document.createElement('div')
-      container.id = 'goldbox-save-load'
-      container.style.cssText = 'position:fixed;bottom:18px;right:18px;z-index:12000;display:flex;gap:8px;flex-direction:column;'
-
-      const saveBtn = document.createElement('button')
-      saveBtn.textContent = 'Save Characters'
-      saveBtn.title = 'Export Gold Box characters to JSON file'
-      saveBtn.style.cssText = 'background:#111;color:#00b4ff;border:2px solid #00b4ff;padding:8px 10px;border-radius:6px;cursor:pointer;font-weight:700'
-      saveBtn.addEventListener('click', () => this.exportCharactersToFile())
-
-      const loadBtn = document.createElement('button')
-      loadBtn.textContent = 'Load Characters'
-      loadBtn.title = 'Import Gold Box characters from JSON file'
-      loadBtn.style.cssText = 'background:#111;color:#16a34a;border:2px solid #16a34a;padding:8px 10px;border-radius:6px;cursor:pointer;font-weight:700'
-      loadBtn.addEventListener('click', () => this.importCharactersFromFile())
-
-      container.appendChild(saveBtn)
-      container.appendChild(loadBtn)
-      document.body.appendChild(container)
-    } catch (e) {
-      console.warn('Gold Box: Failed to create save/load controls', e)
-    }
   }
 
   // Method to sync HP changes from pawn back to character

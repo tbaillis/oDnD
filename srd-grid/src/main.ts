@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, Sprite, Assets, Texture } from 'pixi.js'
+import { Application, Container, Graphics, Sprite, Assets, Texture, Text } from 'pixi.js'
 import { createWorld, updateTime } from './engine/world'
 import { UIManager } from './ui/interface'
 import { DungeonView } from './ui/dungeonView'
@@ -77,11 +77,29 @@ function restoreFromData(_data: any) {
 const app = new Application()
 // Make canvas background transparent so the DOM background can show through
 await app.init({ width: WIDTH, height: HEIGHT, background: 'transparent', antialias: true })
+console.log('✅ PIXI.js application initialized')
+
+if (!root) {
+  console.error('❌ Could not find game-root element in DOM!')
+  throw new Error('game-root element not found')
+}
+
+console.log('🎯 Root element found:', root)
+console.log('🎯 Canvas element:', app.canvas)
+console.log('🎯 Canvas dimensions:', app.canvas.width, 'x', app.canvas.height)
+
 root.appendChild(app.canvas)
+console.log('✅ Canvas added to DOM')
+
+// Force canvas to be visible
+app.canvas.style.display = 'block'
+app.canvas.style.backgroundColor = 'rgba(255,0,0,0.2)' // Add slight red tint for debugging
+console.log('🎯 Canvas styles applied')
 
 // Main stage containers
 const world = new Container()
 app.stage.addChild(world)
+console.log('✅ Main stage containers created')
 
 // Initialize ECS world and UI
 const game = createWorld()
@@ -121,6 +139,25 @@ try {
         }
       }
     })
+  }
+
+  // Test function to manually trigger character-to-token mapping
+  ;(window as any).testTokenMapping = () => {
+    console.log('=== MANUAL TOKEN MAPPING TEST ===')
+    if (goldBoxAdapter) {
+      const allCharacters = goldBoxAdapter.getAllCharacters()
+      console.log(`Found ${allCharacters.size} characters in Gold Box`)
+      allCharacters.forEach((character, id) => {
+        console.log(`Character: ${character.name} (ID: ${id})`)
+      })
+      
+      // Trigger the party initialization event
+      const event = new CustomEvent('goldbox-party-initialized')
+      document.dispatchEvent(event)
+      console.log('Dispatched goldbox-party-initialized event')
+    } else {
+      console.log('Gold Box adapter not available')
+    }
   }
 
   // Add debug panel to the page
@@ -220,6 +257,7 @@ try {
 ;(window as any).applyCharacterToPawnE = applyCharacterToPawnE
 ;(window as any).applyCharacterToPawnF = applyCharacterToPawnF
 ;(window as any).ensureM1OnBoard = ensureM1OnBoard
+;(window as any).ensureM2OnBoard = ensureM2OnBoard
 Object.assign((window as any), {
   moveM1ToPosition: (moveM1ToPosition as any),
   applyCharacterToPawnM1: (applyCharacterToPawnM1 as any)
@@ -266,6 +304,7 @@ if (goldBoxAdapter) {
   ;(window as any).syncPawnToGoldBox = syncPawnToGoldBox
   ;(window as any).applyDamageToPawn = applyDamageToPawn
   ;(window as any).healPawn = healPawn
+  ;(window as any).applyMonsterToPawn = applyMonsterToPawn
   ;(window as any).applyMonsterToPawnM1 = applyMonsterToPawnM1
 
   // Expose new pawn assignment methods
@@ -431,6 +470,19 @@ battlefieldSettings.onSettingsChange(() => {
 
 world.addChild(grid, lines)
 
+// Add debug grid lines to make the grid visible
+const debugGrid = new Graphics()
+// Draw horizontal lines
+for (let y = 0; y <= Math.floor(HEIGHT/CELL); y++) {
+  debugGrid.moveTo(0, y * CELL).lineTo(WIDTH, y * CELL).stroke({ color: 0x444444, width: 1 })
+}
+// Draw vertical lines  
+for (let x = 0; x <= Math.floor(WIDTH/CELL); x++) {
+  debugGrid.moveTo(x * CELL, 0).lineTo(x * CELL, HEIGHT).stroke({ color: 0x444444, width: 1 })
+}
+world.addChild(debugGrid)
+console.log('✅ Debug grid lines added')
+
 // Basic ticker callback placeholder
 app.ticker.add(() => {
   updateTime(game)
@@ -454,6 +506,41 @@ overlay.alpha = 0.9
 world.addChild(pieces)
 world.addChild(tokens)
 world.addChild(overlay)
+
+// Labels layer (rendered above overlays/effects)
+const labels = new Container()
+world.addChild(labels)
+
+// Pawn label cache
+const pawnLabels: Record<string, Text> = {}
+
+function ensurePawnLabel(id: string, text: string): Text {
+  if (pawnLabels[id]) return pawnLabels[id]
+  const label = new Text({
+    text,
+    style: {
+      fontFamily: 'Courier New, monospace',
+      fontSize: 12,
+      fontWeight: '700',
+      fill: 0xffffff,
+      stroke: { color: 0x000000, width: 4, join: 'round' }
+    }
+  })
+  label.anchor.set(1, 0) // top-right
+  labels.addChild(label)
+  pawnLabels[id] = label
+  return label
+}
+
+function updatePawnLabel(id: string, gridX: number, gridY: number, visible: boolean, text?: string) {
+  const l = ensurePawnLabel(id, text || id)
+  if (text && l.text !== text) l.text = text
+  l.visible = visible
+  if (!visible) return
+  const pad = 3
+  l.x = gridX * CELL + CELL - pad
+  l.y = gridY * CELL + pad
+}
 
 function drawCell(g: Graphics, x: number, y: number, color: number) {
   g.rect(x*CELL, y*CELL, CELL, CELL).fill({ color, alpha: 0.35 })
@@ -496,6 +583,23 @@ function ensureM1OnBoard() {
   }
 }
 
+// Function to ensure pawn M2 is on the visible board
+function ensureM2OnBoard() {
+  const boardWidth = Math.floor(WIDTH/CELL) // 16 squares (0-15)
+  const boardHeight = Math.floor(HEIGHT/CELL) // 12 squares (0-11)
+  
+  if (pawnM2.x < 0 || pawnM2.x >= boardWidth || pawnM2.y < 0 || pawnM2.y >= boardHeight) {
+    console.log(`M2 pawn was off-board at (${pawnM2.x}, ${pawnM2.y}), repositioning...`)
+    const newPosition = generateRandomPosition()
+    pawnM2.x = newPosition.x
+    pawnM2.y = newPosition.y
+    console.log(`M2 pawn repositioned to (${pawnM2.x}, ${pawnM2.y})`)
+    
+    // Log the repositioning
+    appendLogLine(`Pawn M2 repositioned to grid square (${pawnM2.x}, ${pawnM2.y}) to ensure visibility`)
+  }
+}
+
 // Function to manually position M1 at a specific location on the board
 function moveM1ToPosition(x: number, y: number) {
   const boardWidth = Math.floor(WIDTH/CELL)
@@ -518,7 +622,7 @@ let pawnA = { x: 2, y: 2, speed: 30, size: 'medium' as const, hp: 20 }
 ;(pawnA as any).goldBoxId = 'pawn-a'
 // M1 is positioned randomly away from the party each time
 const m1Position = generateRandomPosition()
-let pawnM1 = { x: m1Position.x, y: m1Position.y, speed: 30, size: 'large' as 'large' | 'medium', hp: 25 }
+let pawnM1 = { x: m1Position.x, y: m1Position.y, speed: 30, size: 'large' as 'large' | 'medium', hp: 25, active: true }
 
 // Ensure M1 is on the visible board
 ensureM1OnBoard()
@@ -526,6 +630,118 @@ ensureM1OnBoard()
 // Log M1 position for debugging
 console.log(`M1 pawn positioned at (${pawnM1.x}, ${pawnM1.y}) on ${Math.floor(WIDTH/CELL)}x${Math.floor(HEIGHT/CELL)} grid`)
 appendLogLine(`Pawn M1 positioned at grid square (${pawnM1.x}, ${pawnM1.y})`)
+
+// Initialize default monsters for M1 and M2 to ensure they're always active
+function initializeDefaultMonsters() {
+  // Default Orc for M1 - simplified data compatible with the system
+  const defaultOrcData = {
+    id: 'default-orc',
+    name: 'Orc Warrior',
+    type: 'Humanoid' as const,
+    size: 'Medium' as const,
+    hitDice: '1d8+1',
+    hitPoints: { average: 25, roll: '1d8+1' },
+    initiative: 0,
+    speed: { land: 30 },
+    armorClass: { 
+      total: 14, touch: 11, flatFooted: 13, size: 0, dex: 1, natural: 3,
+      armor: 2, shield: 0, deflection: 0, misc: 0 
+    },
+    baseAttack: 1,
+    grapple: 4,
+    attacks: [],
+    space: '5 ft.',
+    reach: '5 ft.',
+    abilities: { STR: 16, DEX: 12, CON: 13, INT: 8, WIS: 11, CHA: 8 },
+    saves: { fortitude: 3, reflex: 1, will: -1 },
+    skills: {},
+    feats: [],
+    specialAttacks: [],
+    specialQualities: [],
+    challengeRating: 1,
+    environment: 'Temperate hills',
+    organization: 'Gang',
+    treasure: 'Standard',
+    alignment: 'Chaotic Evil' as const
+  };
+  
+  // Default Goblin for M2
+  const defaultGoblinData = {
+    id: 'default-goblin',
+    name: 'Goblin Scout',
+    type: 'Humanoid' as const,
+    size: 'Small' as const,
+    hitDice: '1d8',
+    hitPoints: { average: 25, roll: '1d8' },
+    initiative: 1,
+    speed: { land: 30 },
+    armorClass: { 
+      total: 15, touch: 12, flatFooted: 14, size: 1, dex: 1, natural: 0,
+      armor: 1, shield: 1, deflection: 0, misc: 0 
+    },
+    baseAttack: 1,
+    grapple: -1,
+    attacks: [],
+    space: '5 ft.',
+    reach: '5 ft.',
+    abilities: { STR: 8, DEX: 13, CON: 11, INT: 10, WIS: 11, CHA: 8 },
+    saves: { fortitude: 0, reflex: 1, will: -1 },
+    skills: {},
+    feats: [],
+    specialAttacks: [],
+    specialQualities: [],
+    challengeRating: '1/3',
+    environment: 'Temperate plains',
+    organization: 'Gang',
+    treasure: 'Standard',
+    alignment: 'Neutral Evil' as const
+  };
+  
+  // Position M2 randomly away from party and M1
+  const m2Position = generateRandomPosition();
+  pawnM2.x = m2Position.x;
+  pawnM2.y = m2Position.y;
+  
+  // Ensure M2 is on the visible board
+  ensureM2OnBoard()
+  
+  // Log M2 position for debugging
+  console.log(`M2 pawn positioned at (${pawnM2.x}, ${pawnM2.y}) on ${Math.floor(WIDTH/CELL)}x${Math.floor(HEIGHT/CELL)} grid`)
+  appendLogLine(`Pawn M2 positioned at grid square (${pawnM2.x}, ${pawnM2.y})`)
+  
+  console.log('🐉 Initializing default monsters M1 and M2...');
+  
+  // Apply default monsters properly using the monster system
+  setTimeout(() => {
+    try {
+      console.log('🎯 Applying default monster to M1...');
+      applyMonsterToPawn('M1', defaultOrcData);
+      
+      console.log('🎯 Applying default monster to M2...');  
+      applyMonsterToPawn('M2', defaultGoblinData);
+      
+      console.log('✅ Default monsters initialized and applied: M1=Orc Warrior, M2=Goblin Scout');
+      appendLogLine('🐉 Default battle monsters ready: Orc Warrior (M1) vs Goblin Scout (M2)');
+      
+      // Force redraw to show monsters
+      drawAll();
+    } catch (e) {
+      console.error('Failed to initialize default monsters:', e);
+      
+      // Fallback: set basic properties manually
+      (pawnM1 as any).name = defaultOrcData.name;
+      (pawnM1 as any).monsterData = defaultOrcData;
+      (pawnM2 as any).name = defaultGoblinData.name;
+      (pawnM2 as any).monsterData = defaultGoblinData;
+      
+      console.log('⚠️ Used fallback monster initialization');
+      drawAll();
+    }
+  }, 500); // Increased delay to ensure all systems are ready
+}
+
+// Call initialization after everything is set up
+// initializeDefaultMonsters(); // Moved to later in the initialization process
 // Position all pawns adjacently in a 2x3 formation
 let pawnC = { x: 4, y: 2, speed: 30, size: 'medium' as const, hp: 20, maxHp: 20 }
 // Additional character pawns for full 6-person party
@@ -534,9 +750,29 @@ let pawnE = { x: 3, y: 3, speed: 30, size: 'medium' as const, hp: 22, maxHp: 22 
 let pawnF = { x: 4, y: 3, speed: 30, size: 'medium' as const, hp: 16, maxHp: 16 }
 let pawnB = { x: 1, y: 3, speed: 30, size: 'medium' as const, hp: 24, maxHp: 24 }
 
+// Additional monster pawns M2-M10 (positioned randomly, initially inactive)
+let pawnM2 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 25, active: true } // M2 active by default
+let pawnM3 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+let pawnM4 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+let pawnM5 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+let pawnM6 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+let pawnM7 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+let pawnM8 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+let pawnM9 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+let pawnM10 = { x: 0, y: 0, speed: 30, size: 'medium' as 'large' | 'medium', hp: 0, active: false }
+
 // Expose pawns globally
 ;(window as any).pawnA = pawnA
 ;(window as any).pawnM1 = pawnM1
+;(window as any).pawnM2 = pawnM2
+;(window as any).pawnM3 = pawnM3
+;(window as any).pawnM4 = pawnM4
+;(window as any).pawnM5 = pawnM5
+;(window as any).pawnM6 = pawnM6
+;(window as any).pawnM7 = pawnM7
+;(window as any).pawnM8 = pawnM8
+;(window as any).pawnM9 = pawnM9
+;(window as any).pawnM10 = pawnM10
 ;(window as any).pawnC = pawnC
 ;(window as any).pawnD = pawnD
 ;(window as any).pawnE = pawnE
@@ -545,6 +781,15 @@ let pawnB = { x: 1, y: 3, speed: 30, size: 'medium' as const, hp: 24, maxHp: 24 
 
 let pawnAMaxHP = 20 // Track max HP for pawn A
 let pawnM1MaxHP = 25 // Track max HP for pawn M1
+let pawnM2MaxHP = 25 // Track max HP for pawn M2 (active by default)
+let pawnM3MaxHP = 0 // Track max HP for pawn M3
+let pawnM4MaxHP = 0 // Track max HP for pawn M4
+let pawnM5MaxHP = 0 // Track max HP for pawn M5
+let pawnM6MaxHP = 0 // Track max HP for pawn M6
+let pawnM7MaxHP = 0 // Track max HP for pawn M7
+let pawnM8MaxHP = 0 // Track max HP for pawn M8
+let pawnM9MaxHP = 0 // Track max HP for pawn M9
+let pawnM10MaxHP = 0 // Track max HP for pawn M10
 let pawnCMaxHP = 20 // Track max HP for pawn C
 let pawnDMaxHP = 18 // Track max HP for pawn D
 let pawnEMaxHP = 22 // Track max HP for pawn E
@@ -626,10 +871,10 @@ function applyCharacterToPawnA(character: Character, suppressEvent: boolean = fa
 
 // Functions to apply character stats to all pawns
 function applyCharacterToPawnM1(character: Character, suppressEvent: boolean = false) {
-  // By design Pawn M1 is reserved for Monster AI. Do not attach player
-  // character data to M1. Instead, delegate character application to Pawn B
+  // By design Pawns M1-M10 are reserved for Monster AI. Do not attach player
+  // character data to monster pawns. Instead, delegate character application to Pawn B
   // so characters remain on player pawns.
-  console.log('Main: applyCharacterToPawnM1 called, redirecting to applyCharacterToPawnB to keep M1 reserved for monsters')
+  console.log('Main: applyCharacterToPawnM1 called, redirecting to applyCharacterToPawnB to keep M1-M10 reserved for monsters')
   try {
     if (typeof (window as any).applyCharacterToPawnB === 'function') {
       (window as any).applyCharacterToPawnB(character, suppressEvent)
@@ -935,18 +1180,49 @@ function healPawn(pawnRef: 'A' | 'B' | 'C' | 'D' | 'E' | 'F', healing: number, s
 }
 
 // Function to apply monster stats to any pawn
-function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters/types').MonsterData) {
-  const pawn = pawnId === 'A' ? pawnA : pawnM1
-  const defender = pawnId === 'A' ? defenderA : defenderM1
+function applyMonsterToPawn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', monster: import('./game/monsters/types').MonsterData) {
+  const getPawnAndDefender = (id: string) => {
+    switch (id) {
+      case 'A': return { pawn: pawnA, defender: defenderA }
+      case 'M1': return { pawn: pawnM1, defender: defenderM1 }
+      case 'M2': return { pawn: pawnM2, defender: defenderM1 } // Reuse defenderM1 profile
+      case 'M3': return { pawn: pawnM3, defender: defenderM1 }
+      case 'M4': return { pawn: pawnM4, defender: defenderM1 }
+      case 'M5': return { pawn: pawnM5, defender: defenderM1 }
+      case 'M6': return { pawn: pawnM6, defender: defenderM1 }
+      case 'M7': return { pawn: pawnM7, defender: defenderM1 }
+      case 'M8': return { pawn: pawnM8, defender: defenderM1 }
+      case 'M9': return { pawn: pawnM9, defender: defenderM1 }
+      case 'M10': return { pawn: pawnM10, defender: defenderM1 }
+      default: return { pawn: pawnM1, defender: defenderM1 }
+    }
+  }
+  
+  const { pawn, defender } = getPawnAndDefender(pawnId)
   
   // Update pawn's hit points based on monster
   const newMaxHP = monster.hitPoints.average
-  if (pawnId === 'A') {
-    pawnAMaxHP = newMaxHP
-    pawnA.hp = newMaxHP
-  } else {
-    pawnM1MaxHP = newMaxHP
-    pawnM1.hp = newMaxHP
+  
+  // Update max HP tracking for each pawn
+  switch (pawnId) {
+    case 'A': pawnAMaxHP = newMaxHP; pawnA.hp = newMaxHP; break
+    case 'M1': pawnM1MaxHP = newMaxHP; pawnM1.hp = newMaxHP; break
+    case 'M2': pawnM2MaxHP = newMaxHP; pawnM2.hp = newMaxHP; (pawnM2 as any).active = true; break
+    case 'M3': pawnM3MaxHP = newMaxHP; pawnM3.hp = newMaxHP; (pawnM3 as any).active = true; break
+    case 'M4': pawnM4MaxHP = newMaxHP; pawnM4.hp = newMaxHP; (pawnM4 as any).active = true; break
+    case 'M5': pawnM5MaxHP = newMaxHP; pawnM5.hp = newMaxHP; (pawnM5 as any).active = true; break
+    case 'M6': pawnM6MaxHP = newMaxHP; pawnM6.hp = newMaxHP; (pawnM6 as any).active = true; break
+    case 'M7': pawnM7MaxHP = newMaxHP; pawnM7.hp = newMaxHP; (pawnM7 as any).active = true; break
+    case 'M8': pawnM8MaxHP = newMaxHP; pawnM8.hp = newMaxHP; (pawnM8 as any).active = true; break
+    case 'M9': pawnM9MaxHP = newMaxHP; pawnM9.hp = newMaxHP; (pawnM9 as any).active = true; break
+    case 'M10': pawnM10MaxHP = newMaxHP; pawnM10.hp = newMaxHP; (pawnM10 as any).active = true; break
+  }
+  
+  // For new monsters (M2-M10), position them randomly on the board
+  if (pawnId !== 'A' && pawnId !== 'M1') {
+    const position = generateRandomPosition()
+    pawn.x = position.x
+    pawn.y = position.y
   }
   
   // Update speed based on monster stats
@@ -1005,14 +1281,24 @@ function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters
     attack.reach && attack.reach > 5
   ) || monster.reach === '10 ft.' || monster.reach === '15 ft.' || monster.reach === '20 ft.'
 
-  // Store monster name on pawn for display purposes
+  // Store monster name on pawn for display purposes and set reach
   if (pawnId === 'A') {
     reachA = hasReachAttack
     ;(pawnA as any).name = monster.name
   } else {
-    reachM1 = hasReachAttack
-    ;(pawnM1 as any).name = monster.name
-  }  // Log the monster application
+    // For all monster pawns, we'll use reachM1 as the global reach indicator for monsters
+    if (pawnId === 'M1') {
+      reachM1 = hasReachAttack
+    }
+    ;(pawn as any).name = monster.name
+  }
+  
+  // Set monster image/token based on monster type and name for all monster pawns
+  if (pawnId.startsWith('M')) {
+    setMonsterImageForPawn(pawnId, monster)
+  }
+  
+  // Log the monster application
   appendLogLine(`Pawn ${pawnId} updated with ${monster.name} (${monster.size} ${monster.type})`)
   appendLogLine(`HP: ${pawn.hp}/${newMaxHP}, AC: ${monster.armorClass.total}, Speed: ${pawn.speed}ft${hasReachAttack ? ', Reach' : ''}`)
   if (monster.specialAttacks && monster.specialAttacks.length > 0) {
@@ -1030,8 +1316,8 @@ function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters
     ensureM1OnBoard()
   }
   
-  // Auto-enable Monster AI for monster pawns
-  if (pawnId === 'M1') {
+  // Auto-enable Monster AI for all monster pawns
+  if (pawnId.startsWith('M')) {
     console.log(`🤖 Auto-enabling Monster AI for Pawn ${pawnId} (${monster.name})`)
     // Make sure Monster AI is enabled
     if (!monsterAI.isEnabled()) {
@@ -1041,6 +1327,12 @@ function applyMonsterToPawn(pawnId: 'A' | 'M1', monster: import('./game/monsters
     // Set pawn as Monster AI controlled
     monsterTurnManager.setMonsterPawn(pawnId, true)
     console.log(`✅ Pawn ${pawnId} set as Monster AI controlled`)
+    
+    // Verify the pawn is now registered as a monster
+    const isMonsterTurn = monsterTurnManager.isMonsterTurn(pawnId)
+    const shouldTakeAutoTurn = monsterTurnManager.shouldTakeAutoTurn(pawnId)
+    console.log(`🔍 AI Registration Check for ${pawnId}: isMonsterTurn=${isMonsterTurn}, shouldTakeAutoTurn=${shouldTakeAutoTurn}`)
+    
     appendLogLine(`🤖 Monster AI enabled for ${monster.name}!`)
   }
   
@@ -1096,13 +1388,140 @@ document.addEventListener('character-sheet-updated', () => {
   }, 100)
 })
 
+// Listen for new characters being added to the Gold Box to automatically map them
+document.addEventListener('goldbox-character-added', () => {
+  console.log('🔄 New character added to Gold Box - refreshing character mapping...')
+  setTimeout(() => {
+    if (goldBoxAdapter) {
+      // Re-run the character mapping process
+      const allCharacters = goldBoxAdapter.getAllCharacters()
+      const pawnOrder = ['A','B','C','D','E','F']
+      const characterEntries = Array.from(allCharacters.entries())
+      
+      console.log(`📋 Refreshing mapping for ${characterEntries.length} characters in Gold Box Interface`)
+      
+      // Map any new characters to available pawns
+      for (let i = 0; i < Math.min(characterEntries.length, pawnOrder.length); i++) {
+        const [characterId, character] = characterEntries[i]
+        const pawnId = pawnOrder[i]
+        
+        // Check if this character is already assigned
+        const pawn = getPawnObject(pawnId)
+        const currentCharacterId = pawn ? (pawn as any).goldBoxId : null
+        
+        if (currentCharacterId !== characterId) {
+          console.log(`🎮 Assigning new/updated character ${character.name} (${characterId}) to pawn ${pawnId}`)
+          assignCharacterToPawn(characterId, pawnId)
+          
+          // Apply character image if available
+          const extendedCharacter = character as any
+          if (extendedCharacter.portrait || extendedCharacter.image || extendedCharacter.tokenUrl) {
+            const imageUrl = extendedCharacter.portrait || extendedCharacter.image || extendedCharacter.tokenUrl
+            console.log(`🖼️ Setting image for ${character.name} on pawn ${pawnId}: ${imageUrl}`)
+            
+            if ((window as any).setPawnTexture) {
+              (window as any).setPawnTexture(pawnId, imageUrl).catch((e: any) => {
+                console.warn(`Failed to set image for pawn ${pawnId}:`, e)
+              })
+            }
+          } else {
+            assignDefaultTokenForCharacter(character, pawnId)
+          }
+        }
+      }
+      
+      // Update encounter list and display
+      const newEncounterList = buildEncounterList()
+      startEncounter(turns, newEncounterList)
+      drawAll()
+      updateInitiativeDisplay()
+    }
+  }, 100)
+})
+
+// Listen for character manager events to automatically map new characters
+document.addEventListener('character-manager-stored', (event: any) => {
+  console.log('🔄 Character stored in manager - triggering character mapping refresh...')
+  console.log('Character details:', event.detail?.character?.name || 'Unknown character')
+  
+  setTimeout(() => {
+    // Dispatch the goldbox character added event to trigger the mapping refresh
+    const mappingEvent = new CustomEvent('goldbox-character-added')
+    document.dispatchEvent(mappingEvent)
+  }, 50)
+})
+
+document.addEventListener('character-manager-party-updated', () => {
+  console.log('🔄 Party updated in manager - triggering character mapping refresh...')
+  setTimeout(() => {
+    // Dispatch the goldbox character added event to trigger the mapping refresh
+    const mappingEvent = new CustomEvent('goldbox-character-added')
+    document.dispatchEvent(mappingEvent)
+  }, 50)
+})
+
+// Listen for when the Gold Box completes party initialization
+document.addEventListener('goldbox-party-initialized', () => {
+  console.log('🎭 Gold Box party initialization complete - mapping all characters to tokens...')
+  setTimeout(() => {
+    if (goldBoxAdapter) {
+      const allCharacters = goldBoxAdapter.getAllCharacters()
+      const pawnOrder = ['A','B','C','D','E','F']
+      const characterEntries = Array.from(allCharacters.entries())
+      
+      console.log(`🎭 Initial party mapping for ${characterEntries.length} characters`)
+      
+      // Map all party characters to pawns with tokens
+      for (let i = 0; i < Math.min(characterEntries.length, pawnOrder.length); i++) {
+        const [characterId, character] = characterEntries[i]
+        const pawnId = pawnOrder[i]
+        
+        console.log(`🎮 Mapping party member ${character.name} (${characterId}) to pawn ${pawnId}`)
+        assignCharacterToPawn(characterId, pawnId)
+        
+        // Apply character image if available  
+        const extendedCharacter = character as any
+        if (extendedCharacter.portrait || extendedCharacter.image || extendedCharacter.tokenUrl) {
+          const imageUrl = extendedCharacter.portrait || extendedCharacter.image || extendedCharacter.tokenUrl
+          console.log(`🖼️ Setting custom image for ${character.name} on pawn ${pawnId}: ${imageUrl}`)
+          
+          if ((window as any).setPawnTexture) {
+            (window as any).setPawnTexture(pawnId, imageUrl).catch((e: any) => {
+              console.warn(`Failed to set image for pawn ${pawnId}:`, e)
+            })
+          }
+        } else {
+          // No specific image provided, assign default token based on character class/traits
+          console.log(`🎲 Assigning default token for ${character.name} based on character traits`)
+          assignDefaultTokenForCharacter(character, pawnId)
+        }
+      }
+      
+      // Update encounter list and display
+      const newEncounterList = buildEncounterList()
+      startEncounter(turns, newEncounterList)
+      drawAll()
+      updateInitiativeDisplay()
+      console.log('🎭 Party token mapping complete!')
+    }
+  }, 100) // Minimal delay to ensure Gold Box state is ready
+})
+
 // Build dynamic encounter list based on active party members
 function buildEncounterList(): Array<{ id: string, dexMod: number, initiative: number }> {
   const activeParty = getActivePartyCharacters()
   const encounterList: Array<{ id: string, dexMod: number, initiative: number }> = []
   
-  // Always include M1 (monster pawn)
-  encounterList.push({ id: 'M1', dexMod: 0, initiative: 12 })
+  // Add all active monster pawns M1-M10
+  const monsterPawns = [pawnM1, pawnM2, pawnM3, pawnM4, pawnM5, pawnM6, pawnM7, pawnM8, pawnM9, pawnM10]
+  monsterPawns.forEach((pawn, index) => {
+    const monsterId = `M${index + 1}`
+    // Include monster if it has HP > 0 or if it's M1 (always include M1)
+    if (monsterId === 'M1' || (pawn.hp > 0 && (pawn as any).active)) {
+      const initiative = 12 - index // Vary initiative slightly for each monster
+      encounterList.push({ id: monsterId, dexMod: 0, initiative })
+    }
+  })
   
   // Add character pawns based on active party OR include basic user pawns A and B if no characters assigned
   if (activeParty.has('A')) encounterList.push({ id: 'A', dexMod: 2, initiative: 15 })
@@ -1146,17 +1565,229 @@ if ((window as any).goldBoxAdapter) {
 }
 updateInitiativeDisplay()
 
+// Helper function to assign a default token based on character traits
+function assignDefaultTokenForCharacter(character: Character, pawnId: string) {
+  console.log(`🎯 Assigning default token for ${character.name} (${character.race} ${character.classes[0]?.class}) to pawn ${pawnId}`)
+  
+  // Build a list of potential token URLs based on character traits using ACTUAL available files
+  const potentialTokens: string[] = []
+  
+  // Class-based tokens using available files
+  const characterClass = character.classes[0]?.class?.toLowerCase()
+  if (characterClass === 'fighter' || characterClass === 'paladin') {
+    potentialTokens.push('./src/assets/pawns/Knight.png', './src/assets/pawns/FireKnight.png', './src/assets/pawns/SunKnight.png')
+  }
+  if (characterClass === 'wizard' || characterClass === 'sorcerer') {
+    potentialTokens.push('./src/assets/pawns/Wizard.png', './src/assets/pawns/CatMagic.png')
+  }
+  if (characterClass === 'bard') {
+    potentialTokens.push('./src/assets/pawns/ChappellBard.png', './src/assets/pawns/PurpleBard.png', './src/assets/pawns/RaonBard.png')
+  }
+  if (characterClass === 'rogue' || characterClass === 'ranger') {
+    potentialTokens.push('./src/assets/pawns/Hop.png', './src/assets/pawns/Sneeek.png')
+  }
+  if (characterClass === 'cleric' || characterClass === 'druid') {
+    potentialTokens.push('./src/assets/pawns/ChapMoon.png')
+  }
+  
+  // Race-based tokens - use generic hero tokens since we don't have race-specific ones
+  const race = character.race.toLowerCase()
+  if (race.includes('human')) {
+    potentialTokens.push('./src/assets/pawns/Hero.png', './src/assets/pawns/BloodyHero.png')
+  }
+  
+  // Generic fallback tokens using available files
+  potentialTokens.push(
+    './src/assets/pawns/Hero.png',
+    './src/assets/pawns/BloodyHero.png', 
+    './src/assets/pawns/Knight.png',
+    './src/assets/pawns/Wizard.png',
+    './src/assets/pawns/ChappellBard.png'
+  )
+  
+  console.log(`🎲 Trying ${potentialTokens.length} potential tokens for ${character.name}:`, potentialTokens)
+  
+  // Try to set the first available token
+  const trySetToken = async (tokens: string[]) => {
+    for (const tokenUrl of tokens) {
+      try {
+        if ((window as any).setPawnTexture) {
+          await (window as any).setPawnTexture(pawnId, tokenUrl)
+          console.log(`✅ Successfully set token ${tokenUrl} for ${character.name} on pawn ${pawnId}`)
+          return true
+        }
+      } catch (e) {
+        console.warn(`❌ Failed to set token ${tokenUrl} for pawn ${pawnId}, trying next...`)
+      }
+    }
+    return false
+  }
+  
+  // Try to set a token asynchronously
+  trySetToken(potentialTokens).then(success => {
+    if (!success) {
+      console.warn(`⚠️ Could not set any token for ${character.name} on pawn ${pawnId}`)
+    }
+  })
+}
+
+// Generalized function to set monster images for any monster pawn M1-M10
+function setMonsterImageForPawn(pawnId: string, monster: import('./game/monsters/types').MonsterData) {
+  console.log(`🐉 Setting monster image for ${pawnId}: ${monster.name} (${monster.type})`)
+  
+  // Build a list of potential monster token URLs using ACTUAL available files
+  const potentialTokens: string[] = []
+  
+  // Specific monster name-based tokens using available files
+  const monsterName = monster.name.toLowerCase()
+  if (monsterName.includes('goblin')) potentialTokens.unshift('./src/assets/pawns/xGoblin.png')
+  if (monsterName.includes('orc')) potentialTokens.unshift('./src/assets/pawns/xOrc.png')
+  if (monsterName.includes('dragon')) potentialTokens.unshift('./src/assets/pawns/xdragon.png')
+  if (monsterName.includes('demon') || monsterName.includes('devil')) potentialTokens.unshift('./src/assets/pawns/xDemon.png', './src/assets/pawns/xDemon2.png')
+  if (monsterName.includes('bear') || monsterName.includes('owlbear')) potentialTokens.unshift('./src/assets/pawns/xOwlBear.png')
+  if (monsterName.includes('horror') || monsterName.includes('aberration')) potentialTokens.unshift('./src/assets/pawns/xHorror.png')
+  if (monsterName.includes('rat') || monsterName.includes('vermin')) potentialTokens.unshift('./src/assets/pawns/Rat2.png')
+  
+  // Monster type-based tokens using available files
+  const monsterType = monster.type.toLowerCase()
+  if (monsterType.includes('dragon')) potentialTokens.push('./src/assets/pawns/xdragon.png')
+  if (monsterType.includes('fiend') || monsterType.includes('outsider')) potentialTokens.push('./src/assets/pawns/xDemon.png', './src/assets/pawns/xDemon2.png')
+  if (monsterType.includes('humanoid')) potentialTokens.push('./src/assets/pawns/xGoblin.png', './src/assets/pawns/xOrc.png')
+  if (monsterType.includes('aberration')) potentialTokens.push('./src/assets/pawns/xHorror.png')
+  if (monsterType.includes('beast') || monsterType.includes('animal')) potentialTokens.push('./src/assets/pawns/xOwlBear.png', './src/assets/pawns/Rat2.png')
+  if (monsterType.includes('vermin')) potentialTokens.push('./src/assets/pawns/Rat2.png')
+  
+  // Add variety by using a different fallback order for each monster pawn
+  const pawnNumber = parseInt(pawnId.substring(1)) || 1
+  const fallbackTokens = [
+    './src/assets/pawns/xMonster.png',
+    './src/assets/pawns/xGoblin.png',
+    './src/assets/pawns/xOrc.png',
+    './src/assets/pawns/xDemon.png',
+    './src/assets/pawns/xHorror.png',
+    './src/assets/pawns/xdragon.png',
+    './src/assets/pawns/xOwlBear.png',
+    './src/assets/pawns/Rat2.png',
+    './src/assets/pawns/xDemon2.png'
+  ]
+  
+  // Rotate the fallback order based on pawn number for variety
+  const rotatedFallbacks = [
+    ...fallbackTokens.slice(pawnNumber % fallbackTokens.length),
+    ...fallbackTokens.slice(0, pawnNumber % fallbackTokens.length)
+  ]
+  
+  potentialTokens.push(...rotatedFallbacks)
+  
+  console.log(`🎲 Trying ${potentialTokens.length} potential monster tokens for ${monster.name} on ${pawnId}:`, potentialTokens)
+  
+  // Try to set the first available token and store the URL
+  const trySetMonsterToken = async (tokens: string[]) => {
+    for (const tokenUrl of tokens) {
+      try {
+        if ((window as any).setPawnTexture) {
+          await (window as any).setPawnTexture(pawnId, tokenUrl)
+          console.log(`✅ Successfully set monster token ${tokenUrl} for ${monster.name} on pawn ${pawnId}`)
+          
+          // Store the monster image URL and data on the pawn
+          const pawn = (window as any)[`pawn${pawnId}`]
+          if (pawn) {
+            pawn.monsterImageUrl = tokenUrl
+            pawn.monsterData = monster
+          }
+          
+          return true
+        }
+      } catch (e) {
+        console.warn(`❌ Failed to set monster token ${tokenUrl} for pawn ${pawnId}, trying next...`)
+      }
+    }
+    return false
+  }
+  
+  // Try to set a monster token asynchronously
+  trySetMonsterToken(potentialTokens).then(success => {
+    if (!success) {
+      console.warn(`⚠️ Could not set any monster token for ${monster.name} on pawn ${pawnId}`)
+    }
+  })
+}
+
 // On game start, map available Gold Box characters to pawns A-F in order
 if (goldBoxAdapter) {
-  // Ensure mapping follows pawn labels A..F regardless of adapter iteration order
-  const chars = goldBoxAdapter.getAllCharacters()
+  console.log('🔄 Mapping all Gold Box characters to grid pawns...')
+  
+  // Get ALL characters from Gold Box Interface (not just specific pawn IDs)
+  const allCharacters = goldBoxAdapter.getAllCharacters()
   const pawnOrder = ['A','B','C','D','E','F']
-  for (const pawnId of pawnOrder) {
-    const charId = `pawn-${pawnId.toLowerCase()}`
-    if (chars.has(charId)) {
-      assignCharacterToPawn(charId, pawnId)
+  const characterEntries = Array.from(allCharacters.entries())
+  
+  console.log(`📋 Found ${characterEntries.length} characters in Gold Box Interface:`, characterEntries.map(([id, char]) => `${char.name} (${id})`))
+  
+  if (characterEntries.length === 0) {
+    console.log('⚠️ No characters found in Gold Box Interface. Characters may not be loaded yet.')
+    console.log('🔍 Checking character manager directly...')
+    
+    // Also check the character manager directly
+    const managerChars = Array.from(allCharacters.entries())
+    console.log(`📋 Character manager has ${managerChars.length} characters:`, managerChars.map(([id, char]) => `${char.name} (${id})`))
+  }
+  
+  // Map characters to pawns in order (first character to A, second to B, etc.)
+  for (let i = 0; i < Math.min(characterEntries.length, pawnOrder.length); i++) {
+    const [characterId, character] = characterEntries[i]
+    const pawnId = pawnOrder[i]
+    
+    console.log(`🎮 Assigning character ${character.name} (${characterId}) to pawn ${pawnId}`)
+    assignCharacterToPawn(characterId, pawnId)
+    
+    // Apply character image/token to the pawn if available (check for extended properties)
+    const extendedCharacter = character as any
+    if (extendedCharacter.portrait || extendedCharacter.image || extendedCharacter.tokenUrl) {
+      const imageUrl = extendedCharacter.portrait || extendedCharacter.image || extendedCharacter.tokenUrl
+      console.log(`🖼️ Setting image for ${character.name} on pawn ${pawnId}: ${imageUrl}`)
+      
+      if ((window as any).setPawnTexture) {
+        (window as any).setPawnTexture(pawnId, imageUrl).catch((e: any) => {
+          console.warn(`Failed to set image for pawn ${pawnId}:`, e)
+        })
+      }
+    } else {
+      // If no specific image, try to assign a default token based on character traits
+      console.log(`🎲 No specific image for ${character.name}, assigning default token based on character traits`)
+      assignDefaultTokenForCharacter(character, pawnId)
     }
   }
+  
+  console.log(`✅ Character mapping complete. Mapped ${Math.min(characterEntries.length, pawnOrder.length)} characters to grid pawns.`)
+  
+  // Schedule a delayed re-check in case characters are loaded asynchronously
+  setTimeout(() => {
+    console.log('🔄 Delayed character mapping check...')
+    const delayedCharacters = goldBoxAdapter.getAllCharacters()
+    const delayedEntries = Array.from(delayedCharacters.entries())
+    
+    if (delayedEntries.length > characterEntries.length) {
+      console.log(`📋 Found ${delayedEntries.length - characterEntries.length} additional characters, re-running mapping...`)
+      
+      // Map any new characters found
+      for (let i = characterEntries.length; i < Math.min(delayedEntries.length, pawnOrder.length); i++) {
+        const [characterId, character] = delayedEntries[i]
+        const pawnId = pawnOrder[i]
+        
+        console.log(`🎮 Late-assigning character ${character.name} (${characterId}) to pawn ${pawnId}`)
+        assignCharacterToPawn(characterId, pawnId)
+        assignDefaultTokenForCharacter(character, pawnId)
+      }
+      
+      drawAll()
+      updateInitiativeDisplay()
+    } else {
+      console.log(`📋 No new characters found in delayed check. Total: ${delayedEntries.length}`)
+    }
+  }, 2000) // Check after 2 seconds
+} else {
+  console.log('⚠️ Gold Box Adapter not available for character mapping')
 }
 
 // Helper function to get character/monster name for a pawn ID (showing character name + pawn name)
@@ -1187,8 +1818,45 @@ function getPawnName(pawnId: string): string {
       return characterName ? `${characterName} (F)` : 'Pawn F'
     }
     case 'M1': {
-      const monsterName = (pawnM1 as any).characterData ? (pawnM1 as any).characterData.name : null
-      return monsterName ? `${monsterName} (M1)` : 'Monster (M1)'
+      // Get the actual monster name from the pawn (set by applyMonsterToPawn)
+      const monsterName = (pawnM1 as any).name || 'Monster'
+      return `_${monsterName} (M1)`
+    }
+    case 'M2': {
+      const monsterName = (pawnM2 as any).name || 'Monster'
+      return `_${monsterName} (M2)`
+    }
+    case 'M3': {
+      const monsterName = (pawnM3 as any).name || 'Monster'
+      return `_${monsterName} (M3)`
+    }
+    case 'M4': {
+      const monsterName = (pawnM4 as any).name || 'Monster'
+      return `_${monsterName} (M4)`
+    }
+    case 'M5': {
+      const monsterName = (pawnM5 as any).name || 'Monster'
+      return `_${monsterName} (M5)`
+    }
+    case 'M6': {
+      const monsterName = (pawnM6 as any).name || 'Monster'
+      return `_${monsterName} (M6)`
+    }
+    case 'M7': {
+      const monsterName = (pawnM7 as any).name || 'Monster'
+      return `_${monsterName} (M7)`
+    }
+    case 'M8': {
+      const monsterName = (pawnM8 as any).name || 'Monster'
+      return `_${monsterName} (M8)`
+    }
+    case 'M9': {
+      const monsterName = (pawnM9 as any).name || 'Monster'
+      return `_${monsterName} (M9)`
+    }
+    case 'M10': {
+      const monsterName = (pawnM10 as any).name || 'Monster'
+      return `_${monsterName} (M10)`
     }
     default:
       return pawnId
@@ -1678,33 +2346,63 @@ function updateInitiativeDisplay() {
   }
 
   if (!sortedInitiative || sortedInitiative.length === 0) {
-    // Default order (can be replaced by actual turns.tracker data)
+    // Build dynamic initiative order including all active monsters
+    const activeMonstersWithInitiative: { id: string, initiative: number }[] = []
+    
+    // Check all monster pawns M1-M10 for active status
+    const monsterPawns = [
+      { pawn: pawnM1, id: 'M1' }, { pawn: pawnM2, id: 'M2' }, { pawn: pawnM3, id: 'M3' }, 
+      { pawn: pawnM4, id: 'M4' }, { pawn: pawnM5, id: 'M5' }, { pawn: pawnM6, id: 'M6' },
+      { pawn: pawnM7, id: 'M7' }, { pawn: pawnM8, id: 'M8' }, { pawn: pawnM9, id: 'M9' }, 
+      { pawn: pawnM10, id: 'M10' }
+    ]
+    
+    monsterPawns.forEach((monster, index) => {
+      // Include monster if it has HP > 0 and is active, or if it's M1 (always include M1)
+      if (monster.id === 'M1' || (monster.pawn.hp > 0 && (monster.pawn as any).active)) {
+        const initiative = 12 - index // Vary initiative slightly for each monster
+        activeMonstersWithInitiative.push({ id: monster.id, initiative })
+      }
+    })
+    
+    // Default order including all active monsters
     sortedInitiative = [
-  { id: 'D', initiative: 16 },
-  { id: 'A', initiative: 15 },
-  { id: 'C', initiative: 14 },
-  { id: 'E', initiative: 13 },
-  { id: 'B', initiative: 12 },
-  { id: 'F', initiative: 11 },
-  { id: 'M1', initiative: 10 },
+      { id: 'D', initiative: 16 },
+      { id: 'A', initiative: 15 },
+      { id: 'C', initiative: 14 },
+      { id: 'E', initiative: 13 },
+      { id: 'B', initiative: 12 },
+      { id: 'F', initiative: 11 },
+      ...activeMonstersWithInitiative
     ]
   }
   
   // Get active party members to filter initiative list
   const activeParty = getActivePartyCharacters()
   
-  // Filter to only show pawns with characters (plus M1 always)
+  // Filter to only show pawns with characters (plus all active monsters)
   const filteredInitiative = sortedInitiative.filter(entry => {
-    return entry.id === 'M1' || activeParty.has(entry.id)
+    // Always show character pawns that have characters assigned
+    if (activeParty.has(entry.id)) return true
+    
+    // Show all active monster pawns (M1-M10)
+    if (entry.id.startsWith('M')) {
+      const monsterNumber = parseInt(entry.id.substring(1))
+      if (monsterNumber >= 1 && monsterNumber <= 10) {
+        const monsterPawn = [pawnM1, pawnM2, pawnM3, pawnM4, pawnM5, pawnM6, pawnM7, pawnM8, pawnM9, pawnM10][monsterNumber - 1]
+        // Include M1 always, or any monster with HP > 0 and active status
+        return entry.id === 'M1' || (monsterPawn.hp > 0 && (monsterPawn as any).active)
+      }
+    }
+    
+    return false
   })
   
-  // Helper function to get pawn data (excluding pawns with 'M' in names)
+  // Helper function to get pawn data (including all monster pawns M1-M10)
   function getPawnData(pawnId: string) {
     switch (pawnId) {
       case 'A':
         return { pawn: pawnA, maxHP: pawnAMaxHP, reach: reachA }
-      case 'M1':
-        return { pawn: pawnM1, maxHP: pawnM1MaxHP ?? 0, reach: reachM1 }
       case 'B':
         return { pawn: pawnB, maxHP: pawnBMaxHP, reach: false }
       case 'C':
@@ -1715,6 +2413,26 @@ function updateInitiativeDisplay() {
         return { pawn: pawnE, maxHP: pawnEMaxHP, reach: false }
       case 'F':
         return { pawn: pawnF, maxHP: pawnFMaxHP, reach: false }
+      case 'M1':
+        return { pawn: pawnM1, maxHP: pawnM1MaxHP ?? 25, reach: reachM1 }
+      case 'M2':
+        return { pawn: pawnM2, maxHP: pawnM2MaxHP ?? 25, reach: false }
+      case 'M3':
+        return { pawn: pawnM3, maxHP: pawnM3MaxHP ?? 0, reach: false }
+      case 'M4':
+        return { pawn: pawnM4, maxHP: pawnM4MaxHP ?? 0, reach: false }
+      case 'M5':
+        return { pawn: pawnM5, maxHP: pawnM5MaxHP ?? 0, reach: false }
+      case 'M6':
+        return { pawn: pawnM6, maxHP: pawnM6MaxHP ?? 0, reach: false }
+      case 'M7':
+        return { pawn: pawnM7, maxHP: pawnM7MaxHP ?? 0, reach: false }
+      case 'M8':
+        return { pawn: pawnM8, maxHP: pawnM8MaxHP ?? 0, reach: false }
+      case 'M9':
+        return { pawn: pawnM9, maxHP: pawnM9MaxHP ?? 0, reach: false }
+      case 'M10':
+        return { pawn: pawnM10, maxHP: pawnM10MaxHP ?? 0, reach: false }
       default:
         return { pawn: { hp: 0, speed: 30, size: 'medium' }, maxHP: 0, reach: false }
     }
@@ -1861,14 +2579,14 @@ function updateInitiativeDisplay() {
       pawnDiv.title = 'Click to view character sheet'
       
       pawnDiv.addEventListener('click', () => {
-        // If this is the monster slot, open the monster assignment/UI
-        if (entry.id === 'M1') {
+        // If this is a monster slot (M1-M10), open the monster assignment/UI
+        if (entry.id.startsWith('M') && entry.id.match(/^M([1-9]|10)$/)) {
           // Prefer the dedicated monster UI if available
           if ((window as any).showMonsterUI) {
             (window as any).showMonsterUI()
           } else {
-            // Fallback to monster selection modal
-            showMonsterSelectionModal('M1')
+            // Fallback to monster selection modal for the specific monster
+            showMonsterSelectionModal(entry.id as 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10')
           }
           return
         }
@@ -1986,6 +2704,7 @@ function getActivePartyCharacters(): Set<string> {
 }
 
 function drawAll() {
+  console.log('🎨 drawAll called')
   tokens.clear()
   overlay.clear()
 
@@ -1994,6 +2713,9 @@ function drawAll() {
   for (const [x,y] of threatM1) drawCell(overlay, x, y, 0xff4444)
   const threatA = threatenedSquares(pawnA.x, pawnA.y, pawnA.size, reachA)
   for (const [x,y] of threatA) drawCell(overlay, x, y, 0x4488ff)
+
+  console.log('🎯 Pawn positions - A:', pawnA.x, pawnA.y, 'M1:', pawnM1.x, pawnM1.y, 'M2:', pawnM2.x, pawnM2.y)
+  console.log('🎯 Active states - M1 active:', (pawnM1 as any).active, 'M2 active:', (pawnM2 as any).active)
 
   // Get active party members
   const activeParty = getActivePartyCharacters()
@@ -2027,9 +2749,12 @@ function drawAll() {
       if (pawnASprite) pawnASprite.visible = false
       tokens.circle(center(pawnA.x), center(pawnA.y), CELL*0.35).fill(0x5aa9e6)
     }
+  // Label A (upper-right)
+  updatePawnLabel('A', pawnA.x, pawnA.y, true, 'A')
   } else {
     // Hide pawn A if no character assigned
     if (pawnASprite) pawnASprite.visible = false
+  updatePawnLabel('A', pawnA.x, pawnA.y, false)
   }
   
   // Pawn M1 rendering - always show (monster pawn)
@@ -2041,6 +2766,7 @@ function drawAll() {
     pawnM1Sprite.scale.x = (pawnM1Sprite.scale.x || 1) * 1.7
     pawnM1Sprite.scale.y = (pawnM1Sprite.scale.y || 1) * 1.7
     pawnM1Sprite.visible = true
+    console.log('🎨 M1 sprite rendered at:', pawnM1Sprite.x, pawnM1Sprite.y)
   } else {
     if (pawnM1Sprite) pawnM1Sprite.visible = false
     // Fallback: draw a slightly wider ellipse for M1 (170% width)
@@ -2051,6 +2777,238 @@ function drawAll() {
     tokens.beginFill(0xe65a5a)
     tokens.drawEllipse(cx, cy, rx, ry)
     tokens.endFill()
+    console.log('🎨 M1 fallback circle rendered at:', cx, cy, 'with radius:', rx, ry)
+  }
+  // Label M1 (always show)
+  updatePawnLabel('M1', pawnM1.x, pawnM1.y, true, 'M1')
+  
+  // Pawn M2 rendering - show if active
+  if ((pawnM2 as any).active && pawnM2.hp > 0) {
+    console.log('🎨 M2 is active and has HP, rendering...')
+    if (pawnM2Sprite && pawnM2Sprite.texture && pawnM2Sprite.texture.width > 0 && pawnM2Sprite.texture.height > 0) {
+      pawnM2Sprite.x = center(pawnM2.x)
+      pawnM2Sprite.y = center(pawnM2.y)
+      scaleToCell(pawnM2Sprite)
+      pawnM2Sprite.scale.x = (pawnM2Sprite.scale.x || 1) * 1.7
+      pawnM2Sprite.scale.y = (pawnM2Sprite.scale.y || 1) * 1.7
+      pawnM2Sprite.visible = true
+      console.log('🎨 M2 sprite rendered at:', pawnM2Sprite.x, pawnM2Sprite.y)
+    } else {
+      if (pawnM2Sprite) pawnM2Sprite.visible = false
+      const cx = center(pawnM2.x)
+      const cy = center(pawnM2.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+      console.log('🎨 M2 fallback circle rendered at:', cx, cy, 'with radius:', rx, ry)
+    }
+  updatePawnLabel('M2', pawnM2.x, pawnM2.y, true, 'M2')
+  } else {
+    if (pawnM2Sprite) pawnM2Sprite.visible = false
+    console.log('🎨 M2 not rendered - active:', (pawnM2 as any).active, 'hp:', pawnM2.hp)
+  updatePawnLabel('M2', pawnM2.x, pawnM2.y, false)
+  }
+  
+  // Pawn M3 rendering - show if active
+  if ((pawnM3 as any).active && pawnM3.hp > 0) {
+    if (pawnM3Sprite && pawnM3Sprite.texture && pawnM3Sprite.texture.width > 0 && pawnM3Sprite.texture.height > 0) {
+      pawnM3Sprite.x = center(pawnM3.x)
+      pawnM3Sprite.y = center(pawnM3.y)
+      scaleToCell(pawnM3Sprite)
+      pawnM3Sprite.scale.x = (pawnM3Sprite.scale.x || 1) * 1.7
+      pawnM3Sprite.scale.y = (pawnM3Sprite.scale.y || 1) * 1.7
+      pawnM3Sprite.visible = true
+    } else {
+      if (pawnM3Sprite) pawnM3Sprite.visible = false
+      const cx = center(pawnM3.x)
+      const cy = center(pawnM3.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M3', pawnM3.x, pawnM3.y, true, 'M3')
+  } else {
+    if (pawnM3Sprite) pawnM3Sprite.visible = false
+  updatePawnLabel('M3', pawnM3.x, pawnM3.y, false)
+  }
+  
+  // Pawn M4 rendering - show if active
+  if ((pawnM4 as any).active && pawnM4.hp > 0) {
+    if (pawnM4Sprite && pawnM4Sprite.texture && pawnM4Sprite.texture.width > 0 && pawnM4Sprite.texture.height > 0) {
+      pawnM4Sprite.x = center(pawnM4.x)
+      pawnM4Sprite.y = center(pawnM4.y)
+      scaleToCell(pawnM4Sprite)
+      pawnM4Sprite.scale.x = (pawnM4Sprite.scale.x || 1) * 1.7
+      pawnM4Sprite.scale.y = (pawnM4Sprite.scale.y || 1) * 1.7
+      pawnM4Sprite.visible = true
+    } else {
+      if (pawnM4Sprite) pawnM4Sprite.visible = false
+      const cx = center(pawnM4.x)
+      const cy = center(pawnM4.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M4', pawnM4.x, pawnM4.y, true, 'M4')
+  } else {
+    if (pawnM4Sprite) pawnM4Sprite.visible = false
+  updatePawnLabel('M4', pawnM4.x, pawnM4.y, false)
+  }
+  
+  // Pawn M5 rendering - show if active
+  if ((pawnM5 as any).active && pawnM5.hp > 0) {
+    if (pawnM5Sprite && pawnM5Sprite.texture && pawnM5Sprite.texture.width > 0 && pawnM5Sprite.texture.height > 0) {
+      pawnM5Sprite.x = center(pawnM5.x)
+      pawnM5Sprite.y = center(pawnM5.y)
+      scaleToCell(pawnM5Sprite)
+      pawnM5Sprite.scale.x = (pawnM5Sprite.scale.x || 1) * 1.7
+      pawnM5Sprite.scale.y = (pawnM5Sprite.scale.y || 1) * 1.7
+      pawnM5Sprite.visible = true
+    } else {
+      if (pawnM5Sprite) pawnM5Sprite.visible = false
+      const cx = center(pawnM5.x)
+      const cy = center(pawnM5.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M5', pawnM5.x, pawnM5.y, true, 'M5')
+  } else {
+    if (pawnM5Sprite) pawnM5Sprite.visible = false
+  updatePawnLabel('M5', pawnM5.x, pawnM5.y, false)
+  }
+  
+  // Pawn M6 rendering - show if active
+  if ((pawnM6 as any).active && pawnM6.hp > 0) {
+    if (pawnM6Sprite && pawnM6Sprite.texture && pawnM6Sprite.texture.width > 0 && pawnM6Sprite.texture.height > 0) {
+      pawnM6Sprite.x = center(pawnM6.x)
+      pawnM6Sprite.y = center(pawnM6.y)
+      scaleToCell(pawnM6Sprite)
+      pawnM6Sprite.scale.x = (pawnM6Sprite.scale.x || 1) * 1.7
+      pawnM6Sprite.scale.y = (pawnM6Sprite.scale.y || 1) * 1.7
+      pawnM6Sprite.visible = true
+    } else {
+      if (pawnM6Sprite) pawnM6Sprite.visible = false
+      const cx = center(pawnM6.x)
+      const cy = center(pawnM6.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M6', pawnM6.x, pawnM6.y, true, 'M6')
+  } else {
+    if (pawnM6Sprite) pawnM6Sprite.visible = false
+  updatePawnLabel('M6', pawnM6.x, pawnM6.y, false)
+  }
+  
+  // Pawn M7 rendering - show if active
+  if ((pawnM7 as any).active && pawnM7.hp > 0) {
+    if (pawnM7Sprite && pawnM7Sprite.texture && pawnM7Sprite.texture.width > 0 && pawnM7Sprite.texture.height > 0) {
+      pawnM7Sprite.x = center(pawnM7.x)
+      pawnM7Sprite.y = center(pawnM7.y)
+      scaleToCell(pawnM7Sprite)
+      pawnM7Sprite.scale.x = (pawnM7Sprite.scale.x || 1) * 1.7
+      pawnM7Sprite.scale.y = (pawnM7Sprite.scale.y || 1) * 1.7
+      pawnM7Sprite.visible = true
+    } else {
+      if (pawnM7Sprite) pawnM7Sprite.visible = false
+      const cx = center(pawnM7.x)
+      const cy = center(pawnM7.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M7', pawnM7.x, pawnM7.y, true, 'M7')
+  } else {
+    if (pawnM7Sprite) pawnM7Sprite.visible = false
+  updatePawnLabel('M7', pawnM7.x, pawnM7.y, false)
+  }
+  
+  // Pawn M8 rendering - show if active
+  if ((pawnM8 as any).active && pawnM8.hp > 0) {
+    if (pawnM8Sprite && pawnM8Sprite.texture && pawnM8Sprite.texture.width > 0 && pawnM8Sprite.texture.height > 0) {
+      pawnM8Sprite.x = center(pawnM8.x)
+      pawnM8Sprite.y = center(pawnM8.y)
+      scaleToCell(pawnM8Sprite)
+      pawnM8Sprite.scale.x = (pawnM8Sprite.scale.x || 1) * 1.7
+      pawnM8Sprite.scale.y = (pawnM8Sprite.scale.y || 1) * 1.7
+      pawnM8Sprite.visible = true
+    } else {
+      if (pawnM8Sprite) pawnM8Sprite.visible = false
+      const cx = center(pawnM8.x)
+      const cy = center(pawnM8.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M8', pawnM8.x, pawnM8.y, true, 'M8')
+  } else {
+    if (pawnM8Sprite) pawnM8Sprite.visible = false
+  updatePawnLabel('M8', pawnM8.x, pawnM8.y, false)
+  }
+  
+  // Pawn M9 rendering - show if active
+  if ((pawnM9 as any).active && pawnM9.hp > 0) {
+    if (pawnM9Sprite && pawnM9Sprite.texture && pawnM9Sprite.texture.width > 0 && pawnM9Sprite.texture.height > 0) {
+      pawnM9Sprite.x = center(pawnM9.x)
+      pawnM9Sprite.y = center(pawnM9.y)
+      scaleToCell(pawnM9Sprite)
+      pawnM9Sprite.scale.x = (pawnM9Sprite.scale.x || 1) * 1.7
+      pawnM9Sprite.scale.y = (pawnM9Sprite.scale.y || 1) * 1.7
+      pawnM9Sprite.visible = true
+    } else {
+      if (pawnM9Sprite) pawnM9Sprite.visible = false
+      const cx = center(pawnM9.x)
+      const cy = center(pawnM9.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M9', pawnM9.x, pawnM9.y, true, 'M9')
+  } else {
+    if (pawnM9Sprite) pawnM9Sprite.visible = false
+  updatePawnLabel('M9', pawnM9.x, pawnM9.y, false)
+  }
+  
+  // Pawn M10 rendering - show if active
+  if ((pawnM10 as any).active && pawnM10.hp > 0) {
+    if (pawnM10Sprite && pawnM10Sprite.texture && pawnM10Sprite.texture.width > 0 && pawnM10Sprite.texture.height > 0) {
+      pawnM10Sprite.x = center(pawnM10.x)
+      pawnM10Sprite.y = center(pawnM10.y)
+      scaleToCell(pawnM10Sprite)
+      pawnM10Sprite.scale.x = (pawnM10Sprite.scale.x || 1) * 1.7
+      pawnM10Sprite.scale.y = (pawnM10Sprite.scale.y || 1) * 1.7
+      pawnM10Sprite.visible = true
+    } else {
+      if (pawnM10Sprite) pawnM10Sprite.visible = false
+      const cx = center(pawnM10.x)
+      const cy = center(pawnM10.y)
+      const ry = CELL * 0.4
+      const rx = ry * 1.7
+      tokens.beginFill(0xe65a5a)
+      tokens.drawEllipse(cx, cy, rx, ry)
+      tokens.endFill()
+    }
+  updatePawnLabel('M10', pawnM10.x, pawnM10.y, true, 'M10')
+  } else {
+    if (pawnM10Sprite) pawnM10Sprite.visible = false
+  updatePawnLabel('M10', pawnM10.x, pawnM10.y, false)
   }
   
   // Pawn B rendering - only if has character
@@ -2072,9 +3030,11 @@ function drawAll() {
       if (pawnBSprite) pawnBSprite.visible = false
       tokens.circle(center(pawnB.x), center(pawnB.y), CELL*0.35).fill(0x94a3b8)
     }
+  updatePawnLabel('B', pawnB.x, pawnB.y, true, 'B')
   } else {
     // Hide pawn B if no character assigned
     if (pawnBSprite) pawnBSprite.visible = false
+  updatePawnLabel('B', pawnB.x, pawnB.y, false)
   }
   
   // Pawn C rendering - only if has character
@@ -2096,9 +3056,11 @@ function drawAll() {
       if (pawnCSprite) pawnCSprite.visible = false
       if ((window as any).pawnC) tokens.circle(center((window as any).pawnC.x), center((window as any).pawnC.y), CELL*0.35).fill(0x6d28d9)
     }
+  if ((window as any).pawnC) updatePawnLabel('C', (window as any).pawnC.x, (window as any).pawnC.y, true, 'C')
   } else {
     // Hide pawn C if no character assigned
     if (pawnCSprite) pawnCSprite.visible = false
+  if ((window as any).pawnC) updatePawnLabel('C', (window as any).pawnC.x, (window as any).pawnC.y, false)
   }
 
   // Pawn D rendering - only if has character
@@ -2120,9 +3082,11 @@ function drawAll() {
       if (pawnDSprite) pawnDSprite.visible = false
       tokens.circle(center(pawnD.x), center(pawnD.y), CELL*0.35).fill(0x9333ea)
     }
+  updatePawnLabel('D', pawnD.x, pawnD.y, true, 'D')
   } else {
     // Hide pawn D if no character assigned
     if (pawnDSprite) pawnDSprite.visible = false
+  updatePawnLabel('D', pawnD.x, pawnD.y, false)
   }
 
   // Pawn E rendering - only if has character
@@ -2144,9 +3108,11 @@ function drawAll() {
       if (pawnESprite) pawnESprite.visible = false
       tokens.circle(center(pawnE.x), center(pawnE.y), CELL*0.35).fill(0x059669)
     }
+  updatePawnLabel('E', pawnE.x, pawnE.y, true, 'E')
   } else {
     // Hide pawn E if no character assigned
     if (pawnESprite) pawnESprite.visible = false
+  updatePawnLabel('E', pawnE.x, pawnE.y, false)
   }
 
   // Pawn F rendering - only if has character
@@ -2168,9 +3134,11 @@ function drawAll() {
       if (pawnFSprite) pawnFSprite.visible = false
       tokens.circle(center(pawnF.x), center(pawnF.y), CELL*0.35).fill(0xf59e0b)
     }
+  updatePawnLabel('F', pawnF.x, pawnF.y, true, 'F')
   } else {
     // Hide pawn F if no character assigned
     if (pawnFSprite) pawnFSprite.visible = false
+  updatePawnLabel('F', pawnF.x, pawnF.y, false)
   }
   // HP bars - only for pawns with characters (and M1 always)
   const barW = CELL*0.7
@@ -2190,6 +3158,35 @@ function drawAll() {
   
   // Always draw M1 HP bar (monster pawn)
   drawHP(pawnM1.x, pawnM1.y, pawnM1.hp, 25, 0xe65a5a)
+  
+  // Draw HP bars for active monster pawns M2-M10
+  if ((pawnM2 as any).active && pawnM2.hp > 0) {
+    drawHP(pawnM2.x, pawnM2.y, pawnM2.hp, pawnM2MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM3 as any).active && pawnM3.hp > 0) {
+    drawHP(pawnM3.x, pawnM3.y, pawnM3.hp, pawnM3MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM4 as any).active && pawnM4.hp > 0) {
+    drawHP(pawnM4.x, pawnM4.y, pawnM4.hp, pawnM4MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM5 as any).active && pawnM5.hp > 0) {
+    drawHP(pawnM5.x, pawnM5.y, pawnM5.hp, pawnM5MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM6 as any).active && pawnM6.hp > 0) {
+    drawHP(pawnM6.x, pawnM6.y, pawnM6.hp, pawnM6MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM7 as any).active && pawnM7.hp > 0) {
+    drawHP(pawnM7.x, pawnM7.y, pawnM7.hp, pawnM7MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM8 as any).active && pawnM8.hp > 0) {
+    drawHP(pawnM8.x, pawnM8.y, pawnM8.hp, pawnM8MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM9 as any).active && pawnM9.hp > 0) {
+    drawHP(pawnM9.x, pawnM9.y, pawnM9.hp, pawnM9MaxHP || 25, 0xe65a5a)
+  }
+  if ((pawnM10 as any).active && pawnM10.hp > 0) {
+    drawHP(pawnM10.x, pawnM10.y, pawnM10.hp, pawnM10MaxHP || 25, 0xe65a5a)
+  }
   
   if (activeParty.has('B')) {
     drawHP(pawnB.x, pawnB.y, pawnB.hp, pawnBMaxHP || 24, 0x94a3b8)
@@ -2224,8 +3221,26 @@ let pawnDSprite: Sprite | null = null
 let pawnESprite: Sprite | null = null
 let pawnFSprite: Sprite | null = null
 let pawnM1Sprite: Sprite | null = null
+let pawnM2Sprite: Sprite | null = null
+let pawnM3Sprite: Sprite | null = null
+let pawnM4Sprite: Sprite | null = null
+let pawnM5Sprite: Sprite | null = null
+let pawnM6Sprite: Sprite | null = null
+let pawnM7Sprite: Sprite | null = null
+let pawnM8Sprite: Sprite | null = null
+let pawnM9Sprite: Sprite | null = null
+let pawnM10Sprite: Sprite | null = null
 
 drawAll()
+
+// Initialize default monsters after the game is fully set up
+setTimeout(() => {
+  try {
+    initializeDefaultMonsters();
+  } catch (e) {
+    console.error('Failed to initialize default monsters:', e);
+  }
+}, 1000); // Give the system time to fully initialize
 
 // Dynamically load all token assets from the pawns folder so new files are auto-discovered
 // Uses Vite's import.meta.glob with eager + query to return file URLs at build time
@@ -2246,7 +3261,7 @@ console.log('Available tokens (auto-discovered):', availableTokens)
 ;(window as any).availableTokens = availableTokens
 ;(window as any).setPawnTexture = setPawnTexture
 
-function ensureSprite(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1') {
+function ensureSprite(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1'|'M2'|'M3'|'M4'|'M5'|'M6'|'M7'|'M8'|'M9'|'M10') {
   let cur: Sprite | null = null
   switch(ref) {
     case 'A': cur = pawnASprite; break
@@ -2256,6 +3271,15 @@ function ensureSprite(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1') {
     case 'E': cur = pawnESprite; break
     case 'F': cur = pawnFSprite; break
     case 'M1': cur = pawnM1Sprite; break
+    case 'M2': cur = pawnM2Sprite; break
+    case 'M3': cur = pawnM3Sprite; break
+    case 'M4': cur = pawnM4Sprite; break
+    case 'M5': cur = pawnM5Sprite; break
+    case 'M6': cur = pawnM6Sprite; break
+    case 'M7': cur = pawnM7Sprite; break
+    case 'M8': cur = pawnM8Sprite; break
+    case 'M9': cur = pawnM9Sprite; break
+    case 'M10': cur = pawnM10Sprite; break
   }
   if (cur) return cur
   
@@ -2271,11 +3295,20 @@ function ensureSprite(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1') {
     case 'E': pawnESprite = s; cur = pawnESprite; break
     case 'F': pawnFSprite = s; cur = pawnFSprite; break
     case 'M1': pawnM1Sprite = s; cur = pawnM1Sprite; break
+    case 'M2': pawnM2Sprite = s; cur = pawnM2Sprite; break
+    case 'M3': pawnM3Sprite = s; cur = pawnM3Sprite; break
+    case 'M4': pawnM4Sprite = s; cur = pawnM4Sprite; break
+    case 'M5': pawnM5Sprite = s; cur = pawnM5Sprite; break
+    case 'M6': pawnM6Sprite = s; cur = pawnM6Sprite; break
+    case 'M7': pawnM7Sprite = s; cur = pawnM7Sprite; break
+    case 'M8': pawnM8Sprite = s; cur = pawnM8Sprite; break
+    case 'M9': pawnM9Sprite = s; cur = pawnM9Sprite; break
+    case 'M10': pawnM10Sprite = s; cur = pawnM10Sprite; break
   }
   return cur
 }
 
-async function setPawnTexture(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', url: string) {
+async function setPawnTexture(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1'|'M2'|'M3'|'M4'|'M5'|'M6'|'M7'|'M8'|'M9'|'M10', url: string) {
   console.log(`Loading texture for ${ref} from:`, url)
   const sp = ensureSprite(ref)
   sp.visible = false
@@ -2309,6 +3342,15 @@ async function setPawnTexture(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', url: string) {
           case 'E': pawnObj = pawnE; break
           case 'F': pawnObj = pawnF; break
           case 'M1': pawnObj = pawnM1; break
+          case 'M2': pawnObj = pawnM2; break
+          case 'M3': pawnObj = pawnM3; break
+          case 'M4': pawnObj = pawnM4; break
+          case 'M5': pawnObj = pawnM5; break
+          case 'M6': pawnObj = pawnM6; break
+          case 'M7': pawnObj = pawnM7; break
+          case 'M8': pawnObj = pawnM8; break
+          case 'M9': pawnObj = pawnM9; break
+          case 'M10': pawnObj = pawnM10; break
         }
         if (pawnObj) {
           ;(pawnObj as any).tokenUrl = url
@@ -2343,6 +3385,15 @@ async function setPawnTexture(ref: 'A'|'B'|'C'|'D'|'E'|'F'|'M1', url: string) {
         case 'E': pawnObj = pawnE; break
         case 'F': pawnObj = pawnF; break
         case 'M1': pawnObj = pawnM1; break
+        case 'M2': pawnObj = pawnM2; break
+        case 'M3': pawnObj = pawnM3; break
+        case 'M4': pawnObj = pawnM4; break
+        case 'M5': pawnObj = pawnM5; break
+        case 'M6': pawnObj = pawnM6; break
+        case 'M7': pawnObj = pawnM7; break
+        case 'M8': pawnObj = pawnM8; break
+        case 'M9': pawnObj = pawnM9; break
+        case 'M10': pawnObj = pawnM10; break
       }
       if (pawnObj) {
         ;(pawnObj as any).tokenUrl = url
@@ -2680,11 +3731,20 @@ export function buildTokenSelectors() {
 
 
 // Demo defenses helper
-function defenderFor(id: 'A'|'B'|'M1'|'C'|'D'|'E'|'F'): DefenderProfile { 
+function defenderFor(id: 'A'|'B'|'M1'|'M2'|'M3'|'M4'|'M5'|'M6'|'M7'|'M8'|'M9'|'M10'|'C'|'D'|'E'|'F'): DefenderProfile { 
   switch(id) {
     case 'A': return defenderA;
   case 'B': return defenderB;
   case 'M1': return defenderM1;
+  case 'M2': return defenderM1;
+  case 'M3': return defenderM1;
+  case 'M4': return defenderM1;
+  case 'M5': return defenderM1;
+  case 'M6': return defenderM1;
+  case 'M7': return defenderM1;
+  case 'M8': return defenderM1;
+  case 'M9': return defenderM1;
+  case 'M10': return defenderM1;
     case 'C': return defenderC;
     case 'D': return defenderD;
     case 'E': return defenderE;
@@ -2698,7 +3758,16 @@ function planFromActiveTo(mx: number, my: number) {
   switch(activeId) {
     case 'A': active = pawnA; break;
   case 'B': active = pawnB; break;
-    case 'M1': active = pawnM1; break;
+  case 'M1': active = pawnM1; break;
+  case 'M2': active = pawnM2; break;
+  case 'M3': active = pawnM3; break;
+  case 'M4': active = pawnM4; break;
+  case 'M5': active = pawnM5; break;
+  case 'M6': active = pawnM6; break;
+  case 'M7': active = pawnM7; break;
+  case 'M8': active = pawnM8; break;
+  case 'M9': active = pawnM9; break;
+  case 'M10': active = pawnM10; break;
     case 'C': active = pawnC; break;
     case 'D': active = pawnD; break;
     case 'E': active = pawnE; break;
@@ -2747,6 +3816,15 @@ function commitEndTurn() {
       case 'A': ap = pawnA; break;
   case 'B': ap = pawnB; break;
       case 'M1': ap = pawnM1; break;
+      case 'M2': ap = pawnM2; break;
+      case 'M3': ap = pawnM3; break;
+      case 'M4': ap = pawnM4; break;
+      case 'M5': ap = pawnM5; break;
+      case 'M6': ap = pawnM6; break;
+      case 'M7': ap = pawnM7; break;
+      case 'M8': ap = pawnM8; break;
+      case 'M9': ap = pawnM9; break;
+      case 'M10': ap = pawnM10; break;
       case 'C': ap = pawnC; break;
       case 'D': ap = pawnD; break;
       case 'E': ap = pawnE; break;
@@ -2757,8 +3835,10 @@ function commitEndTurn() {
     // Check if pawn has HP and (for player pawns) has a character assigned
     // OR allow basic user pawns A and B if no characters are assigned to any pawns
     const activePartySize = getActivePartyCharacters().size
-    const hasCharacter = activeId === 'M1' || pawnHasCharacter(activeId as string) || 
-                        (activePartySize === 0 && (activeId === 'A' || activeId === 'B'))
+    const isMonsterId = typeof activeId === 'string' && /^M(10|[1-9])$/.test(activeId)
+    const hasCharacter = isMonsterId
+      ? ((ap as any).active !== false) // treat any active monster pawn as valid actor
+      : (pawnHasCharacter(activeId as string) || (activePartySize === 0 && (activeId === 'A' || activeId === 'B')))
     if (ap.hp > 0 && hasCharacter) break
     endTurn(turns)
   }
@@ -2773,8 +3853,12 @@ function commitEndTurn() {
   }
   
   // Check if the new active pawn is a monster and AI is enabled
-  const newActivePawnId = turns.active?.id as 'A' | 'M1'
+  const newActivePawnId = turns.active?.id as 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'
   console.log(`🔍 Turn ended. New active pawn: ${newActivePawnId}`)
+  
+  // Debug: Show current monster pawn registrations
+  const registeredMonsters = monsterTurnManager.getMonsterPawns()
+  console.log(`🤖 Currently registered monster pawns: [${registeredMonsters.join(', ')}]`)
   
   if (newActivePawnId) {
     const isMonster = monsterTurnManager.isMonsterPawn(newActivePawnId)
@@ -2799,12 +3883,29 @@ function commitEndTurn() {
   }
 }
 
-async function executeMonsterTurn(pawnId: 'A' | 'M1') {
+async function executeMonsterTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10') {
   console.log(`🤖 Executing Monster AI turn for Pawn ${pawnId}`)
   
   try {
-    // Build game state for AI decision making
-    const gameState = monsterTurnManager.buildGameState(turns, pawnA, pawnM1, {
+    // Get the specific monster pawn object for this AI turn
+    let monsterPawn: any
+    switch (pawnId) {
+      case 'A': monsterPawn = pawnA; break
+      case 'M1': monsterPawn = pawnM1; break
+      case 'M2': monsterPawn = pawnM2; break
+      case 'M3': monsterPawn = pawnM3; break
+      case 'M4': monsterPawn = pawnM4; break
+      case 'M5': monsterPawn = pawnM5; break
+      case 'M6': monsterPawn = pawnM6; break
+      case 'M7': monsterPawn = pawnM7; break
+      case 'M8': monsterPawn = pawnM8; break
+      case 'M9': monsterPawn = pawnM9; break
+      case 'M10': monsterPawn = pawnM10; break
+      default: monsterPawn = pawnM1; break
+    }
+    
+    // Build game state for AI decision making with the specific monster
+    const gameState = monsterTurnManager.buildGameState(turns, pawnA, monsterPawn, {
       grid: G,
       terrain: G,
       effects: effects
@@ -2831,7 +3932,10 @@ async function executeMonsterTurn(pawnId: 'A' | 'M1') {
       updateActionHUD(hudText())
       // Ensure turn ends after successful monster action
       console.log(`🤖 Ending turn after successful monster action for ${pawnId}`)
-      commitEndTurn()
+      // In case the game state hasn't advanced, end the turn now
+      if (turns.active?.id === pawnId) {
+        commitEndTurn()
+      }
     } else {
       // Fallback: just end turn if AI fails
       appendLogLine(`Monster AI failed for Pawn ${pawnId}, ending turn`)
@@ -2847,15 +3951,27 @@ async function executeMonsterTurn(pawnId: 'A' | 'M1') {
 function checkVictoryCondition() {
   console.log('🏆 Checking victory condition...')
   
-  // Check if all monsters are defeated (M1 is the main monster)
-  const allMonstersDefeated = pawnM1.hp <= 0
+  // Check if all active monsters are defeated (M1-M10)
+  const activeMonsters = [pawnM1, pawnM2, pawnM3, pawnM4, pawnM5, pawnM6, pawnM7, pawnM8, pawnM9, pawnM10]
+    .filter((pawn, index) => {
+      const monsterId = `M${index + 1}`
+      // M1 is always considered active, others must be marked active and have HP > 0 initially
+      return monsterId === 'M1' || ((pawn as any).active === true)
+    })
   
-  if (allMonstersDefeated) {
-    console.log('🎉 All monsters defeated! Showing victory screen...')
+  console.log(`🔍 Found ${activeMonsters.length} active monsters to check`)
+  
+  const allMonstersDefeated = activeMonsters.every(pawn => pawn.hp <= 0)
+  
+  if (allMonstersDefeated && activeMonsters.length > 0) {
+    console.log('🎉 All active monsters defeated! Showing victory screen...')
     appendLogLine('Victory! All monsters have been defeated.')
     
     // Show victory screen with treasure chest and award gold
     showVictoryScreen()
+  } else {
+    const aliveMonsters = activeMonsters.filter(pawn => pawn.hp > 0)
+    console.log(`⚔️ Battle continues: ${aliveMonsters.length} monster(s) still alive`)
   }
 }
 
@@ -3075,11 +4191,20 @@ function cycleCoverAt(x: number, y: number) {
 }
 
 // Check if a click position is on a pawn (only visible pawns with characters)
-function getPawnAtPosition(x: number, y: number): 'A' | 'B' | 'M1' | 'C' | 'D' | 'E' | 'F' | null {
+function getPawnAtPosition(x: number, y: number): 'A' | 'B' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10' | 'C' | 'D' | 'E' | 'F' | null {
   const activeParty = getActivePartyCharacters()
   
-  // Always check M1 (monster pawn)
+  // Check all monster pawns M1-M10
   if (pawnM1.x === x && pawnM1.y === y) return 'M1'
+  if ((pawnM2 as any)?.active && pawnM2.x === x && pawnM2.y === y) return 'M2'
+  if ((pawnM3 as any)?.active && pawnM3.x === x && pawnM3.y === y) return 'M3'
+  if ((pawnM4 as any)?.active && pawnM4.x === x && pawnM4.y === y) return 'M4'
+  if ((pawnM5 as any)?.active && pawnM5.x === x && pawnM5.y === y) return 'M5'
+  if ((pawnM6 as any)?.active && pawnM6.x === x && pawnM6.y === y) return 'M6'
+  if ((pawnM7 as any)?.active && pawnM7.x === x && pawnM7.y === y) return 'M7'
+  if ((pawnM8 as any)?.active && pawnM8.x === x && pawnM8.y === y) return 'M8'
+  if ((pawnM9 as any)?.active && pawnM9.x === x && pawnM9.y === y) return 'M9'
+  if ((pawnM10 as any)?.active && pawnM10.x === x && pawnM10.y === y) return 'M10'
   
   // Only check character pawns if they have characters assigned
   if (activeParty.has('A') && pawnA.x === x && pawnA.y === y) return 'A'
@@ -3095,7 +4220,7 @@ function getPawnAtPosition(x: number, y: number): 'A' | 'B' | 'M1' | 'C' | 'D' |
 // Context menu for pawn interactions
 let contextMenu: HTMLElement | null = null
 
-function showPawnContextMenu(pawnId: 'A' | 'B' | 'M1' | 'C' | 'D' | 'E' | 'F', event: MouseEvent) {
+function showPawnContextMenu(pawnId: 'A' | 'B' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10' | 'C' | 'D' | 'E' | 'F', event: MouseEvent) {
   // Remove any existing context menu
   if (contextMenu) {
     contextMenu.remove()
@@ -3574,7 +4699,7 @@ function hideContextMenu() {
 }
 
 // Monster Selection Modal
-function showMonsterSelectionModal(pawnId: 'A' | 'M1') {
+function showMonsterSelectionModal(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10') {
   // Create modal overlay
   const modalOverlay = document.createElement('div')
   modalOverlay.id = 'monster-selection-modal'
@@ -3795,8 +4920,9 @@ app.canvas.addEventListener('mousemove', (ev) => {
   
   if (editTerrain) return
   // If the active pawn is a monster controlled by the AI, disable user preview interactions
-  const activeId = turns.active?.id as 'A'|'M1' | undefined
-  if (activeId && monsterTurnManager.isMonsterPawn(activeId) && monsterAI.isEnabled()) {
+  const activeId = turns.active?.id as 'A'|'B'|'C'|'D'|'E'|'F'|'M1'|'M2'|'M3'|'M4'|'M5'|'M6'|'M7'|'M8'|'M9'|'M10' | undefined
+  const monsterCheckId = (activeId && (activeId === 'A' || /^M(10|[1-9])$/.test(activeId))) ? (activeId as 'A'|'M1'|'M2'|'M3'|'M4'|'M5'|'M6'|'M7'|'M8'|'M9'|'M10') : undefined
+  if (monsterCheckId && monsterTurnManager.isMonsterPawn(monsterCheckId) && monsterAI.isEnabled()) {
     // Show a disabled cursor so the user knows input is blocked during AI turns
     app.canvas.style.cursor = 'not-allowed'
     return
@@ -3839,8 +4965,9 @@ app.canvas.addEventListener('click', (ev) => {
     return
   }
   // Prevent manual clicks/movement while AI controls the active pawn
-  const activeId = turns.active?.id as 'A'|'M1'|'C'|'D'|'E'|'F' | undefined
-  if (activeId && (activeId === 'A' || activeId === 'M1') && monsterTurnManager.isMonsterPawn(activeId) && monsterAI.isEnabled()) {
+  const activeId = turns.active?.id as 'A'|'B'|'C'|'D'|'E'|'F'|'M1'|'M2'|'M3'|'M4'|'M5'|'M6'|'M7'|'M8'|'M9'|'M10' | undefined
+  const monsterCheckId2 = (activeId && (activeId === 'A' || /^M(10|[1-9])$/.test(activeId))) ? (activeId as 'A'|'M1'|'M2'|'M3'|'M4'|'M5'|'M6'|'M7'|'M8'|'M9'|'M10') : undefined
+  if (monsterCheckId2 && monsterTurnManager.isMonsterPawn(monsterCheckId2) && monsterAI.isEnabled()) {
     appendLogLine(`Pawn ${activeId} is controlled by AI this turn. Manual movement disabled.`)
     return
   }
@@ -3859,8 +4986,17 @@ app.canvas.addEventListener('click', (ev) => {
     let active;
     switch(activeId) {
       case 'A': active = pawnA; break;
-  case 'B': active = pawnB; break;
+	  case 'B': active = pawnB; break;
       case 'M1': active = pawnM1; break;
+      case 'M2': active = pawnM2; break;
+      case 'M3': active = pawnM3; break;
+      case 'M4': active = pawnM4; break;
+      case 'M5': active = pawnM5; break;
+      case 'M6': active = pawnM6; break;
+      case 'M7': active = pawnM7; break;
+      case 'M8': active = pawnM8; break;
+      case 'M9': active = pawnM9; break;
+      case 'M10': active = pawnM10; break;
       case 'C': active = pawnC; break;
       case 'D': active = pawnD; break;
       case 'E': active = pawnE; break;
@@ -3986,7 +5122,7 @@ app.canvas.addEventListener('click', (ev) => {
       let target;
       switch(targetPawnId) {
         case 'A': target = pawnA; break;
-  case 'B': target = pawnB; break;
+	    case 'B': target = pawnB; break;
         case 'M1': target = pawnM1; break;
         case 'C': target = pawnC; break;
         case 'D': target = pawnD; break;
@@ -4001,8 +5137,17 @@ app.canvas.addEventListener('click', (ev) => {
   let attacker, attackerReach;
   switch(activeId) {
     case 'A': attacker = pawnA; attackerReach = reachA; break;
-  case 'B': attacker = pawnB; attackerReach = false; break;
+	case 'B': attacker = pawnB; attackerReach = false; break;
     case 'M1': attacker = pawnM1; attackerReach = reachM1; break;
+    case 'M2': attacker = pawnM2; attackerReach = reachM1; break;
+    case 'M3': attacker = pawnM3; attackerReach = reachM1; break;
+    case 'M4': attacker = pawnM4; attackerReach = reachM1; break;
+    case 'M5': attacker = pawnM5; attackerReach = reachM1; break;
+    case 'M6': attacker = pawnM6; attackerReach = reachM1; break;
+    case 'M7': attacker = pawnM7; attackerReach = reachM1; break;
+    case 'M8': attacker = pawnM8; attackerReach = reachM1; break;
+    case 'M9': attacker = pawnM9; attackerReach = reachM1; break;
+    case 'M10': attacker = pawnM10; attackerReach = reachM1; break;
     case 'C': attacker = pawnC; attackerReach = false; break;
     case 'D': attacker = pawnD; attackerReach = false; break;
     case 'E': attacker = pawnE; attackerReach = false; break;
@@ -4427,7 +5572,7 @@ document.getElementById('reset-btn')?.addEventListener('click', () => {
   undoStack.push(captureState()); if (undoStack.length > UNDO_LIMIT) undoStack.shift()
   pawnA = { x: 2, y: 2, speed: 30, size: 'medium', hp: 20 }
   const randomPos = generateRandomPosition()
-  pawnM1 = { ...randomPos, speed: 30, size: 'large', hp: 25 }
+  pawnM1 = { ...randomPos, speed: 30, size: 'large', hp: 25, active: true }
   gameOver = null
   ;(turns as any).aooUsed = {}
   appendLogLine('Reset encounter.')
@@ -4778,40 +5923,40 @@ try {
   };
 
   // Add function to designate a pawn as a monster
-  (window as any).setMonsterPawn = (pawnId: 'A' | 'M1') => {
+  (window as any).setMonsterPawn = (pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10') => {
     console.log(`Setting pawn ${pawnId} as monster`);
     monsterTurnManager.setMonsterPawn(pawnId, true);
     monsterDialogueUI.showMessage(`Pawn ${pawnId} is now controlled by Monster AI!`, monsterAI.getCurrentPersonality());
   };
 
   // Add function to manually trigger a monster turn for testing
-  (window as any).triggerMonsterTurn = async (pawnId?: 'A' | 'M1') => {
-    const targetPawn = pawnId || turns.active?.id as 'A' | 'M1';
-    if (!targetPawn || (targetPawn !== 'A' && targetPawn !== 'M1')) {
-      console.error('Invalid pawn specified. Must be A or M1');
+  (window as any).triggerMonsterTurn = async (pawnId?: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10') => {
+    const targetPawn = (pawnId || turns.active?.id) as 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10';
+    if (!targetPawn) {
+      console.error('Invalid pawn specified.');
       return;
     }
     
     console.log(`Manually triggering Monster AI turn for pawn ${targetPawn}...`);
-    await executeMonsterTurn(targetPawn);
+  await executeMonsterTurn(targetPawn);
   };
 
   // Add comprehensive help function
   (window as any).monsterAIHelp = () => {
-    console.log(`
+  console.log(`
 🐲 Monster AI Commands:
 - showMonsterUI() - Show the Monster AI dialogue interface
 - testMonsterAI() - Test AI decision making (no actions)
 - toggleMonsterAI() - Enable/disable Monster AI
-- setMonsterPawn('A') or setMonsterPawn('M1') - Designate a pawn as monster
-- triggerMonsterTurn('A'/'M1') - Manually execute a full Monster AI turn
+- setMonsterPawn('A'|'M1'..'M10') - Designate a pawn as monster
+- triggerMonsterTurn('A'|'M1'..'M10') - Manually execute a full Monster AI turn
 - monsterAIHelp() - Show this help message
 
 Current Status:
 - Monster AI enabled: ${monsterAI.isEnabled()}
 - Current personality: ${monsterAI.getCurrentPersonality().name}
 - Available personalities: ${monsterAI.getAvailablePersonalities().join(', ')}
-- Monster pawns: A=${monsterTurnManager.isMonsterPawn('A')}, M1=${monsterTurnManager.isMonsterPawn('M1')}
+- Monster pawns: ${['A','M1','M2','M3','M4','M5','M6','M7','M8','M9','M10'].map(id=>`${id}=${monsterTurnManager.isMonsterPawn(id as any)}`).join(', ')}
 - Active pawn: ${turns.active?.id}
     `);
     monsterDialogueUI.showMessage('Monster AI help displayed in console. Check console for commands.', monsterAI.getCurrentPersonality());
@@ -4833,6 +5978,9 @@ Current Status:
   (window as any).reachA = reachA;
   (window as any).reachM1 = reachM1;
   (window as any).rangedMode = rangedMode;
+  (window as any).buildEncounterList = buildEncounterList;
+  (window as any).updateInitiativeDisplay = updateInitiativeDisplay;
+  (window as any).startEncounter = startEncounter;
   
 } catch (error) {
   console.error('Failed to initialize Monster dialogue:', error)
@@ -4918,3 +6066,14 @@ document.addEventListener('keydown', (e) => {
   const applied = applyDamage(objectDef, packet)
   appendLogLine(`Object test (${sel.label} ${sel.amount}) -> after hardness: ${applied.taken} ${applied.hardnessPrevented?`(hardness -${applied.hardnessPrevented})`:''}`)
 })
+
+// Initialize the game after all setup is complete
+console.log('🎮 Starting initial game render...')
+
+drawAll()
+
+// Initialize default monsters after a short delay to ensure all systems are ready
+setTimeout(() => {
+  console.log('🐉 Initializing default monsters...')
+  initializeDefaultMonsters()
+}, 1000)

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Final Monster System Validation</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a1a; color: #fff; }
+        .test-section { margin: 20px 0; padding: 15px; background: #2a2a2a; border-radius: 5px; }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+        button { padding: 10px 15px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #da190b; }
+        #results { margin-top: 20px; padding: 10px; background: #333; border-radius: 3px; max-height: 400px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>🏆 Monster System Validation - Final Test</h1>
+    
+    <div class="test-section">
+        <h3>System Validation Controls</h3>
+        <button onclick="validateCompleteSystem()">🔍 Validate Complete System</button>
+        <button onclick="testAllMonsterSlots()">🎯 Test All Monster Slots M1-M10</button>
+        <button onclick="createFullEncounter()">⚔️ Create Full 5-Monster Encounter</button>
+        <button onclick="clearAllMonsters()" class="danger">🧹 Clear All Monsters</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>System Status</h3>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            results.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            results.scrollTop = results.scrollHeight;
+            console.log(message);
+        }
+
+        function validateCompleteSystem() {
+            log('🔍 COMPREHENSIVE MONSTER SYSTEM VALIDATION', 'info');
+            log('='.repeat(50), 'info');
+            
+            let totalScore = 0;
+            let maxScore = 0;
+            
+            // Test 1: Function Exposure
+            log('📋 Test 1: Function Exposure', 'info');
+            const requiredFunctions = [
+                'applyMonsterToPawn', 'buildEncounterList', 'startEncounter',
+                'updateInitiativeDisplay', 'drawAll', 'turns', 'setPawnTexture'
+            ];
+            
+            let functionScore = 0;
+            requiredFunctions.forEach(func => {
+                if (window[func]) {
+                    log(`✅ ${func} - EXPOSED`, 'success');
+                    functionScore++;
+                } else {
+                    log(`❌ ${func} - MISSING`, 'error');
+                }
+            });
+            totalScore += functionScore;
+            maxScore += requiredFunctions.length;
+            log(`Function Exposure Score: ${functionScore}/${requiredFunctions.length}`, functionScore === requiredFunctions.length ? 'success' : 'error');
+            
+            // Test 2: Pawn Availability
+            log('📋 Test 2: Pawn Availability M1-M10', 'info');
+            let pawnScore = 0;
+            for (let i = 1; i <= 10; i++) {
+                const pawnId = `M${i}`;
+                const pawn = window[`pawn${pawnId}`];
+                if (pawn) {
+                    log(`✅ pawn${pawnId} - AVAILABLE`, 'success');
+                    pawnScore++;
+                } else {
+                    log(`❌ pawn${pawnId} - MISSING`, 'error');
+                }
+            }
+            totalScore += pawnScore;
+            maxScore += 10;
+            log(`Pawn Availability Score: ${pawnScore}/10`, pawnScore === 10 ? 'success' : 'error');
+            
+            // Test 3: Sprite System
+            log('📋 Test 3: Sprite System', 'info');
+            let spriteScore = 0;
+            for (let i = 1; i <= 10; i++) {
+                const spriteVar = `pawnM${i}Sprite`;
+                if (window[spriteVar] !== undefined) {
+                    log(`✅ ${spriteVar} - DECLARED`, 'success');
+                    spriteScore++;
+                } else {
+                    log(`❌ ${spriteVar} - MISSING`, 'error');
+                }
+            }
+            totalScore += spriteScore;
+            maxScore += 10;
+            log(`Sprite System Score: ${spriteScore}/10`, spriteScore === 10 ? 'success' : 'error');
+            
+            // Test 4: MaxHP Variables
+            log('📋 Test 4: MaxHP Variables', 'info');
+            let hpScore = 0;
+            for (let i = 1; i <= 10; i++) {
+                const hpVar = `pawnM${i}MaxHP`;
+                if (window[hpVar] !== undefined) {
+                    log(`✅ ${hpVar} - DECLARED`, 'success');
+                    hpScore++;
+                } else {
+                    log(`❌ ${hpVar} - MISSING`, 'error');
+                }
+            }
+            totalScore += hpScore;
+            maxScore += 10;
+            log(`MaxHP Variables Score: ${hpScore}/10`, hpScore === 10 ? 'success' : 'error');
+            
+            // Final Score
+            log('='.repeat(50), 'info');
+            const percentage = Math.round((totalScore / maxScore) * 100);
+            if (percentage >= 95) {
+                log(`🏆 SYSTEM VALIDATION: ${totalScore}/${maxScore} (${percentage}%) - EXCELLENT!`, 'success');
+                log('✅ Monster system is fully functional and ready for use!', 'success');
+            } else if (percentage >= 80) {
+                log(`⚠️ SYSTEM VALIDATION: ${totalScore}/${maxScore} (${percentage}%) - GOOD with minor issues`, 'info');
+            } else {
+                log(`❌ SYSTEM VALIDATION: ${totalScore}/${maxScore} (${percentage}%) - NEEDS ATTENTION`, 'error');
+            }
+        }
+
+        function testAllMonsterSlots() {
+            log('🎯 TESTING ALL MONSTER SLOTS M1-M10', 'info');
+            
+            const testMonsters = [
+                { name: 'Orc Warrior', hp: 25 },
+                { name: 'Goblin Scout', hp: 15 },
+                { name: 'Skeleton Fighter', hp: 20 },
+                { name: 'Dire Wolf', hp: 30 },
+                { name: 'Hobgoblin', hp: 22 },
+                { name: 'Bugbear', hp: 35 },
+                { name: 'Troll', hp: 45 },
+                { name: 'Ogre', hp: 40 },
+                { name: 'Giant Spider', hp: 18 },
+                { name: 'Wraith', hp: 32 }
+            ];
+            
+            for (let i = 0; i < 10; i++) {
+                const slotId = `M${i + 1}`;
+                const monster = testMonsters[i];
+                
+                setTimeout(() => {
+                    const monsterData = {
+                        name: monster.name,
+                        type: 'humanoid',
+                        size: 'Medium',
+                        hitPoints: { average: monster.hp },
+                        speed: { land: 30 },
+                        abilities: { DEX: 14 },
+                        armorClass: { total: 14, armor: 2, shield: 0, natural: 1, deflection: 0, misc: 0 },
+                        attacks: []
+                    };
+                    
+                    try {
+                        if (window.applyMonsterToPawn) {
+                            window.applyMonsterToPawn(slotId, monsterData);
+                            log(`✅ Added ${monster.name} to ${slotId} (${monster.hp} HP)`, 'success');
+                        } else {
+                            log(`❌ Cannot add monster to ${slotId} - applyMonsterToPawn missing`, 'error');
+                        }
+                    } catch (error) {
+                        log(`❌ Error adding monster to ${slotId}: ${error.message}`, 'error');
+                    }
+                }, i * 200);
+            }
+            
+            // Restart encounter after all monsters are added
+            setTimeout(() => {
+                if (window.buildEncounterList && window.startEncounter && window.turns) {
+                    const newEncounterList = window.buildEncounterList();
+                    window.startEncounter(window.turns, newEncounterList);
+                    log('✅ Encounter restarted with all 10 monsters', 'success');
+                    
+                    if (window.updateInitiativeDisplay) {
+                        window.updateInitiativeDisplay();
+                    }
+                    
+                    if (window.drawAll) {
+                        window.drawAll();
+                        log('✅ Game board redrawn with all monsters', 'success');
+                    }
+                    
+                    // Count active monsters
+                    let activeCount = 0;
+                    for (let i = 1; i <= 10; i++) {
+                        const pawn = window[`pawnM${i}`];
+                        if (pawn && pawn.active && pawn.hp > 0) {
+                            activeCount++;
+                        }
+                    }
+                    log(`🎯 RESULT: ${activeCount}/10 monsters are active and visible`, activeCount === 10 ? 'success' : 'info');
+                }
+            }, 2500);
+        }
+
+        function createFullEncounter() {
+            log('⚔️ CREATING TACTICAL 5-MONSTER ENCOUNTER', 'info');
+            
+            // Clear existing monsters first
+            clearAllMonsters();
+            
+            setTimeout(() => {
+                const encounterMonsters = [
+                    { name: 'Orc Captain', hp: 35, slot: 'M1' },
+                    { name: 'Orc Warriors', hp: 25, slot: 'M2' },
+                    { name: 'Goblin Archers', hp: 15, slot: 'M3' },
+                    { name: 'Dire Wolf', hp: 30, slot: 'M4' },
+                    { name: 'Orc Shaman', hp: 20, slot: 'M5' }
+                ];
+                
+                encounterMonsters.forEach((monster, index) => {
+                    setTimeout(() => {
+                        const monsterData = {
+                            name: monster.name,
+                            type: 'humanoid',
+                            size: 'Medium',
+                            hitPoints: { average: monster.hp },
+                            speed: { land: 30 },
+                            abilities: { DEX: 14 },
+                            armorClass: { total: 14, armor: 2, shield: 0, natural: 1, deflection: 0, misc: 0 },
+                            attacks: []
+                        };
+                        
+                        try {
+                            window.applyMonsterToPawn(monster.slot, monsterData);
+                            log(`⚔️ Deployed ${monster.name} to ${monster.slot}`, 'success');
+                        } catch (error) {
+                            log(`❌ Failed to deploy ${monster.name}: ${error.message}`, 'error');
+                        }
+                    }, index * 300);
+                });
+                
+                // Finalize encounter
+                setTimeout(() => {
+                    if (window.buildEncounterList && window.startEncounter && window.turns) {
+                        const newEncounterList = window.buildEncounterList();
+                        window.startEncounter(window.turns, newEncounterList);
+                        log('⚔️ Tactical encounter initialized!', 'success');
+                        
+                        if (window.updateInitiativeDisplay) {
+                            window.updateInitiativeDisplay();
+                        }
+                        
+                        if (window.drawAll) {
+                            window.drawAll();
+                        }
+                        
+                        log('🎯 Encounter is ready for combat!', 'success');
+                    }
+                }, 2000);
+            }, 500);
+        }
+
+        function clearAllMonsters() {
+            log('🧹 CLEARING ALL MONSTERS', 'info');
+            
+            let clearedCount = 0;
+            for (let i = 1; i <= 10; i++) {
+                const pawn = window[`pawnM${i}`];
+                if (pawn) {
+                    pawn.active = false;
+                    pawn.hp = 0;
+                    clearedCount++;
+                }
+            }
+            
+            log(`🧹 Cleared ${clearedCount} monster pawns`, 'success');
+            
+            // Restart encounter
+            if (window.buildEncounterList && window.startEncounter && window.turns) {
+                const newEncounterList = window.buildEncounterList();
+                window.startEncounter(window.turns, newEncounterList);
+                log('✅ Encounter restarted (clean state)', 'success');
+            }
+            
+            if (window.drawAll) {
+                window.drawAll();
+                log('✅ Game board cleared and redrawn', 'success');
+            }
+        }
+
+        // Auto-run comprehensive validation on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('🎮 Monster System Validation Console Loaded', 'info');
+                validateCompleteSystem();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

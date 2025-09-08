@@ -810,11 +810,26 @@ export class MonsterAIAgent {
   private calculateMovePosition(monster: { x: number; y: number }, target: { x: number; y: number }) {
     const dx = target.x - monster.x;
     const dy = target.y - monster.y;
+    
+    // Calculate candidate position
+    let newX = monster.x;
+    let newY = monster.y;
+    
     // prefer horizontal movement on ties
     if (Math.abs(dx) >= Math.abs(dy)) {
-      return { x: monster.x + Math.sign(dx), y: monster.y };
+      newX = monster.x + Math.sign(dx);
+    } else {
+      newY = monster.y + Math.sign(dy);
     }
-    return { x: monster.x, y: monster.y + Math.sign(dy) };
+    
+    // Ensure position is within board bounds (0-15 x, 0-11 y for 800x600 50px cells)
+    const boardWidth = 16; // 800 / 50
+    const boardHeight = 12; // 600 / 50
+    
+    newX = Math.max(0, Math.min(boardWidth - 1, newX));
+    newY = Math.max(0, Math.min(boardHeight - 1, newY));
+    
+    return { x: newX, y: newY };
   }
 
   private generateFallbackDialogue(situation: string): string {

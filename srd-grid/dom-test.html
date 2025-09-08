@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DOM Canvas Test</title>
+    <style>
+        #game-root {
+            border: 2px solid red;
+            background: lightblue;
+            width: 800px;
+            height: 600px;
+            position: relative;
+        }
+        canvas {
+            border: 3px solid green !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>DOM Canvas Test</h1>
+    <div id="game-root">
+        <p>This is the game-root div. The PIXI.js canvas should appear here.</p>
+    </div>
+    
+    <script>
+        console.log('🔍 DOM Test Starting...');
+        
+        // Check if game-root exists
+        const root = document.getElementById('game-root');
+        console.log('Root element:', root);
+        
+        if (root) {
+            console.log('Root element dimensions:', {
+                width: root.offsetWidth,
+                height: root.offsetHeight,
+                style: root.style.cssText
+            });
+            
+            // Check for canvas elements
+            setTimeout(() => {
+                const canvases = document.querySelectorAll('canvas');
+                console.log('Found canvases:', canvases.length);
+                canvases.forEach((canvas, i) => {
+                    console.log(`Canvas ${i}:`, {
+                        width: canvas.width,
+                        height: canvas.height,
+                        style: canvas.style.cssText,
+                        parent: canvas.parentElement?.id || 'no parent'
+                    });
+                });
+                
+                const rootChildren = root.children;
+                console.log('Root children:', rootChildren.length);
+                for (let i = 0; i < rootChildren.length; i++) {
+                    console.log(`Child ${i}:`, rootChildren[i].tagName, rootChildren[i].className);
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

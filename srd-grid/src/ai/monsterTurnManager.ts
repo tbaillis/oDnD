@@ -5,34 +5,102 @@ import { debugLogger } from '../utils/debugLogger';
 import { showAttackSlash, flashPawnHit, showHitOrMiss } from '../ui/visualEffects'
 
 export interface MonsterTurnManager {
-  isMonsterTurn(pawnId: 'A' | 'M1'): boolean;
-  shouldTakeAutoTurn(pawnId: 'A' | 'M1'): boolean;
-  executeMonsterTurn(pawnId: 'A' | 'M1', gameState: any): Promise<boolean>;
-  setMonsterPawn(pawnId: 'A' | 'M1', isMonster: boolean): void;
-  isMonsterPawn(pawnId: 'A' | 'M1'): boolean;
+  isMonsterTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'): boolean;
+  shouldTakeAutoTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'): boolean;
+  executeMonsterTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', gameState: any): Promise<boolean>;
+  setMonsterPawn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', isMonster: boolean): void;
+  isMonsterPawn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'): boolean;
 }
 
 export class MonsterTurnManager implements MonsterTurnManager {
-  private monsterPawns: Set<'A' | 'M1'> = new Set();
+  private monsterPawns: Set<'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'> = new Set();
   private isProcessingTurn: boolean = false;
   private turnDelay: number = 1500; // Delay between AI actions in ms
 
   constructor() {
-    // Initialize with pawn M1 as monster by default (can be changed)
+    // Initialize with pawns M1 and M2 as monsters by default (both are active by default)
     this.monsterPawns.add('M1');
+    this.monsterPawns.add('M2');
   // Reference internal helpers to avoid unused warnings in some build environments
   this._referencedHelpers();
   }
 
-  public isMonsterTurn(pawnId: 'A' | 'M1'): boolean {
+  // Resolve a pawn object by its ID, preferring gameState if provided, then window globals
+  private getPawnById(
+    pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10',
+    gameState?: any
+  ): any | null {
+    const fromState = gameState?.allPawns?.find((p: any) => p && (p.id === pawnId || p.id === String(pawnId)));
+    if (fromState) return fromState;
+
+    const w = (window as any);
+    const map: Record<string, any> = {
+      'A': w.pawnA,
+      'M1': w.pawnM1,
+      'M2': w.pawnM2,
+      'M3': w.pawnM3,
+      'M4': w.pawnM4,
+      'M5': w.pawnM5,
+      'M6': w.pawnM6,
+      'M7': w.pawnM7,
+      'M8': w.pawnM8,
+      'M9': w.pawnM9,
+      'M10': w.pawnM10,
+    };
+    const pawn = map[pawnId];
+    if (pawn && !pawn.id) pawn.id = pawnId; // ensure ID exists for downstream logic
+    return pawn ?? null;
+  }
+
+  // Collect all known pawns (players and monsters), preferring gameState if provided
+  private getAllPawns(gameState?: any): any[] {
+    if (Array.isArray(gameState?.allPawns) && gameState.allPawns.length) {
+      return gameState.allPawns;
+    }
+    const w = (window as any);
+    const list = [
+      w.pawnA, w.pawnB, w.pawnC, w.pawnD, w.pawnE, w.pawnF,
+      w.pawnM1, w.pawnM2, w.pawnM3, w.pawnM4, w.pawnM5,
+      w.pawnM6, w.pawnM7, w.pawnM8, w.pawnM9, w.pawnM10,
+    ].filter(Boolean);
+    // normalize IDs when missing
+    for (const p of list) {
+      if (!p.id) {
+        // Try to infer from reference by comparing against window map
+        if (p === w.pawnA) p.id = 'A';
+        else if (p === w.pawnB) p.id = 'B';
+        else if (p === w.pawnC) p.id = 'C';
+        else if (p === w.pawnD) p.id = 'D';
+        else if (p === w.pawnE) p.id = 'E';
+        else if (p === w.pawnF) p.id = 'F';
+        else if (p === w.pawnM1) p.id = 'M1';
+        else if (p === w.pawnM2) p.id = 'M2';
+        else if (p === w.pawnM3) p.id = 'M3';
+        else if (p === w.pawnM4) p.id = 'M4';
+        else if (p === w.pawnM5) p.id = 'M5';
+        else if (p === w.pawnM6) p.id = 'M6';
+        else if (p === w.pawnM7) p.id = 'M7';
+        else if (p === w.pawnM8) p.id = 'M8';
+        else if (p === w.pawnM9) p.id = 'M9';
+        else if (p === w.pawnM10) p.id = 'M10';
+      }
+    }
+    return list;
+  }
+
+  private isMonsterId(id: string | undefined): boolean {
+    return !!id && /^M(10|[1-9])$/.test(id);
+  }
+
+  public isMonsterTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'): boolean {
     return this.monsterPawns.has(pawnId);
   }
 
-  public shouldTakeAutoTurn(pawnId: 'A' | 'M1'): boolean {
+  public shouldTakeAutoTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'): boolean {
     return monsterAI.isEnabled() && this.isMonsterTurn(pawnId) && !this.isProcessingTurn;
   }
 
-  public setMonsterPawn(pawnId: 'A' | 'M1', isMonster: boolean): void {
+  public setMonsterPawn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', isMonster: boolean): void {
     if (isMonster) {
       this.monsterPawns.add(pawnId);
     } else {
@@ -45,20 +113,25 @@ export class MonsterTurnManager implements MonsterTurnManager {
   
   private ensurePlayerPawnsNotMonsters(): void {
     // Clear any invalid monster pawn assignments (this method prevents legacy bugs)
-    const validMonsterPawns = new Set<'A' | 'M1'>();
+    const validMonsterPawns = new Set<'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'>();
     for (const pawnId of this.monsterPawns) {
-      if (pawnId === 'A' || pawnId === 'M1') {
+      if (pawnId === 'A' || pawnId.startsWith('M')) {
         validMonsterPawns.add(pawnId);
       }
     }
     this.monsterPawns = validMonsterPawns;
   }
 
-  public isMonsterPawn(pawnId: 'A' | 'M1'): boolean {
+  public isMonsterPawn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10'): boolean {
     return this.monsterPawns.has(pawnId);
   }
 
-  public async executeMonsterTurn(pawnId: 'A' | 'M1', gameState: any): Promise<boolean> {
+  // Debug method to show current monster pawns
+  public getMonsterPawns(): string[] {
+    return Array.from(this.monsterPawns);
+  }
+
+  public async executeMonsterTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', gameState: any): Promise<boolean> {
     debugLogger.logAI('MonsterTurnManager', `Starting monster turn execution`, {
       pawnId,
       isProcessingTurn: this.isProcessingTurn,
@@ -92,7 +165,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeCompleteMonsterTurn(pawnId: 'A' | 'M1', gameState: any): Promise<void> {
+  private async executeCompleteMonsterTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', gameState: any): Promise<void> {
     debugLogger.logAI('MonsterTurnManager', 'Starting complete monster turn', {
       pawnId,
       budget: gameState?.budget,
@@ -144,7 +217,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
   }
 
   private async executeAction(
-    pawnId: 'A' | 'M1', 
+    pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', 
     decision: MonsterAIResponse,
     gameState?: any
   ): Promise<boolean> {
@@ -192,13 +265,12 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeMove(pawnId: 'A' | 'M1', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
+  private async executeMove(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.target) return false;
 
     try {
-      // Resolve various shapes for game state and helpers (some callers pass top-level budget/activePawnId)
-      const allPawns = gameState?.allPawns ?? (window as any).allPawns ?? [(window as any).pawnA, (window as any).pawnM1];
-      const pawn = (allPawns || []).find((p: any) => p && (p.id === pawnId || p.id === String(pawnId))) ?? ((pawnId === 'A') ? (window as any).pawnA : (window as any).pawnM1);
+  // Resolve pawns and helpers
+  const pawn = this.getPawnById(pawnId, gameState);
 
       const activeId = gameState?.activePawnId ?? (gameState?.turns?.active?.id) ?? (window as any).turns?.active?.id;
       const budget = gameState?.budget ?? gameState?.turns?.budget ?? (window as any).turns?.budget;
@@ -241,7 +313,16 @@ export class MonsterTurnManager implements MonsterTurnManager {
         }
       }
 
-      // Execute the movement
+  // Execute the movement (guard against out-of-bounds)
+  const boardWidth = Math.floor(800 / 50) // 16 squares (0-15)
+  const boardHeight = Math.floor(600 / 50) // 12 squares (0-11)
+      
+      // Validate movement target is within board bounds
+      if (last[0] < 0 || last[0] >= boardWidth || last[1] < 0 || last[1] >= boardHeight) {
+        console.warn(`Invalid movement target (${last[0]}, ${last[1]}) - out of bounds on ${boardWidth}x${boardHeight} board`);
+        return false;
+      }
+      
       pawn.x = last[0];
       pawn.y = last[1];
       
@@ -257,11 +338,11 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeAttack(pawnId: 'A' | 'M1', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
+  private async executeAttack(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.target) return false;
 
     try {
-      // Resolve game helpers and state from possible shapes
+  // Resolve game helpers and state from possible shapes
       const activeId = gameState?.activePawnId ?? (gameState?.turns?.active?.id) ?? (window as any).turns?.active?.id;
       const budget = gameState?.budget ?? gameState?.turns?.budget ?? (window as any).turns?.budget;
       const consume = gameState?.consume ?? (window as any).consume;
@@ -287,9 +368,11 @@ export class MonsterTurnManager implements MonsterTurnManager {
         return false;
       }
 
-      // Get attacker and target pawns - prefer gameState actors if present
-      const attacker = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id === pawnId)) ?? (pawnId === 'A' ? (window as any).pawnA : (window as any).pawnM1);
-      const target = (gameState?.allPawns && gameState.allPawns.find((p: any) => p && p.id !== pawnId)) ?? (pawnId === 'A' ? (window as any).pawnM1 : (window as any).pawnA);
+  // Get attacker and resolve target by coordinates across all pawns
+  const attacker = this.getPawnById(pawnId, gameState);
+  const allPawns = this.getAllPawns(gameState);
+  const t = action.target as { x: number; y: number };
+  const target = allPawns.find((p: any) => p && p.x === t.x && p.y === t.y);
       
       // Verify target is at the expected position
       if (!target || target.x !== action.target.x || target.y !== action.target.y) {
@@ -297,8 +380,9 @@ export class MonsterTurnManager implements MonsterTurnManager {
         return false;
       }
 
-      // Check reach distance
-  const attackerReach = (gameState && gameState.reach && gameState.reach[pawnId]) ?? (pawnId === 'A' ? (window as any).reachA : (window as any).reachM1);
+  // Check reach distance (generalize reach map)
+  const reachMap = (gameState?.reach ?? (window as any).reach) || {};
+  const attackerReach = reachMap[pawnId] ?? (this.isMonsterId(pawnId) ? (window as any).reachM1 : (window as any).reachA);
   const rangedMode = ((gameState && gameState.rangedMode) ?? (window as any).rangedMode) || false;
       
       const reachCheck = isWithinAttackReach(
@@ -339,7 +423,9 @@ export class MonsterTurnManager implements MonsterTurnManager {
           setTimeout(() => {
             try { showHitOrMiss(overlay, target.x, target.y, cellSize, true, 2000) } catch (e) {}
             try {
-              const targetSprite = (target === (window as any).pawnA) ? (window as any).pawnASprite : (window as any).pawnBSprite
+              // Try to locate a sprite by ID; fall back to A/B for legacy
+              const spriteMap = (window as any).sprites || {};
+              const targetSprite = spriteMap[target.id] ?? ((target === (window as any).pawnA) ? (window as any).pawnASprite : (window as any).pawnBSprite)
               flashPawnHit(targetSprite, 2000)
             } catch (e) {}
           }, 3000)
@@ -361,7 +447,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     }
   }
 
-  private async executeSpecialAction(pawnId: 'A' | 'M1', action: MonsterCombatAction): Promise<boolean> {
+  private async executeSpecialAction(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', action: MonsterCombatAction): Promise<boolean> {
     // Placeholder for special abilities like spells, breath weapons, etc.
     console.log(`Monster ${pawnId} uses special ability: ${action.reasoning}`);
     
@@ -369,7 +455,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return this.executeEndTurn(pawnId, action);
   }
 
-  private async executeEndTurn(pawnId: 'A' | 'M1', action: MonsterCombatAction): Promise<boolean> {
+  private async executeEndTurn(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', action: MonsterCombatAction): Promise<boolean> {
     // Note: Turn ending is handled by main game loop after successful execution
     console.log(`Monster ${pawnId} end turn action completed: ${action.reasoning}`);
     return true;
@@ -378,7 +464,7 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return false;
   }
 
-  private async executeMultiAction(pawnId: 'A' | 'M1', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
+  private async executeMultiAction(pawnId: 'A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10', action: MonsterCombatAction, gameState?: any): Promise<boolean> {
     if (!action.actionSequence || action.actionSequence.length === 0) {
       console.warn(`Monster ${pawnId} multi-action has no action sequence`);
       return false;
@@ -437,20 +523,10 @@ export class MonsterTurnManager implements MonsterTurnManager {
     return true;
   }
 
-  private findPawnAtPosition(x: number, y: number): 'A' | 'M1' | null {
-    // Check global pawn positions if available
-    const pawnA = (window as any).pawnA;
-    const pawnM1 = (window as any).pawnM1;
-
-    if (pawnA && pawnA.x === x && pawnA.y === y) {
-      return 'A';
-    }
-    
-    if (pawnM1 && pawnM1.x === x && pawnM1.y === y) {
-      return 'M1';
-    }
-
-    return null;
+  private findPawnAtPosition(x: number, y: number, gameState?: any): string | null {
+    const all = this.getAllPawns(gameState);
+    const found = all.find((p: any) => p && p.x === x && p.y === y);
+    return found?.id ?? null;
   }
 
   // Reference helper to avoid TS unused warnings in builds that tree-shake differently
@@ -463,17 +539,24 @@ export class MonsterTurnManager implements MonsterTurnManager {
   }
 
   // Utility methods for game state analysis
-  public buildGameState(turns: any, pawnA: any, pawnM1: any, gameState?: any): any {
-    const activePawnId = turns.active?.id;
-    const activePawn = activePawnId === 'A' ? pawnA : pawnM1;
-    const enemyPawn = activePawnId === 'A' ? pawnM1 : pawnA;
+  public buildGameState(turns: any, pawnA: any, _pawnM1: any, gameState?: any): any {
+    const activePawnId = turns.active?.id as ('A' | 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | 'M7' | 'M8' | 'M9' | 'M10');
+    const allPawns = this.getAllPawns(gameState);
+    const activePawn = this.getPawnById(activePawnId, { allPawns }) ?? pawnA;
 
-    // Enhance active monster with budget-derived availability flags
+    // Determine enemy team: monsters vs players
+    const activeIsMonster = this.isMonsterId(activePawnId);
+    const enemies = allPawns.filter((p: any) => {
+      if (!p || typeof p.hp !== 'number' || p.hp <= 0) return false;
+      const isMonster = this.isMonsterId(p.id);
+      return activeIsMonster ? !isMonster : isMonster;
+    });
+
     const activeMonster = this.isMonsterTurn(activePawnId) ? {
       ...activePawn,
-      moveAvailable: turns.budget?.moveAvailable || false,
-      attackAvailable: turns.budget?.standardAvailable || false,
-      fiveFootStepAvailable: turns.budget?.fiveFootStepAvailable || false
+      moveAvailable: !!(turns.budget?.moveAvailable),
+      attackAvailable: !!(turns.budget?.standardAvailable),
+      fiveFootStepAvailable: !!(turns.budget?.fiveFootStepAvailable)
     } : null;
 
     debugLogger.logAI('MonsterTurnManager', 'Building game state', {
@@ -486,15 +569,15 @@ export class MonsterTurnManager implements MonsterTurnManager {
         moveAvailable: activeMonster.moveAvailable,
         attackAvailable: activeMonster.attackAvailable
       } : null,
-      enemyCount: [enemyPawn].filter(p => p.hp > 0).length
+      enemyCount: enemies.length
     });
 
     return {
       activePawnId,
       activeMonster,
-      activePawn: activePawn,
-      enemies: [enemyPawn].filter(p => p.hp > 0),
-      allPawns: [pawnA, pawnM1],
+      activePawn,
+      enemies,
+      allPawns,
       round: turns.round,
       budget: turns.budget,
       grid: gameState?.grid,

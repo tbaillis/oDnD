@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🎯 Multi-Monster Test Console</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a1a; color: #fff; }
+        .test-section { margin: 20px 0; padding: 15px; background: #2a2a2a; border-radius: 5px; }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+        .warning { color: #ff9800; }
+        button { padding: 10px 15px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #da190b; }
+        button.warning { background: #ff9800; }
+        button.warning:hover { background: #e68900; }
+        #results { margin-top: 20px; padding: 10px; background: #333; border-radius: 3px; max-height: 400px; overflow-y: auto; }
+        .monster-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 10px 0; }
+        .monster-slot { padding: 8px; background: #444; border-radius: 3px; text-align: center; font-size: 12px; }
+        .monster-slot.active { background: #4CAF50; }
+        .monster-slot.inactive { background: #666; }
+    </style>
+</head>
+<body>
+    <h1>🎯 Multi-Monster Battle Test</h1>
+    
+    <div class="test-section">
+        <h3>Quick Monster Tests</h3>
+        <button onclick="checkDefaultMonsters()">🔍 Check Default M1 & M2</button>
+        <button onclick="testAddSingleMonster()">➕ Add Single Monster</button>
+        <button onclick="testAdd3Monsters()">➕➕➕ Add 3 Monsters</button>
+        <button onclick="fillAllSlots()">🏗️ Fill All M1-M10</button>
+        <button onclick="clearAllMonsters()" class="danger">🧹 Clear All</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>Monster Slot Status</h3>
+        <div id="monster-grid" class="monster-grid">
+            <!-- Monster slots will be populated here -->
+        </div>
+        <button onclick="refreshMonsterDisplay()" class="warning">🔄 Refresh Status</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test Log</h3>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info';
+            results.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            results.scrollTop = results.scrollHeight;
+            console.log(message);
+        }
+
+        function updateMonsterGrid() {
+            const grid = document.getElementById('monster-grid');
+            grid.innerHTML = '';
+            
+            for (let i = 1; i <= 10; i++) {
+                const slotId = `M${i}`;
+                const pawn = window[`pawn${slotId}`];
+                
+                const slot = document.createElement('div');
+                slot.className = 'monster-slot';
+                
+                if (pawn) {
+                    const isActive = pawn.active && pawn.hp > 0;
+                    slot.className += isActive ? ' active' : ' inactive';
+                    
+                    const name = pawn.name || 'Unknown';
+                    const hp = pawn.hp || 0;
+                    
+                    slot.innerHTML = `
+                        <div><strong>${slotId}</strong></div>
+                        <div>${name}</div>
+                        <div>HP: ${hp}</div>
+                        <div>${isActive ? '🟢 Active' : '🔴 Inactive'}</div>
+                    `;
+                } else {
+                    slot.className += ' inactive';
+                    slot.innerHTML = `
+                        <div><strong>${slotId}</strong></div>
+                        <div>No Pawn</div>
+                        <div>-</div>
+                        <div>🔴 Missing</div>
+                    `;
+                }
+                
+                grid.appendChild(slot);
+            }
+        }
+
+        function checkDefaultMonsters() {
+            log('🔍 Checking default M1 & M2 monsters...', 'info');
+            
+            const m1 = window.pawnM1;
+            const m2 = window.pawnM2;
+            
+            if (m1) {
+                const m1Active = m1.active && m1.hp > 0;
+                const m1Name = m1.name || 'Unnamed';
+                log(`M1: ${m1Name} - HP: ${m1.hp} - ${m1Active ? '🟢 Active' : '🔴 Inactive'}`, m1Active ? 'success' : 'error');
+            } else {
+                log('M1: ❌ Pawn not found', 'error');
+            }
+            
+            if (m2) {
+                const m2Active = m2.active && m2.hp > 0;
+                const m2Name = m2.name || 'Unnamed';
+                log(`M2: ${m2Name} - HP: ${m2.hp} - ${m2Active ? '🟢 Active' : '🔴 Inactive'}`, m2Active ? 'success' : 'error');
+            } else {
+                log('M2: ❌ Pawn not found', 'error');
+            }
+            
+            updateMonsterGrid();
+        }
+
+        function testAddSingleMonster() {
+            log('➕ Testing single monster addition...', 'info');
+            
+            if (!window.applyMonsterToPawn) {
+                log('❌ applyMonsterToPawn function not available', 'error');
+                return;
+            }
+            
+            // Find an available slot (prefer M3 for testing)
+            let targetSlot = 'M3';
+            const targetPawn = window[`pawn${targetSlot}`];
+            
+            if (!targetPawn || (targetPawn.active && targetPawn.hp > 0)) {
+                // Try other slots
+                for (let i = 3; i <= 10; i++) {
+                    const slotId = `M${i}`;
+                    const pawn = window[`pawn${slotId}`];
+                    if (pawn && (!pawn.active || pawn.hp <= 0)) {
+                        targetSlot = slotId;
+                        break;
+                    }
+                }
+            }
+            
+            const testMonster = createTestMonster('Skeleton Warrior');
+            
+            try {
+                window.applyMonsterToPawn(targetSlot, testMonster);
+                log(`✅ Successfully added ${testMonster.name} to ${targetSlot}`, 'success');
+                
+                // Update encounter
+                restartEncounter();
+                updateMonsterGrid();
+            } catch (error) {
+                log(`❌ Failed to add monster: ${error.message}`, 'error');
+            }
+        }
+
+        function testAdd3Monsters() {
+            log('➕➕➕ Testing addition of 3 monsters...', 'info');
+            
+            const monsters = [
+                createTestMonster('Orc Berserker'),
+                createTestMonster('Goblin Sneak'),
+                createTestMonster('Dire Rat')
+            ];
+            
+            let addedCount = 0;
+            monsters.forEach((monster, index) => {
+                setTimeout(() => {
+                    // Find available slot
+                    let targetSlot = null;
+                    for (let i = 1; i <= 10; i++) {
+                        const slotId = `M${i}`;
+                        const pawn = window[`pawn${slotId}`];
+                        if (pawn && (!pawn.active || pawn.hp <= 0)) {
+                            targetSlot = slotId;
+                            break;
+                        }
+                    }
+                    
+                    if (targetSlot) {
+                        try {
+                            window.applyMonsterToPawn(targetSlot, monster);
+                            addedCount++;
+                            log(`✅ Added ${monster.name} to ${targetSlot} (${addedCount}/3)`, 'success');
+                        } catch (error) {
+                            log(`❌ Failed to add ${monster.name}: ${error.message}`, 'error');
+                        }
+                    } else {
+                        log(`❌ No available slot for ${monster.name}`, 'error');
+                    }
+                    
+                    // Update encounter after last monster
+                    if (index === monsters.length - 1) {
+                        setTimeout(() => {
+                            restartEncounter();
+                            updateMonsterGrid();
+                            log(`🎯 Added ${addedCount}/3 monsters successfully`, addedCount === 3 ? 'success' : 'warning');
+                        }, 200);
+                    }
+                }, index * 300);
+            });
+        }
+
+        function fillAllSlots() {
+            log('🏗️ Filling all M1-M10 slots...', 'info');
+            
+            const monsterTypes = [
+                'Orc Champion', 'Goblin King', 'Skeleton Lord', 'Dire Wolf Alpha',
+                'Hobgoblin Captain', 'Bugbear Chief', 'Troll Warrior', 'Ogre Brute',
+                'Giant Spider Queen', 'Wraith Lord'
+            ];
+            
+            let successCount = 0;
+            for (let i = 1; i <= 10; i++) {
+                const slotId = `M${i}`;
+                const monster = createTestMonster(monsterTypes[i - 1]);
+                
+                setTimeout(() => {
+                    try {
+                        window.applyMonsterToPawn(slotId, monster);
+                        successCount++;
+                        log(`✅ ${slotId}: ${monster.name}`, 'success');
+                    } catch (error) {
+                        log(`❌ Failed ${slotId}: ${error.message}`, 'error');
+                    }
+                    
+                    // Final update after all attempts
+                    if (i === 10) {
+                        setTimeout(() => {
+                            restartEncounter();
+                            updateMonsterGrid();
+                            log(`🏗️ Filled ${successCount}/10 monster slots`, successCount === 10 ? 'success' : 'warning');
+                        }, 200);
+                    }
+                }, i * 150);
+            }
+        }
+
+        function clearAllMonsters() {
+            log('🧹 Clearing all monsters...', 'info');
+            
+            let clearedCount = 0;
+            for (let i = 1; i <= 10; i++) {
+                const slotId = `M${i}`;
+                const pawn = window[`pawn${slotId}`];
+                if (pawn) {
+                    pawn.active = false;
+                    pawn.hp = 0;
+                    clearedCount++;
+                }
+            }
+            
+            log(`🧹 Cleared ${clearedCount} monster pawns`, 'success');
+            restartEncounter();
+            updateMonsterGrid();
+        }
+
+        function refreshMonsterDisplay() {
+            log('🔄 Refreshing monster display...', 'info');
+            updateMonsterGrid();
+            
+            if (window.drawAll) {
+                window.drawAll();
+                log('✅ Game board redrawn', 'success');
+            }
+        }
+
+        function createTestMonster(name) {
+            return {
+                id: `test-${name.toLowerCase().replace(/\s+/g, '-')}`,
+                name: name,
+                type: 'Humanoid',
+                size: 'Medium',
+                hitDice: '2d8+2',
+                hitPoints: { average: Math.floor(Math.random() * 20) + 20, roll: '2d8+2' },
+                initiative: Math.floor(Math.random() * 4) - 1,
+                speed: { land: 30 },
+                armorClass: { 
+                    total: 14, touch: 11, flatFooted: 13, size: 0, dex: 1, natural: 2,
+                    armor: 1, shield: 0, deflection: 0, misc: 0 
+                },
+                baseAttack: 1,
+                grapple: 3,
+                attacks: [],
+                space: '5 ft.',
+                reach: '5 ft.',
+                abilities: { STR: 14, DEX: 12, CON: 13, INT: 8, WIS: 11, CHA: 8 },
+                saves: { fortitude: 2, reflex: 1, will: 0 },
+                skills: {},
+                feats: [],
+                specialAttacks: [],
+                specialQualities: [],
+                challengeRating: 1,
+                environment: 'Any',
+                organization: 'Solitary',
+                treasure: 'Standard',
+                alignment: 'Chaotic Evil'
+            };
+        }
+
+        function restartEncounter() {
+            if (window.buildEncounterList && window.startEncounter && window.turns) {
+                const newEncounterList = window.buildEncounterList();
+                window.startEncounter(window.turns, newEncounterList);
+                
+                if (window.updateInitiativeDisplay) {
+                    window.updateInitiativeDisplay();
+                }
+                
+                if (window.drawAll) {
+                    window.drawAll();
+                }
+            }
+        }
+
+        // Auto-initialize
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('🎮 Multi-Monster Test Console Ready', 'info');
+                updateMonsterGrid();
+                checkDefaultMonsters();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
